@@ -1,7 +1,7 @@
 # ♟️ ACCL Platform
 
 **American Correspondence Chess League (ACCL)**  
-♟️ ACCL Platform — Competitive chess infrastructure for real-time play, structured tournaments, and scalable ranking systems.
+ACCL Platform — Competitive chess infrastructure for real-time play, structured tournaments, and scalable ranking systems.
 
 ---
 
