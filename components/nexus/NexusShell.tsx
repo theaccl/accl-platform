@@ -196,7 +196,7 @@ export default function NexusShell({
   if (!data) {
     if (loadError) {
       body = (
-        <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
+        <main className="flex-1 min-w-0 overflow-x-hidden pt-4 px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6">
           <div className="max-w-7xl mx-auto">
             <p className="text-sm text-gray-400">Data unavailable.</p>
           </div>
@@ -204,7 +204,7 @@ export default function NexusShell({
       );
     } else {
       body = (
-        <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
+        <main className="flex-1 min-w-0 overflow-x-hidden pt-4 px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5">
             <LoadingCard />
             <LoadingCard />
@@ -264,7 +264,7 @@ export default function NexusShell({
     const meStanding = userId ? data.standings.find((s) => s.user_id === userId) : undefined;
 
     body = (
-      <div className="flex-1 min-w-0 max-w-7xl w-full mx-auto overflow-x-hidden p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5">
+      <div className="flex-1 min-w-0 max-w-7xl w-full mx-auto overflow-x-hidden pt-4 px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6 space-y-4 sm:space-y-5">
         <NexusHeader
           ecosystem={data.ecosystem}
           engagement={engagement}

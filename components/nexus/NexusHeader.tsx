@@ -16,7 +16,7 @@ export default function NexusHeader({
   const k12 = ecosystem === "k12";
   return (
     <header
-      className={`rounded-2xl border px-5 py-4 ${
+      className={`rounded-2xl border px-5 pt-3 pb-4 ${
         k12
           ? "border-[#1f3a5a] bg-gradient-to-r from-[#0f1a2b] to-[#14263f]"
           : "border-[#2a3442] bg-gradient-to-r from-[#111723] to-[#1a2231]"

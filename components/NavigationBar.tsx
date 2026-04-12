@@ -10,6 +10,18 @@ const navBtn =
 const navBtnAuth =
   `${navBtn} font-medium`;
 
+/** Site controls: subtle surface, no underline on hover */
+const navBtnSite =
+  "text-sm text-gray-300 hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-[#1a2231] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40";
+
+function AcclMark() {
+  return (
+    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/80 text-xs font-bold text-black">
+      A
+    </div>
+  );
+}
+
 export default function NavigationBar() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
@@ -50,21 +62,30 @@ export default function NavigationBar() {
   };
 
   return (
-    <header className="mb-0 w-full border-b border-[#243244] bg-[#0D1117] pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)]">
+    <header className="mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 pb-0">
         <div className="flex h-[52px] items-center justify-between">
           <div className="flex items-center gap-4">
             <nav className="flex items-center gap-4" aria-label="Account">
               {checked ? (
                 isLoggedIn ? (
-                  <>
-                    <button type="button" onClick={() => router.push("/profile")} className={navBtnAuth}>
+                  <div className="flex items-center gap-4 rounded-md px-2 py-1 transition-colors hover:bg-[#151d2c]">
+                    <button
+                      type="button"
+                      onClick={() => router.push("/profile")}
+                      className={`${navBtnAuth} flex items-center gap-2 hover:bg-transparent hover:no-underline`}
+                    >
+                      <AcclMark />
                       Profile
                     </button>
-                    <button type="button" onClick={() => void logout()} className={navBtnAuth}>
+                    <button
+                      type="button"
+                      onClick={() => void logout()}
+                      className={`${navBtnAuth} hover:bg-transparent hover:no-underline`}
+                    >
                       Log Out
                     </button>
-                  </>
+                  </div>
                 ) : (
                   <>
                     <button type="button" onClick={() => router.push("/login")} className={navBtnAuth}>
@@ -83,10 +104,10 @@ export default function NavigationBar() {
 
           <div className="flex items-center gap-3">
             <nav className="flex items-center gap-3" aria-label="Site">
-              <button type="button" onClick={() => router.back()} className={navBtn}>
+              <button type="button" onClick={() => router.back()} className={navBtnSite}>
                 Back
               </button>
-              <button type="button" onClick={() => router.push("/")} className={navBtn}>
+              <button type="button" onClick={() => router.push("/")} className={navBtnSite}>
                 Home
               </button>
             </nav>
