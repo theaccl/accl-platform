@@ -153,23 +153,10 @@ export default function LandingPage() {
 
         <section className="rounded-2xl border border-red-500/40 bg-[#20141a] p-6 text-center space-y-4">
           <h2 className="text-xl font-semibold">Join ACCL</h2>
-          <p className="text-sm text-gray-400 max-w-md mx-auto">
-            Create an account for free play and the full Nexus dashboard — short signup, no clutter.
+          <p className="text-sm text-gray-400 max-w-md mx-auto leading-relaxed">
+            Create an account for free play and the full Nexus dashboard — use <strong className="text-gray-200">Sign Up</strong>{" "}
+            or <strong className="text-gray-200">Log In</strong> in the top navigation bar.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/login?intent=signup&next=/free/play"
-              className="rounded-xl border border-red-500/50 bg-red-950/40 px-6 py-3 text-sm font-semibold text-red-100 min-h-[48px] flex items-center justify-center"
-            >
-              Sign up — free play
-            </Link>
-            <Link
-              href="/login?intent=signup&next=/nexus"
-              className="rounded-xl border border-slate-600 bg-slate-900/60 px-6 py-3 text-sm font-semibold text-slate-100 min-h-[48px] flex items-center justify-center"
-            >
-              Sign up — Nexus first
-            </Link>
-          </div>
         </section>
 
         {data && data.activity_feed_public.length > 0 ? (

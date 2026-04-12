@@ -32,6 +32,7 @@ import LegacyMemorialModule from "@/components/nexus/LegacyMemorialModule";
 import MetaInsightsModule from "@/components/nexus/MetaInsightsModule";
 import RecapModule from "@/components/nexus/RecapModule";
 import Link from "next/link";
+import NavigationBar from "@/components/NavigationBar";
 import { Chessboard } from "react-chessboard";
 import PlayerIdentityCard from "@/components/nexus/PlayerIdentityCard";
 import PayoutStructureCard from "@/components/nexus/PayoutStructureCard";
@@ -79,6 +80,7 @@ export default function NexusShell({
   const [userId, setUserId] = useState<string | null>(null);
   const [ecosystem] = useState<NexusEcosystem>(initialEcosystem);
   const [loadError, setLoadError] = useState(false);
+  const k12Shell = initialEcosystem === "k12";
 
   useEffect(() => {
     let cancelled = false;
@@ -182,38 +184,52 @@ export default function NexusShell({
   if (!data) {
     if (loadError) {
       return (
-        <main className="min-h-screen bg-[#0D1117] text-white p-3 sm:p-4 md:p-6 overflow-x-hidden">
-          <div className="max-w-7xl mx-auto">
-            <p className="text-sm text-gray-400">Data unavailable.</p>
-          </div>
-        </main>
+        <div
+          className={`min-h-screen flex flex-col text-white overflow-x-hidden ${
+            k12Shell ? "bg-[#0b1524]" : "bg-[#0D1117]"
+          }`}
+        >
+          <NavigationBar />
+          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
+            <div className="max-w-7xl mx-auto">
+              <p className="text-sm text-gray-400">Data unavailable.</p>
+            </div>
+          </main>
+        </div>
       );
     }
     return (
-      <main className="min-h-screen bg-[#0D1117] text-white p-3 sm:p-4 md:p-6 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5">
-          <LoadingCard />
-          <LoadingCard />
-          <div className="grid sm:grid-cols-3 gap-3">
+      <div
+        className={`min-h-screen flex flex-col text-white overflow-x-hidden ${
+          k12Shell ? "bg-[#0b1524]" : "bg-[#0D1117]"
+        }`}
+      >
+        <NavigationBar />
+        <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
+          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5">
             <LoadingCard />
             <LoadingCard />
-            <LoadingCard />
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5">
-            <div className="xl:col-span-2 space-y-4 sm:space-y-5">
+            <div className="grid sm:grid-cols-3 gap-3">
               <LoadingCard />
               <LoadingCard />
               <LoadingCard />
             </div>
-            <div className="space-y-4 sm:space-y-5">
-              <LoadingCard />
-              <LoadingCard />
-              <LoadingCard />
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5">
+              <div className="xl:col-span-2 space-y-4 sm:space-y-5">
+                <LoadingCard />
+                <LoadingCard />
+                <LoadingCard />
+              </div>
+              <div className="space-y-4 sm:space-y-5">
+                <LoadingCard />
+                <LoadingCard />
+                <LoadingCard />
+              </div>
             </div>
+            <LoadingCard />
           </div>
-          <LoadingCard />
-        </div>
-      </main>
+        </main>
+      </div>
     );
   }
 
@@ -250,8 +266,9 @@ export default function NexusShell({
   const meStanding = userId ? data.standings.find((s) => s.user_id === userId) : undefined;
 
   return (
-    <div className={`min-h-screen text-white overflow-x-hidden ${k12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}>
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5">
+    <div className={`min-h-screen flex flex-col text-white overflow-x-hidden ${k12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}>
+      <NavigationBar />
+      <div className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5">
         <NexusHeader
           ecosystem={data.ecosystem}
           engagement={engagement}
@@ -270,16 +287,11 @@ export default function NexusShell({
           </p>
         ) : null}
         {publicMode ? (
-          <div className="rounded-xl border border-slate-600/50 bg-slate-900/35 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="rounded-xl border border-slate-600/50 bg-slate-900/35 p-4">
             <p className="text-sm text-gray-200">
-              Public Nexus — live activity and standings only. Sign in for your personal dashboard.
+              Public Nexus — live activity and standings only. Use <strong className="text-gray-100">Log In</strong> or{" "}
+              <strong className="text-gray-100">Sign Up</strong> in the top bar for your personal dashboard.
             </p>
-            <Link
-              href="/login?intent=signup&next=/nexus"
-              className={`text-sm font-semibold shrink-0 ${k12 ? "text-cyan-200" : "text-sky-300"}`}
-            >
-              Sign up / Sign in
-            </Link>
           </div>
         ) : null}
         {!publicMode ? <OnboardingPanel hook={data.personal_hook} userId={userId} k12={k12} /> : null}

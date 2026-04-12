@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
 import { gameRatedListLabel } from '@/lib/gameRated';
 import { supabase } from '@/lib/supabaseClient';
+import NavigationBar from '@/components/NavigationBar';
 
 type PublicHistoryRow = {
   game_id: string;
@@ -111,24 +112,29 @@ export default function PublicProfileHistoryPage() {
 
   if (loading) {
     return (
-      <main style={{ padding: 24 }}>
-        <p>Loading...</p>
-      </main>
+      <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+        <NavigationBar />
+        <main className="flex-1 p-6">
+          <p className="text-sm text-gray-500">Loading...</p>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main data-testid="public-profile-history-root" style={{ maxWidth: 980, margin: '0 auto', padding: '24px 16px 48px' }}>
+    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+      <NavigationBar />
+      <main
+        data-testid="public-profile-history-root"
+        className="flex-1 w-full max-w-[980px] mx-auto px-4 pt-6 pb-12 sm:pb-16"
+      >
       <h1 style={{ marginTop: 0 }}>Public Match History</h1>
       <p style={{ marginTop: 0, color: '#cbd5e1' }}>
         {titleName} · finished timeline
       </p>
       <p style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 0 }}>
         <Link href={`/profile/${profileId}`} style={{ color: '#93c5fd' }}>
-          Back to public profile
-        </Link>
-        <Link href="/" style={{ color: '#93c5fd' }}>
-          Home
+          Public profile
         </Link>
         {isSelf ? (
           <Link href="/finished" style={{ color: '#93c5fd' }}>
@@ -192,5 +198,6 @@ export default function PublicProfileHistoryPage() {
         </section>
       )}
     </main>
+    </div>
   );
 }

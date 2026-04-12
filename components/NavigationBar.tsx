@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+const navBtn =
+  "text-sm text-gray-200 hover:text-white transition-colors rounded-md px-0 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]";
+
 export default function NavigationBar() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
@@ -35,42 +38,43 @@ export default function NavigationBar() {
   };
 
   return (
-    <div className="w-full flex justify-between items-center p-4">
-      {/* Auth-aware Left Side */}
-      {checked ? (
-        isLoggedIn ? (
-          <button onClick={() => router.push("/profile")} className="text-white text-sm">
-            👤 Profile
-          </button>
-        ) : (
-          <div className="flex gap-3">
-            <button onClick={() => router.push("/login")} className="text-white text-sm">
-              Log In
-            </button>
-            <button onClick={() => router.push("/login?intent=signup")} className="text-white text-sm">
-              Sign Up
-            </button>
-          </div>
-        )
-      ) : (
-        <span className="text-gray-400 text-sm">...</span>
-      )}
+    <header className="w-full shrink-0 border-b border-[#243244] bg-[#0D1117]">
+      <div className="mx-auto flex h-[52px] max-w-[100vw] items-center justify-between gap-4 px-4 sm:px-6">
+        <nav className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4" aria-label="Account">
+          {checked ? (
+            isLoggedIn ? (
+              <>
+                <button type="button" onClick={() => router.push("/profile")} className={navBtn}>
+                  Profile
+                </button>
+                <button type="button" onClick={() => void logout()} className={navBtn}>
+                  Log Out
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => router.push("/login")} className={navBtn}>
+                  Log In
+                </button>
+                <button type="button" onClick={() => router.push("/login?intent=signup")} className={navBtn}>
+                  Sign Up
+                </button>
+              </>
+            )
+          ) : (
+            <span className="text-sm text-gray-500">…</span>
+          )}
+        </nav>
 
-      {/* Right Side */}
-      <div className="flex gap-3">
-        {checked && isLoggedIn ? (
-          <button onClick={() => void logout()} className="text-white text-sm">
-            Log Out
+        <nav className="flex shrink-0 items-center gap-3 sm:gap-4" aria-label="Site">
+          <button type="button" onClick={() => router.push("/")} className={navBtn}>
+            Home
           </button>
-        ) : null}
-        <button onClick={() => router.back()} className="text-white text-sm">
-          Back
-        </button>
-
-        <button onClick={() => router.push("/")} className="text-white text-sm">
-          Home
-        </button>
+          <button type="button" onClick={() => router.back()} className={navBtn}>
+            Back
+          </button>
+        </nav>
       </div>
-    </div>
+    </header>
   );
 }

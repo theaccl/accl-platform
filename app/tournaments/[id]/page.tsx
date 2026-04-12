@@ -225,7 +225,7 @@ export default function TournamentDetailPage() {
     return (
       <main style={{ padding: 24 }}>
         <p>Invalid tournament id.</p>
-        <Link href="/tournaments">Back</Link>
+        <Link href="/tournaments">Tournaments hub</Link>
       </main>
     );
   }

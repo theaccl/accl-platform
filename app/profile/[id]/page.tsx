@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import NavigationBar from '@/components/NavigationBar';
 
 type PublicRatingRow = {
   bucket: string;
@@ -148,26 +149,29 @@ export default function PublicProfilePage() {
 
   if (loading) {
     return (
-      <main style={{ padding: 24 }}>
-        <p>Loading...</p>
-      </main>
+      <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+        <NavigationBar />
+        <main className="flex-1 p-6">
+          <p className="text-sm text-gray-500">Loading...</p>
+        </main>
+      </div>
     );
   }
 
   if (!payload) {
     return (
-      <main style={{ maxWidth: 860, margin: '0 auto', padding: '24px 16px 48px' }}>
+      <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+        <NavigationBar />
+        <main className="flex-1 w-full max-w-[860px] mx-auto px-4 pt-6 pb-12 sm:pb-16">
         <h1 style={{ marginTop: 0 }}>Public Profile</h1>
         <p style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Link href="/" style={{ color: '#93c5fd' }}>
-            Home
-          </Link>
           <Link href="/profile" style={{ color: '#93c5fd' }}>
             Your profile
           </Link>
         </p>
         <p style={{ color: '#fecaca' }}>{message || 'Profile unavailable.'}</p>
       </main>
+      </div>
     );
   }
 
@@ -182,12 +186,14 @@ export default function PublicProfilePage() {
   const isSelf = viewerId != null && viewerId === payload.profile.id;
 
   return (
-    <main data-testid="public-profile-root" style={{ maxWidth: 980, margin: '0 auto', padding: '24px 16px 48px' }}>
+    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+      <NavigationBar />
+      <main
+        data-testid="public-profile-root"
+        className="flex-1 w-full max-w-[980px] mx-auto px-4 pt-6 pb-12 sm:pb-16"
+      >
       <h1 style={{ marginTop: 0 }}>Public Player Profile</h1>
       <p style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 0 }}>
-        <Link href="/" style={{ color: '#93c5fd' }}>
-          Home
-        </Link>
         <Link href="/players" style={{ color: '#93c5fd' }}>
           Player lookup
         </Link>
@@ -384,5 +390,6 @@ export default function PublicProfilePage() {
         )}
       </section>
     </main>
+    </div>
   );
 }

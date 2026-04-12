@@ -729,9 +729,6 @@ export default function GamePage() {
   const publicSpectate =
     searchParams.get('public') === '1' || searchParams.get('spectate') === '1';
   const viewerEcosystem = searchParams.get('eco') === 'k12' ? 'k12' : 'adult';
-  const publicBackHrefRaw = searchParams.get('back');
-  const publicBackHref =
-    publicSpectate && publicBackHrefRaw && publicBackHrefRaw.startsWith('/') ? publicBackHrefRaw : null;
 
   const [game, setGame] = useState<GameRow | null>(null);
   const [message, setMessage] = useState('');
@@ -2023,14 +2020,8 @@ export default function GamePage() {
         >
           <strong style={{ color: '#e2e8f0' }}>Spectate mode</strong> — create an account to play rated games and track
           progress. <strong style={{ color: '#e2e8f0' }}>Play your first game</strong> after signup — no advantage sold,
-          same rules for everyone.{' '}
-          <Link href="/login?intent=signup&next=/free/play" style={{ color: '#93c5fd', fontWeight: 600 }}>
-            Create account
-          </Link>
-          {' · '}
-          <Link href="/login?intent=signup&next=/nexus" style={{ color: '#93c5fd', fontWeight: 600 }}>
-            Open Nexus
-          </Link>
+          same rules for everyone. Use <strong style={{ color: '#e2e8f0' }}>Sign Up</strong> or{' '}
+          <strong style={{ color: '#e2e8f0' }}>Log In</strong> in the top navigation bar.
         </p>
       ) : null}
 
@@ -2123,13 +2114,9 @@ export default function GamePage() {
             style={{ marginBottom: 10 }}
           >
             {isPublicViewer ? (
-              <Link
-                href={publicBackHref ?? '/'}
-                data-testid="game-public-back-link"
-                style={{ color: '#93c5fd', fontSize: 14, fontWeight: 600 }}
-              >
-                ← Back
-              </Link>
+              <p data-testid="game-public-back-link" style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+                Use <strong style={{ color: '#e2e8f0' }}>Home</strong> or <strong style={{ color: '#e2e8f0' }}>Back</strong> in the top bar to leave this replay.
+              </p>
             ) : (
               <Link
                 href="/finished"

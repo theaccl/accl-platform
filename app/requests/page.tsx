@@ -8,6 +8,7 @@ import { gameRatedListLabel } from '@/lib/gameRated';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
 import { supabase } from '@/lib/supabaseClient';
+import NavigationBar from '@/components/NavigationBar';
 
 type MatchRequestRow = {
   id: string;
@@ -242,21 +243,29 @@ export default function RequestsPage() {
 
   if (!authResolved || !authUserId) {
     return (
-      <main style={{ padding: 24 }}>
-        <p>Loading...</p>
-      </main>
+      <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+        <NavigationBar />
+        <main className="flex-1 p-6">
+          <p className="text-sm text-gray-500">Loading...</p>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main data-testid="requests-inbox-root" style={{ padding: 24, maxWidth: 980, margin: '0 auto' }}>
+    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+      <NavigationBar />
+      <main
+        data-testid="requests-inbox-root"
+        className="flex-1 w-full max-w-[980px] mx-auto p-6"
+      >
       <h1 style={{ marginTop: 0 }}>Match requests (inbox)</h1>
-      <p style={{ color: '#444', lineHeight: 1.5, maxWidth: 640 }}>
-        <strong>Direct challenge (private)</strong> — labeled below when someone picked you as opponent.
+      <p className="text-gray-400" style={{ lineHeight: 1.5, maxWidth: 640 }}>
+        <strong className="text-gray-200">Direct challenge (private)</strong> — labeled below when someone picked you as opponent.
         Open / public listings are separate.{' '}
-        <Link href="/">Back to home lobby</Link>
-        {' · '}
-        <Link href="/free">Alternate lobby</Link>
+        <Link href="/free" className="text-red-300/90 hover:text-red-200 underline-offset-2 hover:underline">
+          Alternate lobby
+        </Link>
       </p>
       {message ? <p data-testid="requests-inbox-message">{message}</p> : null}
 
@@ -361,6 +370,7 @@ export default function RequestsPage() {
         )}
       </section>
     </main>
+    </div>
   );
 }
 
