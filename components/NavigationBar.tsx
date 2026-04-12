@@ -16,25 +16,15 @@ const navBtnSite =
   "text-sm text-gray-300 hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-[#1a2231] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40";
 
 function AcclMark() {
-  const [broken, setBroken] = useState(false);
-  if (broken) {
-    return (
-      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/80 text-xs font-bold text-black">
-        A
-      </div>
-    );
-  }
   return (
-    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#0D1117] ring-1 ring-red-500/50">
-      <Image
-        src="/accl-mark.png"
-        alt=""
-        width={24}
-        height={24}
-        className="h-6 w-6 object-contain"
-        onError={() => setBroken(true)}
-      />
-    </span>
+    <Image
+      src="/accl-mark-v2.png"
+      alt="ACCL"
+      width={24}
+      height={24}
+      className="h-6 w-6 rounded-full ring-1 ring-[#243244]"
+      priority
+    />
   );
 }
 
