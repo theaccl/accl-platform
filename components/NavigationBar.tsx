@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -15,10 +16,25 @@ const navBtnSite =
   "text-sm text-gray-300 hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-[#1a2231] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40";
 
 function AcclMark() {
+  const [broken, setBroken] = useState(false);
+  if (broken) {
+    return (
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/80 text-xs font-bold text-black">
+        A
+      </div>
+    );
+  }
   return (
-    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/80 text-xs font-bold text-black">
-      A
-    </div>
+    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#0D1117] ring-1 ring-red-500/50">
+      <Image
+        src="/accl-mark.png"
+        alt=""
+        width={24}
+        height={24}
+        className="h-6 w-6 object-contain"
+        onError={() => setBroken(true)}
+      />
+    </span>
   );
 }
 
@@ -53,14 +69,6 @@ export default function NavigationBar() {
     };
   }, [router]);
 
-  const logout = async () => {
-    await supabase.auth.signOut();
-    setIsLoggedIn(false);
-    if (typeof window !== "undefined") {
-      window.location.replace("/");
-    }
-  };
-
   return (
     <header className="mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 pb-0">
@@ -69,23 +77,14 @@ export default function NavigationBar() {
             <nav className="flex items-center gap-4" aria-label="Account">
               {checked ? (
                 isLoggedIn ? (
-                  <div className="flex items-center gap-4 rounded-md px-2 py-1 transition-colors hover:bg-[#151d2c]">
-                    <button
-                      type="button"
-                      onClick={() => router.push("/profile")}
-                      className={`${navBtnAuth} flex items-center gap-2 hover:bg-transparent hover:no-underline`}
-                    >
-                      <AcclMark />
-                      Profile
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void logout()}
-                      className={`${navBtnAuth} hover:bg-transparent hover:no-underline`}
-                    >
-                      Log Out
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/profile")}
+                    className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-300 transition-colors hover:bg-[#151d2c] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+                  >
+                    <AcclMark />
+                    <span className="font-medium">Profile</span>
+                  </button>
                 ) : (
                   <>
                     <button type="button" onClick={() => router.push("/login")} className={navBtnAuth}>

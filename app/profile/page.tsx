@@ -1,4 +1,5 @@
 import NavigationBar from "@/components/NavigationBar";
+import ProfileLogOutButton from "@/components/profile/ProfileLogOutButton";
 import PlayerNexusInsightsPanel from "@/components/PlayerNexusInsightsPanel";
 import Link from "next/link";
 
@@ -8,6 +9,10 @@ export default function ProfilePage() {
       <NavigationBar />
 
       <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-8">
+        <div className="flex justify-end">
+          <ProfileLogOutButton />
+        </div>
+
         {/* Top Identity Section */}
         <div className="flex flex-col items-center gap-4">
           <div className="w-28 h-28 rounded-full border-4 border-gray-600 flex items-center justify-center text-4xl bg-[#161b22]">
