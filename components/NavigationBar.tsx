@@ -17,14 +17,16 @@ const navBtnSite =
 
 function AcclMark() {
   return (
-    <Image
-      src="/accl-mark-v2.png"
-      alt="ACCL"
-      width={24}
-      height={24}
-      className="h-6 w-6 rounded-full ring-1 ring-[#243244]"
-      priority
-    />
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-950/40 ring-1 ring-red-500/50 shadow-[0_0_0_1px_rgba(17,23,35,0.9)]">
+      <Image
+        src="/accl-mark-v2.png"
+        alt="ACCL"
+        width={20}
+        height={20}
+        className="h-5 w-5 object-contain brightness-125 contrast-125"
+        priority
+      />
+    </div>
   );
 }
 
