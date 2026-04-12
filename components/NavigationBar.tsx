@@ -39,7 +39,7 @@ export default function NavigationBar() {
 
   return (
     <header className="w-full shrink-0 border-b border-[#243244] bg-[#0D1117]">
-      <div className="mx-auto flex h-[52px] max-w-[100vw] items-center justify-between gap-4 px-4 sm:px-6">
+      <div className="mx-auto flex h-[52px] w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <nav className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4" aria-label="Account">
           {checked ? (
             isLoggedIn ? (

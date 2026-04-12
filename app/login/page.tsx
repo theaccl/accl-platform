@@ -28,12 +28,19 @@ async function attachGrowthProfile(accessToken: string) {
 
 function loginShell(children: React.ReactNode) {
   return (
-    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white [color-scheme:dark]">
       <NavigationBar />
       {children}
     </div>
   );
 }
+
+/** Matches gateway hero card: border, gradient, shadow (app/page.tsx). */
+const loginCardClass =
+  'rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] shadow-lg shadow-black/20';
+
+const loginInputClass =
+  'w-full rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3 text-sm text-white placeholder:text-gray-500 appearance-none transition-colors focus:border-red-500/40 focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:ring-offset-0 [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(255,255,255)] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_rgb(21,29,44)]';
 
 function LoginPageInner() {
   const router = useRouter();
@@ -115,7 +122,7 @@ function LoginPageInner() {
   return loginShell(
     <main className="flex-1 flex items-center justify-center px-4 py-12 sm:py-16">
       <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] shadow-lg shadow-black/20 p-8 w-full">
+        <div className={`${loginCardClass} p-8 w-full`}>
           <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 mb-2">ACCL</p>
           <h1 className="text-2xl sm:text-[1.65rem] font-bold text-white tracking-tight leading-snug">
             {signupIntent ? 'Create your ACCL account' : 'Sign in to ACCL'}
@@ -137,7 +144,7 @@ function LoginPageInner() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                className="w-full rounded-xl border border-[#2a3442] bg-[#0f1420] px-3.5 py-3 text-sm text-white placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none focus:ring-1 focus:ring-red-500/30"
+                className={loginInputClass}
               />
             </div>
             <div>
@@ -152,7 +159,7 @@ function LoginPageInner() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={signupIntent ? 'new-password' : 'current-password'}
-                className="w-full rounded-xl border border-[#2a3442] bg-[#0f1420] px-3.5 py-3 text-sm text-white placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none focus:ring-1 focus:ring-red-500/30"
+                className={loginInputClass}
               />
             </div>
           </div>
