@@ -5,55 +5,53 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ACCL_SHELL_CONTEXT_KEY, shellContextCardId } from '@/components/SwitchModeLink';
 import { supabase } from '@/lib/supabaseClient';
+import NavigationBar from '@/components/NavigationBar';
 
 type ModeCardDef = {
   id: 'home' | 'free' | 'tournaments' | 'finished';
   href: string;
-  title: string;
+  label: string;
   description: string;
-  borderColor: string;
-  background: string;
-  fontWeight: 600 | 700;
+  variant: 'primary' | 'secondary';
 };
 
 const MODE_CARDS: ModeCardDef[] = [
   {
     id: 'home',
     href: '/',
-    title: 'Home — main play lobby',
-    description: 'Primary entry at / : random queue, open seats, direct challenge, and quick game tools.',
-    borderColor: '#22c55e',
-    background: '#14532d',
-    fontWeight: 700,
+    label: 'Home',
+    description:
+      'Primary entry at / : random queue, open seats, direct challenge, and quick game tools.',
+    variant: 'primary',
   },
   {
     id: 'free',
     href: '/free',
-    title: 'Free — alternate lobby',
+    label: 'Free',
     description: 'Same free-play ecosystem with the classic free lobby layout and shortcuts.',
-    borderColor: '#3b82f6',
-    background: '#1d4ed8',
-    fontWeight: 700,
+    variant: 'secondary',
   },
   {
     id: 'tournaments',
     href: '/tournaments',
-    title: 'Tournaments',
+    label: 'Tournaments',
     description: 'Bracket events: browse tournaments, open a bracket, and follow match progress.',
-    borderColor: '#a855f7',
-    background: '#581c87',
-    fontWeight: 600,
+    variant: 'secondary',
   },
   {
     id: 'finished',
     href: '/finished',
-    title: 'Finished games',
-    description: 'Canonical completed-game archive — pick Free or Tournament filters on the hub.',
-    borderColor: '#155e75',
-    background: '#0e7490',
-    fontWeight: 700,
+    label: 'Finished',
+    description:
+      'Canonical completed-game archive — pick Free or Tournament filters on the hub.',
+    variant: 'secondary',
   },
 ];
+
+const btnPrimary =
+  'inline-flex w-full items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723]';
+const btnSecondary =
+  'inline-flex w-full items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723]';
 
 function shellHintLabel(active: ReturnType<typeof shellContextCardId>): string | null {
   if (active === 'home') return 'You were just on Home (main lobby).';
@@ -63,6 +61,15 @@ function shellHintLabel(active: ReturnType<typeof shellContextCardId>): string |
   if (active === 'profile') return 'You were just on Profile — pick a play area below.';
   if (active === 'vault') return 'You were just in Vault — pick a play area below.';
   return null;
+}
+
+function modesShell(children: React.ReactNode) {
+  return (
+    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+      <NavigationBar />
+      {children}
+    </div>
+  );
 }
 
 /** Canonical mode selector. Keeps routing at `/modes`; no gameplay or data logic here. */
@@ -103,95 +110,70 @@ export default function ModesPage() {
   }, [router]);
 
   if (!authChecked || !authUserId) {
-    return (
-      <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
-        <p>Loading…</p>
+    return modesShell(
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <p className="text-sm text-gray-500">Loading…</p>
       </main>
     );
   }
 
   const hint = shellHintLabel(activeCard);
 
-  return (
+  return modesShell(
     <main
       data-testid="lobby-ready"
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#0b0b0b',
-        color: '#f5f5f5',
-        padding: 24,
-      }}
+      className="flex-1 flex items-center justify-center px-4 py-12 sm:py-16"
     >
-      <section
-        style={{
-          width: '100%',
-          maxWidth: 520,
-          border: '1px solid #2f2f2f',
-          borderRadius: 10,
-          background: '#141414',
-          padding: 22,
-        }}
-      >
-        <h1 style={{ marginTop: 0, marginBottom: 6, fontSize: 26 }}>Switch mode</h1>
-        <p style={{ marginTop: 0, marginBottom: 14, color: '#a3a3a3', fontSize: 14, lineHeight: 1.5 }}>
-          Quick jump between ACCL areas. This page stays at <code style={{ color: '#e5e5e5' }}>/modes</code> so you
-          can always return here from <strong style={{ color: '#fde047' }}>Switch mode</strong> in the nav.
-        </p>
-        {hint ? (
-          <p
-            data-testid="modes-context-hint"
-            style={{
-              margin: '0 0 16px 0',
-              padding: '10px 12px',
-              borderRadius: 8,
-              background: '#1c1917',
-              border: '1px solid #44403c',
-              fontSize: 13,
-              color: '#d6d3d1',
-            }}
-          >
-            {hint}
+      <div className="w-full max-w-md">
+        <section className="rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] shadow-lg shadow-black/20 p-8 w-full">
+          <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 mb-2">ACCL</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-snug">
+            Switch Mode
+          </h1>
+          <p className="mt-3 text-gray-400 text-sm leading-relaxed">
+            Quick jump between ACCL areas. This page stays at{' '}
+            <code className="text-gray-300 text-[13px]">/modes</code> so you can always return here from{' '}
+            <span className="text-gray-200 font-medium">Switch mode</span> in the nav.
           </p>
-        ) : null}
+          {hint ? (
+            <p
+              data-testid="modes-context-hint"
+              className="mt-5 rounded-xl border border-[#2a3442] bg-[#151d2c]/80 px-3.5 py-2.5 text-sm text-gray-300 leading-relaxed"
+            >
+              {hint}
+            </p>
+          ) : null}
 
-        <div style={{ display: 'grid', gap: 14 }} data-testid="modes-card-list">
-          {MODE_CARDS.map((card) => {
-            const isActive = activeCard === card.id;
-            return (
-              <div key={card.id}>
-                <Link
-                  href={card.href}
-                  data-testid={`modes-card-${card.id}`}
-                  style={{
-                    display: 'block',
-                    padding: '14px 16px',
-                    borderRadius: 8,
-                    border: `2px solid ${isActive ? '#fef08a' : card.borderColor}`,
-                    background: card.background,
-                    color: '#fff',
-                    textDecoration: 'none',
-                    fontWeight: card.fontWeight,
-                    boxShadow: isActive ? '0 0 0 2px rgba(253, 224, 71, 0.35)' : undefined,
-                  }}
-                >
-                  {card.title}
-                  {isActive ? (
-                    <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, opacity: 0.95 }}>
-                      · Last area
+          <div className="mt-8 space-y-5" data-testid="modes-card-list">
+            {MODE_CARDS.map((card) => {
+              const isActive = activeCard === card.id;
+              const base = card.variant === 'primary' ? btnPrimary : btnSecondary;
+              const activeRing = isActive
+                ? card.variant === 'primary'
+                  ? ' ring-2 ring-red-400/50 ring-offset-2 ring-offset-[#111723]'
+                  : ' ring-2 ring-red-500/35 ring-offset-2 ring-offset-[#111723] border-red-400/40'
+                : '';
+              return (
+                <div key={card.id}>
+                  <Link
+                    href={card.href}
+                    data-testid={`modes-card-${card.id}`}
+                    className={`${base}${activeRing}`}
+                  >
+                    <span>
+                      {card.label}
+                      {isActive ? (
+                        <span className="ml-2 text-xs font-semibold text-red-200/90">· Last area</span>
+                      ) : null}
                     </span>
-                  ) : null}
-                </Link>
-                <p style={{ margin: '6px 0 0 0', fontSize: 12, color: '#a3a3a3', lineHeight: 1.45, paddingLeft: 4 }}>
-                  {card.description}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+                  </Link>
+                  <p className="mt-2 text-xs text-gray-500 leading-relaxed pl-0.5">{card.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

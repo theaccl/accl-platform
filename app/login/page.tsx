@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { safeNextPath } from '@/lib/public/safeNextPath';
@@ -107,16 +106,16 @@ function LoginPageInner() {
 
   if (!checked) {
     return loginShell(
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-12">
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
         <p className="text-sm text-gray-500">Loading…</p>
       </main>
     );
   }
 
   return loginShell(
-    <main className="flex-1 flex flex-col items-center justify-center px-4 py-10 sm:py-14">
+    <main className="flex-1 flex items-center justify-center px-4 py-12 sm:py-16">
       <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] px-6 py-8 sm:px-8 sm:py-10 shadow-lg shadow-black/20">
+        <div className="rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] shadow-lg shadow-black/20 p-8 w-full">
           <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 mb-2">ACCL</p>
           <h1 className="text-2xl sm:text-[1.65rem] font-bold text-white tracking-tight leading-snug">
             {signupIntent ? 'Create your ACCL account' : 'Sign in to ACCL'}
@@ -125,16 +124,7 @@ function LoginPageInner() {
             Access Nexus, free play, tournaments, and progression.
           </p>
 
-          <p className="mt-5 mb-6">
-            <Link
-              href="/modes"
-              className="text-sm text-gray-500 hover:text-red-300/90 transition-colors underline-offset-4 hover:underline"
-            >
-              ← Mode selector
-            </Link>
-          </p>
-
-          <div className="space-y-4">
+          <div className="mt-8 space-y-4">
             <div>
               <label htmlFor="login-email" className="block text-xs font-medium text-gray-400 mb-1.5">
                 Email
@@ -147,7 +137,7 @@ function LoginPageInner() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                className="w-full rounded-xl border border-[#2a3442] bg-[#0f1420] px-3.5 py-2.5 text-sm text-white placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none focus:ring-1 focus:ring-red-500/30"
+                className="w-full rounded-xl border border-[#2a3442] bg-[#0f1420] px-3.5 py-3 text-sm text-white placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none focus:ring-1 focus:ring-red-500/30"
               />
             </div>
             <div>
@@ -162,7 +152,7 @@ function LoginPageInner() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={signupIntent ? 'new-password' : 'current-password'}
-                className="w-full rounded-xl border border-[#2a3442] bg-[#0f1420] px-3.5 py-2.5 text-sm text-white placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none focus:ring-1 focus:ring-red-500/30"
+                className="w-full rounded-xl border border-[#2a3442] bg-[#0f1420] px-3.5 py-3 text-sm text-white placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none focus:ring-1 focus:ring-red-500/30"
               />
             </div>
           </div>
@@ -173,7 +163,7 @@ function LoginPageInner() {
               type="button"
               onClick={signIn}
               disabled={busy}
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
+              className="inline-flex flex-1 items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
             >
               {busy ? 'Please wait…' : 'Log in'}
             </button>
@@ -182,7 +172,7 @@ function LoginPageInner() {
               onClick={signUp}
               disabled={busy}
               data-testid="signup-submit"
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
+              className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
             >
               Sign up
             </button>
@@ -203,7 +193,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={loginShell(
-        <main className="flex-1 flex flex-col items-center justify-center px-4 py-12">
+        <main className="flex-1 flex items-center justify-center px-4 py-12">
           <p className="text-sm text-gray-500">Loading…</p>
         </main>
       )}
