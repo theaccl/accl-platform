@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+/** Explicit colors + bg so links stay visible on `#0D1117` and are not clipped by parent overflow. */
 const navBtn =
-  "text-sm text-gray-200 hover:text-white transition-colors rounded-md px-0 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]";
+  "text-sm font-medium text-gray-100 hover:text-white bg-transparent rounded-md px-0 py-0.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]";
 
 export default function NavigationBar() {
   const router = useRouter();
@@ -38,9 +39,9 @@ export default function NavigationBar() {
   };
 
   return (
-    <header className="w-full shrink-0 border-b border-[#243244] bg-[#0D1117]">
-      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
-        <div className="flex h-[52px] w-full min-w-0 items-center justify-between gap-4">
+    <header className="relative z-50 w-full min-w-0 shrink-0 border-b border-[#243244] bg-[#0D1117] text-white">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6">
+        <div className="flex min-h-[52px] w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 sm:h-[52px] sm:flex-nowrap sm:py-0">
           <nav className="flex min-w-0 items-center gap-3 sm:gap-4" aria-label="Account">
             {checked ? (
               isLoggedIn ? (
@@ -63,7 +64,7 @@ export default function NavigationBar() {
                 </>
               )
             ) : (
-              <span className="text-sm text-gray-500">…</span>
+              <span className="text-sm text-gray-400">…</span>
             )}
           </nav>
 

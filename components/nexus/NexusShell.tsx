@@ -185,12 +185,12 @@ export default function NexusShell({
     if (loadError) {
       return (
         <div
-          className={`min-h-screen flex flex-col text-white overflow-x-hidden ${
+          className={`min-h-screen flex flex-col text-white ${
             k12Shell ? "bg-[#0b1524]" : "bg-[#0D1117]"
           }`}
         >
           <NavigationBar />
-          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
+          <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
             <div className="max-w-7xl mx-auto">
               <p className="text-sm text-gray-400">Data unavailable.</p>
             </div>
@@ -200,12 +200,12 @@ export default function NexusShell({
     }
     return (
       <div
-        className={`min-h-screen flex flex-col text-white overflow-x-hidden ${
+        className={`min-h-screen flex flex-col text-white ${
           k12Shell ? "bg-[#0b1524]" : "bg-[#0D1117]"
         }`}
       >
         <NavigationBar />
-        <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
+        <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5">
             <LoadingCard />
             <LoadingCard />
@@ -266,9 +266,9 @@ export default function NexusShell({
   const meStanding = userId ? data.standings.find((s) => s.user_id === userId) : undefined;
 
   return (
-    <div className={`min-h-screen flex flex-col text-white overflow-x-hidden ${k12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}>
+    <div className={`min-h-screen flex flex-col text-white ${k12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}>
       <NavigationBar />
-      <div className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5">
+      <div className="flex-1 min-w-0 max-w-7xl w-full mx-auto overflow-x-hidden p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5">
         <NexusHeader
           ecosystem={data.ecosystem}
           engagement={engagement}
