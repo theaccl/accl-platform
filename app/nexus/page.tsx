@@ -1,3 +1,4 @@
+import NavigationBar from "@/components/NavigationBar";
 import NexusShell from "@/components/nexus/NexusShell";
 import type { NexusEcosystem } from "@/lib/nexus/getNexusData";
 
@@ -9,6 +10,10 @@ export default async function NexusPage({
   const sp = await searchParams;
   const ecosystem: NexusEcosystem = String(sp?.ecosystem ?? "").toLowerCase() === "k12" ? "k12" : "adult";
   const publicMode = String(sp?.public ?? "").toLowerCase() === "1" || String(sp?.public ?? "").toLowerCase() === "true";
-  return <NexusShell initialEcosystem={ecosystem} publicMode={publicMode} />;
+  return (
+    <div className="flex min-h-screen flex-col">
+      <NavigationBar />
+      <NexusShell initialEcosystem={ecosystem} publicMode={publicMode} />
+    </div>
+  );
 }
-
