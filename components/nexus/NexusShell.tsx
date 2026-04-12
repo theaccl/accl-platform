@@ -181,30 +181,20 @@ export default function NexusShell({
     [data]
   );
 
+  const shellK12 = data ? data.ecosystem === "k12" : k12Shell;
+
+  let body: React.ReactNode;
   if (!data) {
     if (loadError) {
-      return (
-        <div
-          className={`min-h-screen flex flex-col text-white ${
-            k12Shell ? "bg-[#0b1524]" : "bg-[#0D1117]"
-          }`}
-        >
-          <NavigationBar />
-          <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
-            <div className="max-w-7xl mx-auto">
-              <p className="text-sm text-gray-400">Data unavailable.</p>
-            </div>
-          </main>
-        </div>
+      body = (
+        <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
+          <div className="max-w-7xl mx-auto">
+            <p className="text-sm text-gray-400">Data unavailable.</p>
+          </div>
+        </main>
       );
-    }
-    return (
-      <div
-        className={`min-h-screen flex flex-col text-white ${
-          k12Shell ? "bg-[#0b1524]" : "bg-[#0D1117]"
-        }`}
-      >
-        <NavigationBar />
+    } else {
+      body = (
         <main className="flex-1 min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5">
             <LoadingCard />
@@ -229,45 +219,42 @@ export default function NexusShell({
             <LoadingCard />
           </div>
         </main>
-      </div>
-    );
-  }
+      );
+    }
+  } else {
+    const k12 = data.ecosystem === "k12";
 
-  const k12 = data.ecosystem === "k12";
+    const nextUp = data.upcoming_events[0];
+    const economyFunnelHint =
+      !k12 && nextUp?.economics
+        ? `Qualify for the next paid bracket · ~$${nextUp.economics.entry_fee_usd} entry · ${nextUp.title} advances toward larger pools`
+        : undefined;
 
-  const nextUp = data.upcoming_events[0];
-  const economyFunnelHint =
-    !k12 && nextUp?.economics
-      ? `Qualify for the next paid bracket · ~$${nextUp.economics.entry_fee_usd} entry · ${nextUp.title} advances toward larger pools`
-      : undefined;
-
-  const spotlightEcon =
-    spotlight && !k12
-      ? (spotlight.tournament_id
-          ? data.active_tournaments.find((t) => t.id === spotlight.tournament_id)?.economics
-          : null) ??
-        (spotlight.tournament_name
-          ? inferEconomicsFromEventTitle(spotlight.tournament_name, new Date().toISOString(), "adult")
-          : null)
-      : null;
-
-  const spotlightGlobalMeta =
-    data && spotlight
-      ? spotlightGlobalEvent ??
-        data.global_events.find((e) => e.event_id === spotlight.global_event_id) ??
-        null
-      : data && spotlightKind === "championship_countdown" && spotlightGlobalEvent
-        ? spotlightGlobalEvent
+    const spotlightEcon =
+      spotlight && !k12
+        ? (spotlight.tournament_id
+            ? data.active_tournaments.find((t) => t.id === spotlight.tournament_id)?.economics
+            : null) ??
+          (spotlight.tournament_name
+            ? inferEconomicsFromEventTitle(spotlight.tournament_name, new Date().toISOString(), "adult")
+            : null)
         : null;
 
-  const recentFinishes14d = data.recent_winners.filter(
-    (w) => Date.parse(w.utc) >= Date.now() - 14 * 24 * 3600 * 1000
-  ).length;
-  const meStanding = userId ? data.standings.find((s) => s.user_id === userId) : undefined;
+    const spotlightGlobalMeta =
+      data && spotlight
+        ? spotlightGlobalEvent ??
+          data.global_events.find((e) => e.event_id === spotlight.global_event_id) ??
+          null
+        : data && spotlightKind === "championship_countdown" && spotlightGlobalEvent
+          ? spotlightGlobalEvent
+          : null;
 
-  return (
-    <div className={`min-h-screen flex flex-col text-white ${k12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}>
-      <NavigationBar />
+    const recentFinishes14d = data.recent_winners.filter(
+      (w) => Date.parse(w.utc) >= Date.now() - 14 * 24 * 3600 * 1000
+    ).length;
+    const meStanding = userId ? data.standings.find((s) => s.user_id === userId) : undefined;
+
+    body = (
       <div className="flex-1 min-w-0 max-w-7xl w-full mx-auto overflow-x-hidden p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5">
         <NexusHeader
           ecosystem={data.ecosystem}
@@ -626,6 +613,15 @@ export default function NexusShell({
           publicSurface={publicMode}
         />
       </div>
+    );
+  }
+
+  return (
+    <div
+      className={`min-h-screen flex flex-col text-white ${shellK12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}
+    >
+      <NavigationBar />
+      {body}
     </div>
   );
 }
