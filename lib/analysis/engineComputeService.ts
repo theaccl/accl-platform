@@ -117,9 +117,10 @@ async function runUciEvaluationInner(
   const timeoutMs = Math.min(20_000, Math.max(3_000, options?.timeoutMs ?? 10_000));
 
   const originalFetch = globalThis.fetch;
-  const stockfishInit = (await import('stockfish')).default as (
-    enginePath?: string
-  ) => Promise<StockfishEngine>;
+  /** Resolved at runtime from node_modules; excluded from the server bundle (Next/Vercel build). */
+  const stockfishInit = (
+    await import(/* webpackIgnore: true */ 'stockfish')
+  ).default as (enginePath?: string) => Promise<StockfishEngine>;
   // WASM builds crash in the current Next route runtime; use asm engine for stable Node execution.
   const engine = await stockfishInit('asm');
 
