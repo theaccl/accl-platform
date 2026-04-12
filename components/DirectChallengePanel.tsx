@@ -1,0 +1,632 @@
+'use client';
+
+import type { CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  DEFAULT_GAME_TEMPO,
+  GAME_TEMPOS,
+  type GameTempo,
+  gameTempoDescription,
+  gameTempoLabel,
+} from '@/lib/gameTempo';
+import {
+  type CorrespondencePaceValue,
+  canonicalLiveTimeControlForInsert,
+  type DailyClockValue,
+  type GameTimeControlToken,
+  type LiveClockValue,
+} from '@/lib/gameTimeControl';
+import {
+  type ChallengeColorPreference,
+  resolveChallengeSeatIds,
+} from '@/lib/challengeColorPreference';
+import { RatedUnratedToggle } from '@/components/RatedUnratedToggle';
+import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
+import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
+import { logLiveTimeControlInsert, logSupabaseWriteError } from '@/lib/logSupabaseWriteError';
+import { supabase } from '@/lib/supabaseClient';
+
+type Profile = {
+  id: string;
+  email: string | null;
+  username: string | null;
+  rating: number;
+};
+
+function challengeColorSummaryLine(pref: ChallengeColorPreference): string {
+  if (pref === 'white') return 'You requested White (move first).';
+  if (pref === 'black') return 'You requested Black.';
+  return 'Colors were assigned at random when you sent.';
+}
+
+function tcChipStyle(active: boolean, disabled: boolean): CSSProperties {
+  return {
+    border: `1px solid ${active ? '#3b82f6' : '#4a4a4a'}`,
+    background: active ? '#1e3a8a' : '#0f0f0f',
+    color: active ? '#fff' : '#e5e5e5',
+    borderRadius: 6,
+    padding: '7px 10px',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.7 : 1,
+  };
+}
+
+type Props = {
+  /** Anchor id for in-page links */
+  anchorId?: string;
+};
+
+export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
+  const router = useRouter();
+  const [opponentEmail, setOpponentEmail] = useState('');
+  const [opponentUserId, setOpponentUserId] = useState('');
+  const [opponentResolvedUsername, setOpponentResolvedUsername] = useState<string | null>(null);
+  const [opponentResolvedEmailDisplay, setOpponentResolvedEmailDisplay] = useState<string | null>(
+    null
+  );
+  const [opponentResolvedRating, setOpponentResolvedRating] = useState<number | null>(null);
+  const [challengeSentBanner, setChallengeSentBanner] = useState(false);
+  const [challengeSentDetail, setChallengeSentDetail] = useState<string | null>(null);
+  const [challengeBusy, setChallengeBusy] = useState(false);
+  const [challengeTempo, setChallengeTempo] = useState<GameTempo>(DEFAULT_GAME_TEMPO);
+  const [challengeColorPreference, setChallengeColorPreference] =
+    useState<ChallengeColorPreference>('white');
+  const [challengeLiveTc, setChallengeLiveTc] = useState<LiveClockValue>('5m');
+  const [challengeDailyTc, setChallengeDailyTc] = useState<DailyClockValue>('30m');
+  const [challengeCorrPace, setChallengeCorrPace] = useState<CorrespondencePaceValue>('1d');
+  const [challengeRated, setChallengeRated] = useState(true);
+  const [message, setMessage] = useState('');
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  /** When set, subscribe to this row so the challenger auto-navigates when it is accepted. */
+  const [pendingChallengeRequestId, setPendingChallengeRequestId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) setAuthUserId(data.user?.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingChallengeRequestId) return;
+    const channel = supabase
+      .channel(`challenge-accept-${pendingChallengeRequestId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'match_requests',
+          filter: `id=eq.${pendingChallengeRequestId}`,
+        },
+        (payload) => {
+          const p = payload as {
+            eventType?: string;
+            new: { status?: string; resolution_game_id?: string | null };
+            old: { status?: string };
+          };
+          if (p.eventType !== 'UPDATE') return;
+          const oldSt = p.old?.status;
+          if (oldSt !== undefined && oldSt !== 'pending') return;
+          const row = p.new;
+          if (row.status === 'accepted' && row.resolution_game_id) {
+            router.push(`/game/${row.resolution_game_id}`);
+            setPendingChallengeRequestId(null);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [pendingChallengeRequestId, router]);
+
+  const findOpponent = async () => {
+    setMessage('');
+    setChallengeSentBanner(false);
+    setChallengeSentDetail(null);
+
+    const raw = opponentEmail.trim();
+    if (!raw) {
+      setMessage('Enter opponent email or username');
+      return;
+    }
+
+    const escapeForILike = (v: string) =>
+      v.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+
+    const lowerEmail = raw.toLowerCase();
+    let q = supabase.from('profiles').select('*');
+    if (raw.includes('@')) {
+      q = q.eq('email', lowerEmail);
+    } else {
+      q = q.ilike('username', escapeForILike(raw));
+    }
+
+    const { data: foundProfile, error } = await q.maybeSingle();
+
+    if (error) {
+      console.log('Profile lookup error:', error);
+      setMessage(error.message);
+      setOpponentUserId('');
+      setOpponentResolvedUsername(null);
+      setOpponentResolvedEmailDisplay(null);
+      setOpponentResolvedRating(null);
+      return;
+    }
+
+    if (!foundProfile) {
+      setMessage('Opponent not found');
+      setOpponentUserId('');
+      setOpponentResolvedUsername(null);
+      setOpponentResolvedEmailDisplay(null);
+      setOpponentResolvedRating(null);
+      return;
+    }
+
+    const p = foundProfile as Profile;
+    setOpponentUserId(p.id);
+    setOpponentResolvedUsername(p.username?.trim() || null);
+    setOpponentResolvedEmailDisplay(p.email?.trim() || null);
+    setOpponentResolvedRating(Number.isFinite(p.rating) ? p.rating : null);
+    setMessage('');
+  };
+
+  const sendManualChallengeRequest = async () => {
+    if (challengeBusy) return;
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !authData.user) {
+      setMessage('You must be logged in first');
+      return;
+    }
+
+    const currentUserId = authData.user.id;
+    const opponentId = opponentUserId.trim();
+
+    if (!opponentId) {
+      setMessage('Set opponent first (use Find opponent)');
+      return;
+    }
+
+    if (opponentId === currentUserId) {
+      setMessage('You cannot challenge yourself.');
+      return;
+    }
+
+    const { whiteId: challengeWhiteId, blackId: challengeBlackId } = resolveChallengeSeatIds(
+      challengeColorPreference,
+      currentUserId,
+      opponentId
+    );
+
+    const rawChallengeToken: GameTimeControlToken =
+      challengeTempo === 'live'
+        ? challengeLiveTc
+        : challengeTempo === 'daily'
+          ? challengeDailyTc
+          : challengeCorrPace;
+    const challengeLtc =
+      canonicalLiveTimeControlForInsert(challengeTempo, rawChallengeToken) ?? rawChallengeToken;
+
+    const { data: pendingDup, error: dupErr } = await supabase
+      .from('match_requests')
+      .select('id')
+      .eq('from_user_id', currentUserId)
+      .eq('to_user_id', opponentId)
+      .eq('tempo', challengeTempo)
+      .eq('live_time_control', challengeLtc)
+      .eq('status', 'pending')
+      .eq('request_type', 'challenge')
+      .eq('white_player_id', challengeWhiteId)
+      .eq('black_player_id', challengeBlackId)
+      .eq('rated', challengeRated)
+      .limit(1)
+      .maybeSingle();
+
+    if (dupErr) {
+      logSupabaseWriteError('Challenge opponent → match_requests duplicate check (select)', {
+        table: 'match_requests',
+        operation: 'select',
+        payload: { tempo: challengeTempo, live_time_control: challengeLtc },
+        error: dupErr,
+      });
+      setMessage(dupErr.message);
+      return;
+    }
+    if (pendingDup) {
+      setMessage(
+        'You already have a pending challenge for this mode, time control, color, and match type (rated/unrated).'
+      );
+      return;
+    }
+
+    setChallengeBusy(true);
+    setMessage('');
+    setChallengeSentBanner(false);
+    setChallengeSentDetail(null);
+    setPendingChallengeRequestId(null);
+    try {
+      logLiveTimeControlInsert('Challenge request create', {
+        table: 'match_requests',
+        operation: 'insert',
+        tempo: challengeTempo,
+        rawFromUiOrRow: rawChallengeToken,
+        finalForSupabase: challengeLtc,
+      });
+      const { data: inserted, error } = await supabase
+        .from('match_requests')
+        .insert({
+          from_user_id: currentUserId,
+          to_user_id: opponentId,
+          request_type: 'challenge',
+          source_game_id: null,
+          white_player_id: challengeWhiteId,
+          black_player_id: challengeBlackId,
+          status: 'pending',
+          visibility: 'direct',
+          tempo: challengeTempo,
+          live_time_control: challengeLtc,
+          rated: challengeRated,
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        logSupabaseWriteError('Challenge opponent → match_requests insert', {
+          table: 'match_requests',
+          operation: 'insert',
+          payload: {
+            tempo: challengeTempo,
+            live_time_control: challengeLtc,
+            raw_from_ui: rawChallengeToken,
+            request_type: 'challenge',
+          },
+          error,
+        });
+        setMessage(userMessageForMatchRequestInsertError(error));
+        return;
+      }
+      if (!inserted?.id) {
+        setMessage('Could not confirm challenge request was saved.');
+        return;
+      }
+      const detail = `${challengeColorSummaryLine(challengeColorPreference)} They can accept or decline under Match requests. No board until they accept.`;
+      setChallengeSentDetail(detail);
+      setMessage('');
+      setChallengeSentBanner(true);
+      setPendingChallengeRequestId(inserted.id);
+      setOpponentEmail('');
+      setOpponentUserId('');
+      setOpponentResolvedUsername(null);
+      setOpponentResolvedEmailDisplay(null);
+      setOpponentResolvedRating(null);
+    } finally {
+      setChallengeBusy(false);
+    }
+  };
+
+  const challengeOpponentIsSelf = Boolean(
+    authUserId && opponentUserId && opponentUserId === authUserId
+  );
+
+  return (
+    <section data-testid="direct-challenge-panel" style={{ marginBottom: 20 }}>
+      <div
+        id={anchorId}
+        style={{
+          padding: '16px 18px',
+          border: '2px solid #7c3aed',
+          borderRadius: 12,
+          background: '#1a1025',
+          boxShadow: '0 0 0 1px rgba(124, 58, 237, 0.25)',
+        }}
+      >
+        <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 22, color: '#f5f3ff' }}>
+          Direct challenge (private)
+        </h2>
+        <p
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: '#c4b5fd',
+            margin: '0 0 10px 0',
+            letterSpacing: '0.08em',
+          }}
+        >
+          INVITE ONE PERSON — NOT POSTED PUBLICLY
+        </p>
+        <p style={{ fontSize: 14, color: '#d4d4d8', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+          Find them by <strong>email or username</strong>, pick tempo and color, then send. They accept under{' '}
+          <Link href="/requests" style={{ color: '#a5b4fc', fontWeight: 700 }}>
+            Match requests
+          </Link>
+          . This is <em>not</em> the same as <strong>Find Match</strong> (open/public pairing below).
+        </p>
+        <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 14px 0', lineHeight: 1.45 }}>
+          Options here are <strong>tempo</strong> (live / daily / correspondence and clock), <strong>your color
+          preference</strong>, and opponent identity — standard casual games only, not a separate “rules pack”
+          selector.
+        </p>
+
+        {message ? (
+          <p style={{ color: '#fecaca', margin: '0 0 12px 0', fontSize: 14 }}>{message}</p>
+        ) : null}
+
+        <label
+          htmlFor={`${anchorId}-tempo`}
+          style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#d1d5db', marginBottom: 6 }}
+        >
+          Time control (mode)
+        </label>
+        <select
+          id={`${anchorId}-tempo`}
+          value={challengeTempo}
+          onChange={(e) => setChallengeTempo(e.target.value as GameTempo)}
+          disabled={challengeBusy}
+          title={gameTempoDescription(challengeTempo)}
+          style={{
+            display: 'block',
+            width: '100%',
+            maxWidth: 360,
+            marginBottom: 12,
+            padding: '10px 12px',
+            boxSizing: 'border-box',
+            background: challengeBusy ? '#0c0c0c' : '#0f0f0f',
+            color: '#f5f5f5',
+            border: '1px solid #4a4a4a',
+            borderRadius: 6,
+            fontSize: 14,
+          }}
+        >
+          {GAME_TEMPOS.map((t) => (
+            <option key={t} value={t} title={gameTempoDescription(t)}>
+              {gameTempoLabel(t)}
+            </option>
+          ))}
+        </select>
+
+        {challengeTempo === 'live' ? (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>
+              Live clock (per side)
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(
+                [
+                  { v: '1m' as const, label: '1 min' },
+                  { v: '3m' as const, label: '3 min' },
+                  { v: '5m' as const, label: '5 min' },
+                  { v: '10m' as const, label: '10 min' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setChallengeLiveTc(opt.v)}
+                  disabled={challengeBusy}
+                  style={tcChipStyle(challengeLiveTc === opt.v, challengeBusy)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {challengeTempo === 'daily' ? (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>
+              Daily clock (per side)
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setChallengeDailyTc('30m')}
+                disabled={challengeBusy}
+                style={tcChipStyle(challengeDailyTc === '30m', challengeBusy)}
+              >
+                30 min
+              </button>
+              <button
+                type="button"
+                onClick={() => setChallengeDailyTc('60m')}
+                disabled={challengeBusy}
+                style={tcChipStyle(challengeDailyTc === '60m', challengeBusy)}
+              >
+                60 min
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {challengeTempo === 'correspondence' ? (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>
+              Correspondence pace
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(
+                [
+                  { v: '1d' as const, label: '1 day / move' },
+                  { v: '2d' as const, label: '2 days / move' },
+                  { v: '3d' as const, label: '3 days / move' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setChallengeCorrPace(opt.v)}
+                  disabled={challengeBusy}
+                  style={tcChipStyle(challengeCorrPace === opt.v, challengeBusy)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <RatedUnratedToggle
+          value={challengeRated}
+          onChange={setChallengeRated}
+          disabled={challengeBusy}
+          testIdPrefix={`${anchorId}-match`}
+        />
+        <p style={{ fontSize: 12, color: '#9ca3af', margin: '-4px 0 14px 0', lineHeight: 1.45 }}>
+          Carried into the game row when they accept — must match what both players expect.
+        </p>
+
+        <label
+          htmlFor={`${anchorId}-color`}
+          style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}
+        >
+          Your color
+        </label>
+        <select
+          id={`${anchorId}-color`}
+          value={challengeColorPreference}
+          onChange={(e) => setChallengeColorPreference(e.target.value as ChallengeColorPreference)}
+          disabled={challengeBusy}
+          style={{
+            display: 'block',
+            width: '100%',
+            maxWidth: 360,
+            marginBottom: 12,
+            padding: '10px 12px',
+            boxSizing: 'border-box',
+            background: challengeBusy ? '#0c0c0c' : '#0f0f0f',
+            color: '#f5f5f5',
+            border: '1px solid #4a4a4a',
+            borderRadius: 6,
+            fontSize: 14,
+          }}
+        >
+          <option value="white">White — you move first</option>
+          <option value="black">Black</option>
+          <option value="random">Random — assigned when you send</option>
+        </select>
+
+        <label
+          htmlFor={`${anchorId}-lookup`}
+          style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}
+        >
+          Opponent (email or username)
+        </label>
+        <input
+          id={`${anchorId}-lookup`}
+          data-testid="challenge-opponent-lookup"
+          type="text"
+          placeholder="email or @username"
+          value={opponentEmail}
+          onChange={(e) => {
+            setOpponentEmail(e.target.value);
+            setOpponentUserId('');
+            setOpponentResolvedUsername(null);
+            setOpponentResolvedEmailDisplay(null);
+            setOpponentResolvedRating(null);
+            setChallengeSentBanner(false);
+            setChallengeSentDetail(null);
+          }}
+          disabled={challengeBusy}
+          autoComplete="off"
+          style={{
+            display: 'block',
+            marginBottom: 8,
+            padding: '10px 12px',
+            width: '100%',
+            maxWidth: 360,
+            boxSizing: 'border-box',
+            background: challengeBusy ? '#0c0c0c' : '#0f0f0f',
+            color: '#f5f5f5',
+            border: '1px solid #4a4a4a',
+            borderRadius: 6,
+            fontSize: 14,
+          }}
+        />
+        <button
+          type="button"
+          data-testid="challenge-find-opponent"
+          onClick={() => void findOpponent()}
+          disabled={challengeBusy}
+          style={{
+            padding: '8px 14px',
+            marginBottom: 8,
+            background: challengeBusy ? '#1e3a5f' : '#2563eb',
+            color: '#ffffff',
+            border: `1px solid ${challengeBusy ? '#2c5282' : '#3b82f6'}`,
+            borderRadius: 6,
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: challengeBusy ? 'not-allowed' : 'pointer',
+          }}
+        >
+          Find opponent
+        </button>
+
+        {opponentUserId && challengeOpponentIsSelf ? (
+          <p style={{ color: '#fecaca', margin: '8px 0' }}>You cannot challenge yourself.</p>
+        ) : opponentUserId ? (
+          <div
+            data-testid={`user-row-${opponentUserId}`}
+            style={{
+              marginTop: 8,
+              marginBottom: 12,
+              padding: 12,
+              borderRadius: 8,
+              border: '1px solid #2d6a4f',
+              background: '#0d1f15',
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#7dce9e', marginBottom: 6 }}>
+              OPPONENT FOUND
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#f4fff8' }}>
+              {opponentResolvedUsername ?? opponentResolvedEmailDisplay ?? opponentUserId.slice(0, 8)}
+            </div>
+            {opponentResolvedRating != null ? (
+              <div style={{ marginTop: 6, color: '#b8e3c9' }}>Rating: {opponentResolvedRating}</div>
+            ) : null}
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: '#9ca3af', margin: '8px 0' }}>
+            Run <strong>Find opponent</strong> after entering email or username.
+          </p>
+        )}
+
+        <button
+          data-testid="challenge-send-submit"
+          type="button"
+          onClick={() => void sendManualChallengeRequest()}
+          disabled={challengeBusy || challengeOpponentIsSelf || !opponentUserId}
+          style={{
+            padding: '10px 16px',
+            marginTop: 4,
+            background:
+              challengeBusy || challengeOpponentIsSelf || !opponentUserId ? '#3f3f46' : '#7c3aed',
+            color: '#ffffff',
+            border: '1px solid #8b5cf6',
+            borderRadius: 8,
+            fontWeight: 700,
+            fontSize: 15,
+            cursor:
+              challengeBusy || challengeOpponentIsSelf || !opponentUserId ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {challengeBusy ? 'Sending…' : 'Send direct challenge'}
+        </button>
+      </div>
+      {challengeSentBanner ? (
+        <div data-testid="challenge-sent-awaiting">
+          <RequestSuccessBanner headline="Challenge sent — awaiting response" detail={challengeSentDetail ?? undefined} />
+        </div>
+      ) : null}
+    </section>
+  );
+}

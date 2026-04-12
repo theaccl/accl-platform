@@ -1,0 +1,366 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
+import { gameRatedListLabel } from '@/lib/gameRated';
+import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
+import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
+import { supabase } from '@/lib/supabaseClient';
+
+type MatchRequestRow = {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  request_type: string;
+  status: string;
+  visibility?: string | null;
+  created_at: string;
+  tempo?: string | null;
+  live_time_control?: string | null;
+  white_player_id: string;
+  black_player_id: string;
+  source_game_id?: string | null;
+  rated?: boolean | null;
+};
+
+type GameRow = { id: string };
+
+function isDirect(r: MatchRequestRow): boolean {
+  return r.visibility !== 'open';
+}
+
+export default function RequestsPage() {
+  const router = useRouter();
+  const [authResolved, setAuthResolved] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [requests, setRequests] = useState<MatchRequestRow[]>([]);
+  const [busyReqId, setBusyReqId] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled) return;
+      const uid = data.user?.id ?? null;
+      setAuthUserId(uid);
+      setAuthResolved(true);
+      if (!uid) router.replace('/login');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  const fetchRequests = useCallback(async () => {
+    if (!authUserId) {
+      setRequests([]);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('match_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setRequests((data ?? []) as MatchRequestRow[]);
+  }, [authUserId]);
+
+  useEffect(() => {
+    if (!authResolved || !authUserId) return;
+    void fetchRequests();
+  }, [authResolved, authUserId, fetchRequests]);
+
+  useEffect(() => {
+    if (!authResolved || !authUserId) return;
+    const poll = window.setInterval(() => {
+      void fetchRequests();
+    }, 4000);
+    return () => {
+      window.clearInterval(poll);
+    };
+  }, [authResolved, authUserId, fetchRequests]);
+
+  useEffect(() => {
+    if (!authResolved || !authUserId) return;
+    const channel = supabase
+      .channel(`requests-${authUserId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'match_requests' },
+        () => {
+          void fetchRequests();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authResolved, authUserId, fetchRequests]);
+
+  const createGameFromRequest = useCallback(
+    async (r: MatchRequestRow) => {
+      const { data: newGame, error: gErr } = await createSeatedGameGuard(supabase, {
+        row: { ...gameInsertFromAcceptedChallenge(r) },
+      });
+      if (gErr) return { error: gErr };
+      const gid = (newGame as GameRow).id;
+      const { error: uErr } = await supabase
+        .from('match_requests')
+        .update({
+          status: 'accepted',
+          resolution_game_id: gid,
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', r.id)
+        .eq('status', 'pending');
+      if (uErr) return { error: uErr };
+      return { gameId: gid };
+    },
+    []
+  );
+
+  const acceptRequest = useCallback(
+    async (r: MatchRequestRow) => {
+      if (!authUserId || r.to_user_id !== authUserId) return;
+      setBusyReqId(r.id);
+      setMessage('');
+      try {
+        const res = await createGameFromRequest(r);
+        if (res.error) {
+          setMessage(res.error.message);
+          return;
+        }
+        setRequests((prev) => prev.filter((x) => x.id !== r.id));
+        if (res.gameId) router.push(`/game/${res.gameId}`);
+      } finally {
+        setBusyReqId(null);
+      }
+    },
+    [authUserId, createGameFromRequest, router]
+  );
+
+  const joinOpenListing = useCallback(
+    async (r: MatchRequestRow) => {
+      if (!authUserId || r.visibility !== 'open') return;
+      setBusyReqId(r.id);
+      setMessage('');
+      try {
+        const { data: claimed, error: claimError } = await supabase
+          .from('match_requests')
+          .update({ to_user_id: authUserId })
+          .eq('id', r.id)
+          .eq('status', 'pending')
+          .eq('visibility', 'open')
+          .or(`to_user_id.is.null,to_user_id.eq.${authUserId}`)
+          .select('*')
+          .single();
+        if (claimError) {
+          setMessage(claimError.message);
+          return;
+        }
+        const claimedRow = claimed as MatchRequestRow;
+        const res = await createGameFromRequest(claimedRow);
+        if (res.error) {
+          setMessage(res.error.message);
+          return;
+        }
+        setRequests((prev) => prev.filter((x) => x.id !== r.id));
+        if (res.gameId) router.push(`/game/${res.gameId}`);
+      } finally {
+        setBusyReqId(null);
+      }
+    },
+    [authUserId, createGameFromRequest, router]
+  );
+
+  const declineRequest = useCallback(
+    async (r: MatchRequestRow) => {
+      if (!authUserId || r.to_user_id !== authUserId) return;
+      setBusyReqId(r.id);
+      setMessage('');
+      const { error } = await supabase
+        .from('match_requests')
+        .update({
+          status: 'declined',
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', r.id)
+        .eq('status', 'pending')
+        .eq('to_user_id', authUserId);
+      setBusyReqId(null);
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      setRequests((prev) => prev.filter((x) => x.id !== r.id));
+    },
+    [authUserId]
+  );
+
+  const cancelOutgoing = useCallback(
+    async (r: MatchRequestRow) => {
+      if (!authUserId || r.from_user_id !== authUserId) return;
+      setBusyReqId(r.id);
+      setMessage('');
+      const { error } = await supabase
+        .from('match_requests')
+        .update({
+          status: 'cancelled',
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', r.id)
+        .eq('status', 'pending')
+        .eq('from_user_id', authUserId);
+      setBusyReqId(null);
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      setRequests((prev) => prev.filter((x) => x.id !== r.id));
+    },
+    [authUserId]
+  );
+
+  const incoming = useMemo(
+    () => requests.filter((r) => r.to_user_id === authUserId && isDirect(r)),
+    [requests, authUserId]
+  );
+  const outgoing = useMemo(
+    () => requests.filter((r) => r.from_user_id === authUserId),
+    [requests, authUserId]
+  );
+  const openListings = useMemo(
+    () => requests.filter((r) => r.visibility === 'open' && r.from_user_id !== authUserId),
+    [requests, authUserId]
+  );
+
+  if (!authResolved || !authUserId) {
+    return (
+      <main style={{ padding: 24 }}>
+        <p>Loading...</p>
+      </main>
+    );
+  }
+
+  return (
+    <main data-testid="requests-inbox-root" style={{ padding: 24, maxWidth: 980, margin: '0 auto' }}>
+      <h1 style={{ marginTop: 0 }}>Match requests (inbox)</h1>
+      <p style={{ color: '#444', lineHeight: 1.5, maxWidth: 640 }}>
+        <strong>Direct challenge (private)</strong> — labeled below when someone picked you as opponent.
+        Open / public listings are separate.{' '}
+        <Link href="/">Back to home lobby</Link>
+        {' · '}
+        <Link href="/free">Alternate lobby</Link>
+      </p>
+      {message ? <p data-testid="requests-inbox-message">{message}</p> : null}
+
+      <section style={{ marginBottom: 16 }}>
+        <h2>Incoming</h2>
+        {incoming.length === 0 ? (
+          <p>None.</p>
+        ) : (
+          incoming.map((r) => (
+            <div
+              key={r.id}
+              data-testid={`incoming-request-card-${r.id}`}
+              style={{ border: '1px solid #2b3f55', padding: 10, borderRadius: 10, marginBottom: 8 }}
+            >
+              <p style={{ margin: 0 }}>
+                <strong>{r.request_type}</strong> |{' '}
+                {gameDisplayTempoLabel({ tempo: r.tempo, liveTimeControl: r.live_time_control })} |{' '}
+                {gameRatedListLabel(r.rated)}
+              </p>
+              {authUserId && r.white_player_id === authUserId ? (
+                <p
+                  data-testid={`incoming-request-seat-${r.id}`}
+                  style={{ margin: '6px 0 0 0', fontSize: 13, color: '#64748b' }}
+                >
+                  Your seat: White (move first).
+                </p>
+              ) : authUserId && r.black_player_id === authUserId ? (
+                <p
+                  data-testid={`incoming-request-seat-${r.id}`}
+                  style={{ margin: '6px 0 0 0', fontSize: 13, color: '#64748b' }}
+                >
+                  Your seat: Black.
+                </p>
+              ) : null}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  data-testid={`challenge-accept-${r.id}`}
+                  disabled={busyReqId === r.id}
+                  onClick={() => acceptRequest(r)}
+                >
+                  {busyReqId === r.id ? 'Working...' : 'Accept'}
+                </button>
+                <button
+                  type="button"
+                  data-testid={`challenge-decline-${r.id}`}
+                  disabled={busyReqId === r.id}
+                  onClick={() => declineRequest(r)}
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section style={{ marginBottom: 16 }}>
+        <h2>Outgoing — you invited someone</h2>
+        {outgoing.length === 0 ? (
+          <p>None.</p>
+        ) : (
+          outgoing.map((r) => (
+            <div key={r.id} style={{ border: '1px solid #2b3f55', padding: 10, borderRadius: 10, marginBottom: 8 }}>
+              <p style={{ margin: 0 }}>
+                <strong>{isDirect(r) ? 'Direct' : 'Open'} </strong>|{' '}
+                {gameDisplayTempoLabel({ tempo: r.tempo, liveTimeControl: r.live_time_control })} |{' '}
+                {gameRatedListLabel(r.rated)}
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" disabled={busyReqId === r.id} onClick={() => cancelOutgoing(r)}>
+                  {busyReqId === r.id ? 'Cancelling...' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section>
+        <h2>Open / public listings (worldwide)</h2>
+        <p style={{ color: '#555', fontSize: 14, marginTop: 0 }}>
+          Not the same as a direct challenge — anyone may join these.
+        </p>
+        {openListings.length === 0 ? (
+          <p>None.</p>
+        ) : (
+          openListings.map((r) => (
+            <div key={r.id} style={{ border: '1px solid #2b3f55', padding: 10, borderRadius: 10, marginBottom: 8 }}>
+              <p style={{ margin: 0 }}>
+                <strong>{r.id.slice(0, 8)}...</strong> |{' '}
+                {gameDisplayTempoLabel({ tempo: r.tempo, liveTimeControl: r.live_time_control })} |{' '}
+                {gameRatedListLabel(r.rated)}
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" disabled={busyReqId === r.id} onClick={() => joinOpenListing(r)}>
+                  {busyReqId === r.id ? 'Joining...' : 'Join'}
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+    </main>
+  );
+}
+

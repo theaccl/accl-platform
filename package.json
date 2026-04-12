@@ -1,0 +1,37 @@
+{
+  "name": "accl-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "gate:operational-core": "node scripts/operational-core-gate.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.0",
+    "chess.js": "^1.4.0",
+    "cross-fetch": "^4.1.0",
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-chessboard": "^5.10.0",
+    "react-dom": "19.2.4",
+    "stockfish": "^18.0.7",
+    "stripe": "^22.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

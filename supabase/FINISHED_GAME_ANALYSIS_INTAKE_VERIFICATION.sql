@@ -1,0 +1,73 @@
+-- Verification pack: finished-game analysis intake RPC
+-- Run manually against a project that has applied migration 20260406210000_finished_game_analysis_intake_rpc.sql
+--
+-- Expectations:
+-- 1) A finished game returns a non-null jsonb with schema_version, game.analysis_partition, move_logs.
+-- 2) An active (or any non-finished) game id returns NULL.
+-- 3) game.play_context / analysis_partition reflect free vs tournament lineage.
+
+-- Example: replace with real UUIDs from your environment.
+-- select public.get_finished_game_analysis_intake('<finished_game_uuid>'::uuid)
+--   as intake_finished;
+--
+-- select public.get_finished_game_analysis_intake('<active_game_uuid>'::uuid)
+--   as intake_non_finished;
+--   -- should be NULL
+
+-- Partition sanity (finished rows only):
+-- select
+--   id,
+--   status,
+--   play_context,
+--   (public.get_finished_game_analysis_intake(id)->'game'->>'analysis_partition') as partition_from_intake
+-- from public.games
+-- where status = 'finished'
+-- limit 5;
+
+-- === Analysis queue (after migration 20260406220000_finished_game_analysis_queue.sql) ===
+-- Enqueue is service_role-only RPC:
+-- select public.enqueue_finished_game_analysis_job('<finished_game_uuid>'::uuid, 'e2e-smoke');
+-- select * from public.finished_game_analysis_jobs order by created_at desc limit 10;
+-- Expected: finished game → status `queued`, intake_schema_version / analysis_partition / move_count set.
+-- Active game id → status `no_finished_intake`, intake fields null.
+
+-- === Processor (after migration 20260406230000_finished_game_analysis_processor_rpc.sql) ===
+-- select public.claim_next_finished_game_analysis_job();
+-- -- second concurrent session should not return the same job id (SKIP LOCKED).
+-- select public.finalize_finished_game_analysis_job(
+--   '<job_uuid>'::uuid,
+--   'completed',
+--   '{"processor":"manual"}'::jsonb,
+--   null
+-- );
+-- Or drive POST /api/internal/analysis-queue/process with header x-accl-analysis-queue-secret.
+
+-- === Ops hardening (after migration 20260407000000_finished_game_analysis_ops_hardening.sql) ===
+-- Queue summary:
+-- select public.get_finished_game_analysis_queue_ops_summary(900);
+--
+-- Stale recovery (mark stale running -> failed):
+-- select public.fail_stale_running_finished_game_analysis_jobs(900, 100);
+
+-- === Artifacts (after migration 20260407010000_finished_game_analysis_artifacts.sql) ===
+-- Placeholder artifact upsert (service_role):
+-- select public.upsert_finished_game_analysis_artifact(
+--   '<job_uuid>'::uuid,
+--   '<finished_game_uuid>'::uuid,
+--   'placeholder',
+--   'fga.placeholder.1',
+--   'free',
+--   '{"processor":"foundation.processor.v1","note":"manual test"}'::jsonb
+-- );
+--
+-- Read-model (returns [] if game not in finished intake):
+-- select public.get_latest_finished_game_analysis_artifacts('<finished_game_uuid>'::uuid);
+
+-- === Auto enqueue (after migration 20260407020000_finished_game_analysis_auto_enqueue.sql) ===
+-- Finishing a game (INSERT/UPDATE status -> finished) enqueues via trigger with correlation_id `auto:game_finished`.
+-- Idempotency: unique (game_id) on finished_game_analysis_jobs; enqueue returns existing row or upgrades
+-- no_finished_intake | failed -> queued when intake becomes available.
+--
+-- Per-game audit (as participant JWT or service_role):
+-- select public.get_finished_game_analysis_job_summary('<finished_game_uuid>'::uuid);
+-- Shapes: never_queued, job { status, correlation_id, ... }, artifact_count, has_artifact.

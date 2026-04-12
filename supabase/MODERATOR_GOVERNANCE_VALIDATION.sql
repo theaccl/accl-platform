@@ -1,0 +1,88 @@
+-- Verification pack: moderator atomic actions + role admin hardening
+-- Apply migrations up to:
+-- - 20260407213000_moderator_governance_hardening.sql
+-- - 20260407223000_moderator_atomic_actions_and_role_admin.sql
+--
+-- Critical invariants:
+-- 1) moderator_queue_action_history remains append-only.
+-- 2) apply_moderator_queue_action_atomic updates queue + history atomically.
+-- 3) queue/action linkage is preserved through queue_id foreign key.
+-- 4) role mutation path is admin-only and writes audit rows.
+
+-- === 1) append-only enforcement ===
+-- Expect: both statements raise "moderator_queue_action_history is append-only".
+-- update public.moderator_queue_action_history
+-- set action_type = 'MARK_RESOLVED'
+-- where id = '<history_uuid>'::uuid;
+--
+-- delete from public.moderator_queue_action_history
+-- where id = '<history_uuid>'::uuid;
+
+-- === 2) atomic moderator queue action ===
+-- Setup:
+-- select id from public.moderator_queue order by created_at desc limit 1;
+--
+-- Execute (service_role):
+-- select public.apply_moderator_queue_action_atomic(
+--   '<queue_uuid>'::uuid,
+--   '<moderator_uuid>'::uuid,
+--   'MARK_IN_REVIEW',
+--   'manual validation note',
+--   null
+-- );
+--
+-- Validate queue + history changed together:
+-- select id, queue_status, assigned_to, moderator_note, resolution_note
+-- from public.moderator_queue
+-- where id = '<queue_uuid>'::uuid;
+--
+-- select queue_id, action_type, previous_status, new_status, acted_by, moderator_note, resolution_note
+-- from public.moderator_queue_action_history
+-- where queue_id = '<queue_uuid>'::uuid
+-- order by created_at desc
+-- limit 1;
+--
+-- Failure path (invalid action): expect exception + no new history row.
+-- select count(*) from public.moderator_queue_action_history where queue_id = '<queue_uuid>'::uuid;
+-- select public.apply_moderator_queue_action_atomic(
+--   '<queue_uuid>'::uuid,
+--   '<moderator_uuid>'::uuid,
+--   'BAD_ACTION',
+--   null,
+--   null
+-- );
+-- select count(*) from public.moderator_queue_action_history where queue_id = '<queue_uuid>'::uuid;
+
+-- === 3) queue/event linkage sanity ===
+-- Optional linkage should stay nullable while preserving valid FK when present.
+-- select mq.id, mq.anti_cheat_event_id, ace.id as linked_event_id
+-- from public.moderator_queue mq
+-- left join public.anti_cheat_events ace on ace.id = mq.anti_cheat_event_id
+-- order by mq.created_at desc
+-- limit 20;
+
+-- === 4) admin-only role mutation + audit logging ===
+-- Seed an admin binding (service_role):
+-- insert into public.moderator_role_bindings(user_id, role)
+-- values ('<admin_uuid>'::uuid, 'ADMIN')
+-- on conflict (user_id) do update set role = excluded.role;
+--
+-- Grant moderator:
+-- select public.set_moderator_role_binding(
+--   '<admin_uuid>'::uuid,
+--   '<target_user_uuid>'::uuid,
+--   true
+-- );
+--
+-- Revoke moderator:
+-- select public.set_moderator_role_binding(
+--   '<admin_uuid>'::uuid,
+--   '<target_user_uuid>'::uuid,
+--   false
+-- );
+--
+-- Validate audit trail:
+-- select acted_by, target_user_id, role_granted_or_revoked, previous_roles, new_roles, created_at
+-- from public.moderator_role_audit_history
+-- where target_user_id = '<target_user_uuid>'::uuid
+-- order by created_at desc;
