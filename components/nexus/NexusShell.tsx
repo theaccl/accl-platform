@@ -32,7 +32,6 @@ import LegacyMemorialModule from "@/components/nexus/LegacyMemorialModule";
 import MetaInsightsModule from "@/components/nexus/MetaInsightsModule";
 import RecapModule from "@/components/nexus/RecapModule";
 import Link from "next/link";
-import NavigationBar from "@/components/NavigationBar";
 import { Chessboard } from "react-chessboard";
 import PlayerIdentityCard from "@/components/nexus/PlayerIdentityCard";
 import PayoutStructureCard from "@/components/nexus/PayoutStructureCard";
@@ -148,6 +147,16 @@ export default function NexusShell({
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [ecosystem, publicMode]);
+
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const uid = publicMode ? null : (session?.user?.id ?? null);
+      setUserId(uid);
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, [publicMode]);
 
   const championshipSpot = useMemo((): {
     game: NexusLiveGame | null;
@@ -620,7 +629,6 @@ export default function NexusShell({
     <div
       className={`min-h-screen flex flex-col text-white ${shellK12 ? "bg-[#0b1524]" : "bg-[#0D1117]"}`}
     >
-      <NavigationBar />
       {body}
     </div>
   );

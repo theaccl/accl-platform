@@ -15,27 +15,36 @@ export default function NavigationBar() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const sync = async () => {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
       setIsLoggedIn(Boolean(data.session?.user?.id));
       setChecked(true);
-    })();
+    };
+    void sync();
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(Boolean(session?.user?.id));
       setChecked(true);
     });
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      void sync();
+      router.refresh();
+    };
+    window.addEventListener("pageshow", onPageShow);
     return () => {
       cancelled = true;
       listener.subscription.unsubscribe();
+      window.removeEventListener("pageshow", onPageShow);
     };
-  }, []);
+  }, [router]);
 
   const logout = async () => {
     await supabase.auth.signOut();
     setIsLoggedIn(false);
-    router.replace("/");
-    router.refresh();
+    if (typeof window !== "undefined") {
+      window.location.replace("/");
+    }
   };
 
   return (
