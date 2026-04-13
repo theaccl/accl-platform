@@ -1,19 +1,36 @@
-import NavigationBar from "@/components/NavigationBar";
-import NexusShell from "@/components/nexus/NexusShell";
 import type { NexusEcosystem } from "@/lib/nexus/getNexusData";
+import { redirect } from "next/navigation";
+
+import NavigationBar from "@/components/NavigationBar";
+import NexusBfcacheAuthGuard from "@/components/nexus/NexusBfcacheAuthGuard";
+import NexusShell from "@/components/nexus/NexusShell";
+import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
+import { getNexusHubData } from "@/lib/nexus/getNexusHubData";
+import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
+
+/** Authenticated-only; no static shell for signed-out users (Back/direct URL must re-check auth). */
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export default async function NexusPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ecosystem?: string; public?: string }>;
+  searchParams: Promise<{ ecosystem?: string }>;
 }) {
+  const user = await getSupabaseUserFromCookies();
+  if (!user) {
+    redirect(buildLoginRedirect("/nexus"));
+  }
+
   const sp = await searchParams;
   const ecosystem: NexusEcosystem = String(sp?.ecosystem ?? "").toLowerCase() === "k12" ? "k12" : "adult";
-  const publicMode = String(sp?.public ?? "").toLowerCase() === "1" || String(sp?.public ?? "").toLowerCase() === "true";
+  const data = await getNexusHubData(ecosystem);
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-[#0D1117] text-white antialiased">
+      <NexusBfcacheAuthGuard />
       <NavigationBar />
-      <NexusShell initialEcosystem={ecosystem} publicMode={publicMode} />
+      <NexusShell data={data} />
     </div>
   );
 }

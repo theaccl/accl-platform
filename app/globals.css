@@ -33,3 +33,23 @@ body {
     font-size: 15px;
   }
 }
+
+/* Phase 4 NEXUS: optional subtle enter fade (no motion when reduced) */
+@keyframes nexus-shell-fade-in {
+  from {
+    opacity: 0.88;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.nexus-shell-enter {
+  animation: nexus-shell-fade-in 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-shell-enter {
+    animation: none;
+  }
+}

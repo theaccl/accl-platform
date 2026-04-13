@@ -28,10 +28,15 @@ export default defineConfig({
       testMatch: /.*\.setup\.ts/,
     },
     {
+      name: 'unit',
+      testMatch: /tests\/unit\/.*\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
-      testIgnore: /.*\.setup\.ts/,
+      testIgnore: [/.*\.setup\.ts/, /tests\/unit\/.*\.spec\.ts/],
     },
   ],
 });

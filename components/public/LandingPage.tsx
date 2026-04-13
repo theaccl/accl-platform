@@ -6,6 +6,7 @@ import NavigationBar from "@/components/NavigationBar";
 import type { PublicNexusData } from "@/lib/nexus/getPublicNexusData";
 import { trackGrowthEvent } from "@/lib/public/funnelTracking";
 import { getStoredReferral, setStoredEntrySource } from "@/lib/public/referralTracking";
+import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
 
 export default function LandingPage() {
   const [data, setData] = useState<PublicNexusData | null>(null);
@@ -83,7 +84,9 @@ export default function LandingPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-gray-200">Live now</h2>
           {topLive.length === 0 ? (
-            <p className="text-sm text-gray-500">No adult-track live boards at the moment — open Nexus for the full feed.</p>
+            <p className="text-sm text-gray-500">
+              No adult-track live boards at the moment — sign in to open Nexus for the full feed.
+            </p>
           ) : (
             <ul className="space-y-2">
               {topLive.map((g) => (
@@ -103,8 +106,8 @@ export default function LandingPage() {
               ))}
             </ul>
           )}
-          <Link href="/nexus?public=1" className="inline-block text-sm text-sky-300 font-medium">
-            Open public Nexus →
+          <Link href={NEXUS_LOGIN_ENTRY_HREF} className="inline-block text-sm text-sky-300 font-medium">
+            Sign in to open Nexus →
           </Link>
         </section>
 

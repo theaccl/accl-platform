@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { safeNextPath } from '@/lib/public/safeNextPath';
+import { getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { getStoredEntrySource, getStoredReferral } from '@/lib/public/referralTracking';
 import NavigationBar from '@/components/NavigationBar';
 
@@ -52,7 +52,7 @@ function LoginPageInner() {
   const [checked, setChecked] = useState(false);
   const intent = (searchParams.get('intent') ?? '').toLowerCase();
   const signupIntent = intent === 'signup';
-  const nextPath = safeNextPath(searchParams.get('next')) ?? '/modes';
+  const nextPath = getSafePostLoginRedirect(searchParams.get('next'));
 
   useEffect(() => {
     let cancelled = false;

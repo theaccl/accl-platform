@@ -1,6 +1,14 @@
+import { redirect } from "next/navigation";
 import NavigationBar from "@/components/NavigationBar";
+import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
+import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
 
-export default function FreeCreateGamePage() {
+export default async function FreeCreateGamePage() {
+  const user = await getSupabaseUserFromCookies();
+  if (!user) {
+    redirect(buildLoginRedirect("/free/create"));
+  }
+
   return (
     <div className="min-h-screen bg-[#0D1117] text-white">
       <NavigationBar />

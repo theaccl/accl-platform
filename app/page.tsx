@@ -1,5 +1,7 @@
 import Link from "next/link";
 import NavigationBar from "@/components/NavigationBar";
+import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
+import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
 
 const secondaryBullets = [
   "Live games and standings",
@@ -7,7 +9,10 @@ const secondaryBullets = [
   "Progression, records, and vaults",
 ] as const;
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await getSupabaseUserFromCookies();
+  const enterNexusHref = user ? "/nexus" : NEXUS_LOGIN_ENTRY_HREF;
+
   return (
     <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
       <NavigationBar />
@@ -28,12 +33,17 @@ export default function HomePage() {
             className="grid grid-cols-1 sm:grid-cols-2 gap-3"
             aria-label="Primary entry"
           >
-            <Link
-              href="/nexus"
-              className="inline-flex items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]"
-            >
-              Enter Nexus
-            </Link>
+            <div className="flex flex-col gap-1">
+              <Link
+                href={enterNexusHref}
+                className="inline-flex items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]"
+              >
+                Enter Nexus
+              </Link>
+              {!user ? (
+                <p className="text-center text-[11px] text-gray-500 sm:text-left">Account required</p>
+              ) : null}
+            </div>
             <Link
               href="/free"
               className="inline-flex items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]"

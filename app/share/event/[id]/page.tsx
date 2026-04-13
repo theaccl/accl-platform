@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getPublicNexusData } from "@/lib/nexus/getPublicNexusData";
+import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
 import ShareView from "@/components/public/ShareView";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ eco?: string }> };
@@ -33,7 +34,7 @@ export default async function ShareEventPage({ params, searchParams }: Props) {
     ? k12
       ? `/game/${watch}?spectate=1&eco=k12`
       : `/game/${watch}?spectate=1`
-    : "/nexus?public=1";
+    : NEXUS_LOGIN_ENTRY_HREF;
 
   if (ev) {
     return (
@@ -54,7 +55,7 @@ export default async function ShareEventPage({ params, searchParams }: Props) {
       eyebrow="Event"
       title="ACCL event"
       summary="This event id is not on the current public snapshot — check Nexus for the live schedule."
-      watchHref="/nexus?public=1"
+      watchHref={NEXUS_LOGIN_ENTRY_HREF}
       joinHref="/login?intent=signup&next=/nexus"
       k12={k12}
     />

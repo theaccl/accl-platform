@@ -1,7 +1,12 @@
 import NavigationBar from "@/components/NavigationBar";
 import HomeButton from "@/components/HomeButton";
+import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
+import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
 
-export default function FreePage() {
+export default async function FreePage() {
+  const user = await getSupabaseUserFromCookies();
+  const createGameRoute = user ? "/free/create" : buildLoginRedirect("/free/create");
+
   return (
     <div className="min-h-screen bg-[#0D1117] text-white flex flex-col">
       <NavigationBar />
@@ -10,7 +15,7 @@ export default function FreePage() {
         <h1 className="text-3xl font-bold mb-4">FREE PLAY</h1>
 
         <HomeButton label="PLAY" route="/free/play" />
-        <HomeButton label="CREATE GAME" route="/free/create" />
+        <HomeButton label="CREATE GAME" route={createGameRoute} />
         <HomeButton label="PLAY COMPUTER" route="/free/computer" />
         <HomeButton label="ACTIVE GAMES" route="/free/active" />
         <HomeButton label="DIRECT CHALLENGES" route="/free/challenges" />
@@ -18,4 +23,3 @@ export default function FreePage() {
     </div>
   );
 }
-

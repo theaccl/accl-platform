@@ -1,58 +1,50 @@
-import type { NexusEcosystem } from "@/lib/nexus/getNexusData";
+import type { NexusHubPayload } from "@/lib/nexus/types";
+import { formatRelativeTimeUtc } from "@/lib/nexus/nexusHubMapping";
 
-export default function NexusHeader({
-  ecosystem,
-  engagement,
-  seasonHighlight,
-  gamesToday,
-}: {
-  ecosystem: NexusEcosystem;
-  engagement?: { rankedPlayers: number; liveGames: number; activeTournaments: number };
-  /** Phase 22 — optional season line (derived, no hype). */
-  seasonHighlight?: string;
-  /** Phase 26 — optional derived count (public / growth surfaces). */
-  gamesToday?: number;
-}) {
-  const k12 = ecosystem === "k12";
+/** Shared with module titles — scan-aligned label style */
+export const nexusModuleHeadingClass =
+  "mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500";
+
+/**
+ * Phase 4 — consistent interaction timing (120–180ms, ease-out).
+ * Use on interactive surfaces; motion-reduce disables transitions.
+ */
+export const nexusTransition =
+  "transition-[background-color,border-color,box-shadow,transform,opacity,color] duration-150 ease-out motion-reduce:duration-0 motion-reduce:transition-none";
+
+/** For elements that should not scale under reduced motion */
+export const nexusInteractiveLift =
+  `${nexusTransition} motion-safe:hover:scale-[1.01] motion-safe:active:scale-[0.99] motion-reduce:hover:scale-100 motion-reduce:active:scale-100`;
+
+type Props = {
+  meta: NexusHubPayload["meta"];
+  className?: string;
+};
+
+export default function NexusHeader({ meta, className = "" }: Props) {
+  const t = new Date(meta.generatedAt);
+  const stamp = Number.isFinite(t.getTime()) ? t.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : meta.generatedAt;
+  const generatedRelative = formatRelativeTimeUtc(meta.generatedAt);
+
   return (
     <header
-      className={`rounded-2xl border px-5 pt-3 pb-4 ${
-        k12
-          ? "border-[#1f3a5a] bg-gradient-to-r from-[#0f1a2b] to-[#14263f]"
-          : "border-[#2a3442] bg-gradient-to-r from-[#111723] to-[#1a2231]"
-      }`}
+      className={`rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] px-5 py-4 shadow-md shadow-black/20 ${nexusTransition} hover:shadow-lg hover:shadow-black/25 ${className}`.trim()}
     >
-      <p className="text-xs uppercase tracking-widest text-gray-400">ACCL Nexus</p>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-bold text-white">Live Command Center</h1>
-          {seasonHighlight ? (
-            <p className={`text-xs mt-1 ${k12 ? "text-cyan-200/80" : "text-amber-200/80"}`}>{seasonHighlight}</p>
-          ) : null}
+      <p className="text-[10px] uppercase tracking-[0.22em] text-gray-500">ACCL</p>
+      <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">NEXUS</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Live command center</p>
         </div>
-        <span className={`text-xs uppercase px-2 py-1 rounded-full border ${k12 ? "text-cyan-200 border-cyan-500/40 bg-cyan-900/20" : "text-red-300 border-red-500/40 bg-red-900/20"}`}>
-          {ecosystem === "k12" ? "K-12 Scoped" : "18+ Scoped"}
-        </span>
+        <div className="text-right">
+          <p className="text-[11px] text-gray-500" title={meta.generatedAt}>
+            Snapshot <span className="text-gray-400">{stamp}</span>
+          </p>
+          <p className="mt-0.5 text-[10px] leading-snug text-gray-600" title={meta.generatedAt}>
+            Page generated {generatedRelative}
+          </p>
+        </div>
       </div>
-      {engagement ? (
-        <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-gray-400">
-          <span>
-            Ranked players: <span className="text-gray-200">{engagement.rankedPlayers}</span>
-          </span>
-          <span>
-            Live games: <span className="text-gray-200">{engagement.liveGames}</span>
-          </span>
-          <span>
-            Active tournaments: <span className="text-gray-200">{engagement.activeTournaments}</span>
-          </span>
-          {!k12 && typeof gamesToday === "number" ? (
-            <span>
-              Games today (activity): <span className="text-gray-200">{gamesToday}</span>
-            </span>
-          ) : null}
-        </div>
-      ) : null}
     </header>
   );
 }
-
