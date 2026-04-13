@@ -1,25 +1,51 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
-
-function hasSupabaseSessionCookie(request: NextRequest): boolean {
-  return request.cookies.getAll().some((c) => /^sb-.*-auth-token$/.test(c.name) && Boolean(c.value?.trim()));
+function isNexusPath(pathname: string): boolean {
+  return pathname === "/nexus" || pathname.startsWith("/nexus/");
 }
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  if (pathname !== "/nexus" && !pathname.startsWith("/nexus/")) {
+export async function middleware(request: NextRequest) {
+  if (!isNexusPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
-  if (!hasSupabaseSessionCookie(request)) {
-    return NextResponse.redirect(new URL(NEXUS_LOGIN_ENTRY_HREF, request.url));
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options));
+        },
+      },
+    },
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", "/nexus");
+    return NextResponse.redirect(url);
   }
 
-  const res = NextResponse.next();
-  res.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
-  return res;
+  supabaseResponse.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  return supabaseResponse;
 }
 
 export const config = {
