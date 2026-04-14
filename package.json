@@ -22,7 +22,7 @@
     "cross-fetch": "^4.1.0",
     "next": "14.2.5",
     "react": "^18.2.0",
-    "react-chessboard": "^5.10.0",
+    "react-chessboard": "^4.7.3",
     "react-dom": "18.2.0",
     "stockfish": "^18.0.7",
     "stripe": "^22.0.1"
