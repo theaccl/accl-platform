@@ -3075,40 +3075,40 @@ export default function GamePage() {
         }}
       >
         <Chessboard
-          options={{
-            id: 'accl-e2e-board',
-            position: boardPosition,
-            boardOrientation,
-            onPieceDrop,
-            onSquareClick: ({ square }) => {
-              if (isPublicViewer) return;
-              if (!boardInputEnabled) return;
-              const board = chessRef.current;
-              if (!board) return;
-              const clicked = square;
-              const sel = selectedSquare;
-              if (!sel) {
-                if (!myColor || !canPickPieceForMove(board, clicked, myColor)) return;
-                setSelectedSquare(clicked);
-                return;
-              }
-              if (sel === clicked) {
-                setSelectedSquare(null);
-                return;
-              }
+          id="accl-e2e-board"
+          position={boardPosition}
+          boardOrientation={boardOrientation}
+          animationDuration={0}
+          customSquareStyles={lastMoveSquareStyles}
+          arePiecesDraggable={boardInputEnabled && !isPublicViewer}
+          isDraggablePiece={({ sourceSquare }) => {
+            if (isPublicViewer) return false;
+            if (!sourceSquare || !boardInputEnabled || !myColor) return false;
+            const board = chessRef.current;
+            if (!board) return false;
+            return canPickPieceForMove(board, sourceSquare, myColor);
+          }}
+          onPieceDrop={(sourceSquare, targetSquare) =>
+            onPieceDrop({ sourceSquare, targetSquare })
+          }
+          onSquareClick={(square) => {
+            if (isPublicViewer) return;
+            if (!boardInputEnabled) return;
+            const board = chessRef.current;
+            if (!board) return;
+            const clicked = square;
+            const sel = selectedSquare;
+            if (!sel) {
+              if (!myColor || !canPickPieceForMove(board, clicked, myColor)) return;
+              setSelectedSquare(clicked);
+              return;
+            }
+            if (sel === clicked) {
               setSelectedSquare(null);
-              void onPieceDrop({ sourceSquare: sel, targetSquare: clicked });
-            },
-            showAnimations: false,
-            squareStyles: lastMoveSquareStyles,
-            allowDragging: boardInputEnabled && !isPublicViewer,
-            canDragPiece: ({ square }) => {
-              if (isPublicViewer) return false;
-              if (!square || !boardInputEnabled || !myColor) return false;
-              const board = chessRef.current;
-              if (!board) return false;
-              return canPickPieceForMove(board, square, myColor);
-            },
+              return;
+            }
+            setSelectedSquare(null);
+            void onPieceDrop({ sourceSquare: sel, targetSquare: clicked });
           }}
         />
         {promotionPending && (

@@ -114,12 +114,7 @@ function GameCardView({
         <div
           className={`mx-auto sm:mx-0 w-full ${featured ? "max-w-[min(92vw,280px)]" : "max-w-[min(92vw,220px)]"}`}
         >
-          <Chessboard
-            options={{
-              id: `nexus-${game.id}`,
-              position: game.fen || "start",
-            }}
-          />
+          <Chessboard id={`nexus-${game.id}`} position={game.fen || "start"} />
         </div>
         <div
           className={`absolute inset-0 rounded-md opacity-0 group-active:opacity-100 md:group-hover:opacity-100 transition flex items-center justify-center pointer-events-none ${

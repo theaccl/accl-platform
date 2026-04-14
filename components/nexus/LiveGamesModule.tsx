@@ -142,7 +142,7 @@ function LiveGamesModule({
         >
           <div className="flex items-start gap-3 sm:gap-2">
             <div className="shrink-0 rounded-md overflow-hidden border border-black/30" style={{ width: narrow ? 64 : 58 }}>
-              <Chessboard options={{ id: `mini-${g.id}`, position: g.fen || "start" }} />
+              <Chessboard id={`mini-${g.id}`} position={g.fen || "start"} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-medium truncate">{g.white_label} vs {g.black_label}</p>
