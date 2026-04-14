@@ -56,6 +56,15 @@ import { useReplayState, type MoveLogRow, type ReplayPairedRow } from '@/hooks/u
 import { trackGrowthEvent } from '@/lib/public/funnelTracking';
 import { getStoredEntrySource, getStoredReferral, setFirstAction } from '@/lib/public/referralTracking';
 import TrainerPanel from '@/components/trainer/TrainerPanel';
+import {
+  accessFromPublicHint,
+  type GameRouteAccessKind,
+  shouldUsePublicSpectateRpc,
+} from '@/lib/gameRouteVisibility';
+import { buildGameLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
+import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
+import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
+import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 
 type GameRow = {
   id: string;
@@ -731,9 +740,11 @@ export default function GamePage() {
   const viewerEcosystem = searchParams.get('eco') === 'k12' ? 'k12' : 'adult';
 
   const [game, setGame] = useState<GameRow | null>(null);
+  const [gameAccess, setGameAccess] = useState<GameRouteAccessKind>('loading');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState('');
+  const [chatAccessToken, setChatAccessToken] = useState<string | null>(null);
   const [savingMove, setSavingMove] = useState(false);
   const [resigning, setResigning] = useState(false);
   const [drawBusy, setDrawBusy] = useState(false);
@@ -787,7 +798,8 @@ export default function GamePage() {
   }, [gameId]);
 
   useEffect(() => {
-    if (!publicSpectate || !gameId || spectateGrowthTracked.current) return;
+    if (!gameId || spectateGrowthTracked.current) return;
+    if (userId && !publicSpectate) return;
     spectateGrowthTracked.current = true;
     setFirstAction('spectate');
     trackGrowthEvent({
@@ -797,7 +809,7 @@ export default function GamePage() {
       ecosystem: viewerEcosystem,
       meta: { game_id: gameId },
     });
-  }, [publicSpectate, gameId, viewerEcosystem]);
+  }, [publicSpectate, gameId, viewerEcosystem, userId]);
 
   useEffect(() => {
     setPgnExportCount(readPgnExportCount());
@@ -881,7 +893,7 @@ export default function GamePage() {
     }
     let cancelled = false;
     void (async () => {
-      const { data, error } = await supabase.from('profiles').select('id, username').in('id', ids);
+      const { data, error } = await supabase.from('profiles').select('id, username, email').in('id', ids);
       if (cancelled) return;
       if (error) {
         console.log('Display names fetch:', error);
@@ -894,11 +906,11 @@ export default function GamePage() {
       clearBatchedDisplayNameFetchNotice(displayNameFetchFailuresRef, setShowDisplayNameLoadNotice);
       setDisplayNameById((prev) => {
         const next = { ...prev };
-        for (const row of (data ?? []) as { id: string; username: string | null }[]) {
-          next[row.id] = row.username?.trim() || row.id;
+        for (const row of (data ?? []) as { id: string; username: string | null; email: string | null }[]) {
+          next[row.id] = publicDisplayNameFromProfileUsername(row.username, row.id, row.email);
         }
         for (const id of ids) {
-          if (!(id in next)) next[id] = id;
+          if (!(id in next)) next[id] = publicDisplayNameFromProfileUsername(null, id);
         }
         return next;
       });
@@ -952,7 +964,15 @@ export default function GamePage() {
   }, [game, userId]);
 
   const isSpectator = myColor === null;
-  const isPublicViewer = publicSpectate && !userId;
+  const isPublicViewer = !userId && !!game;
+
+  useEffect(() => {
+    if (!isPublicViewer) return;
+    setShowAnalysisPanel(false);
+    setDevEngineAnalysisEnabled(false);
+    setEngineAnalysisRows(null);
+    setEngineAnalysisBusy(false);
+  }, [isPublicViewer]);
 
   /** Server-side analysis artifacts: participants only, never on public replay. */
   const canLoadFinishedGameArtifacts =
@@ -1075,114 +1095,149 @@ export default function GamePage() {
 
   const loadMoveLogs = useCallback(async () => {
     if (!gameId) return;
-    if (publicSpectate && (!game || !isGameRecordFinished(game))) return;
+    const readOnlyPublic = publicSpectate || !userId;
+    if (readOnlyPublic && (!game || !isGameRecordFinished(game))) return;
     const { data } = await supabase
       .from('game_move_logs')
       .select('san, fen_before, fen_after, created_at, from_sq, to_sq')
       .eq('game_id', gameId)
       .order('created_at', { ascending: true });
     setMoveLogs((data ?? []) as MoveLogRow[]);
-  }, [gameId, publicSpectate, game, setMoveLogs]);
+  }, [gameId, publicSpectate, userId, game, setMoveLogs]);
 
-  const loadGameSnapshot = useCallback(async () => {
-    if (!gameId) return;
-    if (publicSpectate) {
-      const { data, error } = await supabase.rpc('get_public_spectate_game_snapshot', {
-        p_game_id: gameId,
-        p_viewer_ecosystem: viewerEcosystem,
-      });
-      if (error) {
-        setMessage(`Spectate unavailable: ${error.message}`);
-        setGame(null);
-        setMoveLogs([]);
-        return;
-      }
-      if (!data || typeof data !== 'object') {
-        setMessage(
-          'This game is not available for public viewing (wrong track, not found, or not spectatable yet).'
-        );
-        setGame(null);
-        setMoveLogs([]);
-        return;
-      }
-      const snap = data as Record<string, unknown>;
-      const gamePayload = snap.game as GameRow | undefined;
-      if (!gamePayload) {
-        setMessage('Spectate payload incomplete.');
-        setGame(null);
-        setMoveLogs([]);
-        return;
-      }
-      setGame(gamePayload);
-      setMoveLogs((Array.isArray(snap.move_logs) ? snap.move_logs : []) as MoveLogRow[]);
-      const labels = snap.spectate_labels as { white?: string; black?: string } | undefined;
-      if (labels && typeof labels === 'object') {
-        setDisplayNameById((prev) => {
-          const next = { ...prev };
-          if (labels.white && gamePayload.white_player_id) next[gamePayload.white_player_id] = labels.white;
-          if (labels.black && gamePayload.black_player_id) next[gamePayload.black_player_id] = labels.black;
-          return next;
+  const loadGameSnapshot = useCallback(
+    async (authUid?: string | null) => {
+      if (!gameId) return;
+      const uid = authUid !== undefined ? authUid : userId;
+      const usePublicRpc = shouldUsePublicSpectateRpc({ publicSpectateUrlFlag: publicSpectate, userId: uid });
+
+      if (usePublicRpc) {
+        const { data, error } = await supabase.rpc('get_public_spectate_game_snapshot', {
+          p_game_id: gameId,
+          p_viewer_ecosystem: viewerEcosystem,
         });
+        if (error) {
+          setMessage(`Spectate unavailable: ${error.message}`);
+          setGame(null);
+          setMoveLogs([]);
+          setGameAccess('spectate_unavailable');
+          return;
+        }
+        if (!data || typeof data !== 'object') {
+          if (!uid) {
+            const { data: hint, error: hintErr } = await supabase.rpc('game_public_route_hint', {
+              p_game_id: gameId,
+              p_viewer_ecosystem: viewerEcosystem,
+            });
+            if (hintErr) {
+              setMessage(hintErr.message);
+              setGameAccess('spectate_unavailable');
+            } else {
+              setGameAccess(accessFromPublicHint(hint as string));
+            }
+          } else {
+            setMessage(
+              'This game is not available for public viewing (wrong track, not found, or not spectatable yet).'
+            );
+            setGameAccess('spectate_unavailable');
+          }
+          setGame(null);
+          setMoveLogs([]);
+          return;
+        }
+        const snap = data as Record<string, unknown>;
+        const gamePayload = snap.game as GameRow | undefined;
+        if (!gamePayload) {
+          setMessage('Spectate payload incomplete.');
+          setGame(null);
+          setMoveLogs([]);
+          setGameAccess('spectate_unavailable');
+          return;
+        }
+        setGame(gamePayload);
+        setMoveLogs((Array.isArray(snap.move_logs) ? snap.move_logs : []) as MoveLogRow[]);
+        const labels = snap.spectate_labels as { white?: string; black?: string } | undefined;
+        if (labels && typeof labels === 'object') {
+          setDisplayNameById((prev) => {
+            const next = { ...prev };
+            if (labels.white && gamePayload.white_player_id) next[gamePayload.white_player_id] = labels.white;
+            if (labels.black && gamePayload.black_player_id) next[gamePayload.black_player_id] = labels.black;
+            return next;
+          });
+        }
+        setGameAccess('ok');
+        return;
       }
-      return;
-    }
 
-    const { data, error } = await supabase.from('games').select('*').eq('id', gameId).single();
-    if (error) {
-      setMessage(error.message);
-      setGame(null);
-      return;
-    }
-    setGame(data as GameRow);
-  }, [gameId, publicSpectate, viewerEcosystem, setMoveLogs]);
+      const { data, error } = await supabase.from('games').select('*').eq('id', gameId).single();
+      if (error) {
+        setMessage(error.message);
+        setGame(null);
+        setMoveLogs([]);
+        if (error.code === 'PGRST116') {
+          setGameAccess('not_found');
+        } else {
+          setGameAccess('spectate_unavailable');
+        }
+        return;
+      }
+      setGame(data as GameRow);
+      setGameAccess('ok');
+    },
+    [gameId, publicSpectate, userId, viewerEcosystem, setMoveLogs]
+  );
 
   useEffect(() => {
     const loadGame = async () => {
       if (!gameId) {
         setLoading(false);
         setGame(null);
+        setGameAccess('not_found');
         return;
       }
 
       setLoading(true);
       setMessage('');
       setGame(null);
+      setGameAccess('loading');
 
       const { data: authData } = await supabase.auth.getUser();
       const uid = authData.user?.id ?? '';
-      if (!uid) {
-        if (!publicSpectate) {
-          setLoading(false);
-          router.replace('/login');
-          return;
-        }
-        setUserId('');
-      } else {
-        setUserId(uid);
-      }
+      setUserId(uid);
 
       try {
-        await loadGameSnapshot();
+        await loadGameSnapshot(uid);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load game';
         setMessage(msg);
         setGame(null);
+        setGameAccess('spectate_unavailable');
       } finally {
         setLoading(false);
       }
     };
 
     void loadGame();
-  }, [gameId, loadGameSnapshot, router, publicSpectate]);
+  }, [gameId, loadGameSnapshot]);
 
   useEffect(() => {
-    if (publicSpectate) return;
+    if (!userId) {
+      setChatAccessToken(null);
+      return;
+    }
+    void supabase.auth.getSession().then(({ data }) => {
+      setChatAccessToken(data.session?.access_token ?? null);
+    });
+  }, [userId]);
+
+  useEffect(() => {
+    if (publicSpectate || !userId) return;
     void loadMoveLogs();
-  }, [loadMoveLogs]);
+  }, [loadMoveLogs, publicSpectate, userId]);
 
   useEffect(() => {
     if (!gameId) return;
-    if (publicSpectate) return;
+    if (publicSpectate || !userId) return;
 
     const channel = supabase
       .channel(`game-${gameId}`)
@@ -1207,11 +1262,12 @@ export default function GamePage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [gameId, loadGameSnapshot, loadMoveLogs, publicSpectate]);
+  }, [gameId, loadGameSnapshot, loadMoveLogs, publicSpectate, userId]);
 
   /** Tab focus / visibility: reconcile if realtime missed a frame or user was backgrounded. */
   useEffect(() => {
     if (!gameId) return;
+    if (publicSpectate || !userId) return;
     const refresh = () => {
       void loadGameSnapshot();
       void loadMoveLogs();
@@ -1225,15 +1281,18 @@ export default function GamePage() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [gameId, loadGameSnapshot, loadMoveLogs]);
+  }, [gameId, loadGameSnapshot, loadMoveLogs, publicSpectate, userId]);
 
   /**
    * Live / daily: soft polling while in live mode so turn + clocks match even if
    * postgres_changes for `games` is not enabled in the Supabase project yet.
+   *
+   * E2E / gameplay tests assume ~2000ms polling for convergence — do not reduce without updating those tests.
    */
   useEffect(() => {
     if (!gameId || loading || replayStep !== null) return;
     if (!game) return;
+    if (publicSpectate || !userId) return;
     if (game.status !== 'active' && game.status !== 'waiting') return;
     const tempo = normalizeGameTempo(game.tempo);
     if (tempo !== 'live' && tempo !== 'daily') return;
@@ -1241,7 +1300,7 @@ export default function GamePage() {
     const t = window.setInterval(() => {
       void loadGameSnapshot();
       void loadMoveLogs();
-    }, 2500);
+    }, 2000);
     return () => window.clearInterval(t);
   }, [
     gameId,
@@ -1252,6 +1311,8 @@ export default function GamePage() {
     game?.tempo,
     loadGameSnapshot,
     loadMoveLogs,
+    publicSpectate,
+    userId,
   ]);
 
   useEffect(() => {
@@ -1279,8 +1340,17 @@ export default function GamePage() {
         return;
       }
       setGame(data as GameRow);
+      void loadMoveLogs();
+      window.setTimeout(() => {
+        void loadGameSnapshot();
+        void loadMoveLogs();
+      }, 200);
+      window.setTimeout(() => {
+        void loadGameSnapshot();
+        void loadMoveLogs();
+      }, 900);
     },
-    []
+    [loadGameSnapshot, loadMoveLogs]
   );
 
   useEffect(() => {
@@ -1317,6 +1387,15 @@ export default function GamePage() {
       return;
     }
     setGame(data as GameRow);
+    void loadMoveLogs();
+    window.setTimeout(() => {
+      void loadGameSnapshot();
+      void loadMoveLogs();
+    }, 200);
+    window.setTimeout(() => {
+      void loadGameSnapshot();
+      void loadMoveLogs();
+    }, 900);
   };
 
   /** Open-seat creator exits before Black joins — same RPC as resign (white vacates). */
@@ -1337,6 +1416,15 @@ export default function GamePage() {
       return;
     }
     setGame(data as GameRow);
+    void loadMoveLogs();
+    window.setTimeout(() => {
+      void loadGameSnapshot();
+      void loadMoveLogs();
+    }, 200);
+    window.setTimeout(() => {
+      void loadGameSnapshot();
+      void loadMoveLogs();
+    }, 900);
   };
 
   const handleOfferDraw = async () => {
@@ -1463,7 +1551,7 @@ export default function GamePage() {
   const persistMove = async (
     sourceSquare: string,
     targetSquare: string,
-    move: { san: string },
+    move: { san: string; promotion?: string },
     nextFen: string,
     nextTurn: string,
     fenBefore: string,
@@ -1518,6 +1606,7 @@ export default function GamePage() {
           san: move.san,
           from_sq: sourceSquare,
           to_sq: targetSquare,
+          promotion: move.promotion ?? null,
           move_duration_ms: moveDurationMs,
         },
         gameOver,
@@ -1540,11 +1629,16 @@ export default function GamePage() {
 
     setReplayStep(null);
     setSavingMove(false);
+    // E2E: immediate + 200ms + 900ms reconciliation (keep in sync with resign / terminal handlers).
     void loadMoveLogs();
     window.setTimeout(() => {
       void loadGameSnapshot();
       void loadMoveLogs();
     }, 200);
+    window.setTimeout(() => {
+      void loadGameSnapshot();
+      void loadMoveLogs();
+    }, 900);
   };
 
   const applyPlayerMove = (
@@ -1647,6 +1741,9 @@ export default function GamePage() {
     sourceSquare: string;
     targetSquare: string | null;
   }) => {
+    if (isPublicViewer) {
+      return false;
+    }
     if (replayStep !== null) {
       return false;
     }
@@ -1694,6 +1791,7 @@ export default function GamePage() {
 
   useEffect(() => {
     if (
+      isPublicViewer ||
       isEngineProhibited ||
       !showAnalysisPanel ||
       game?.status !== 'finished' ||
@@ -1768,7 +1866,16 @@ export default function GamePage() {
     return () => {
       cancelled = true;
     };
-  }, [isEngineProhibited, showAnalysisPanel, game?.status, game?.id, game?.fen, moveLogs, wantEngineAnalysis]);
+  }, [
+    isPublicViewer,
+    isEngineProhibited,
+    showAnalysisPanel,
+    game?.status,
+    game?.id,
+    game?.fen,
+    moveLogs,
+    wantEngineAnalysis,
+  ]);
 
   const effectiveAnalysis = useMemo(() => {
     if (!engineAnalysisRows?.length) return null;
@@ -1800,9 +1907,118 @@ export default function GamePage() {
     );
   }
 
-  if (!game) {
+  if (!loading && !game) {
+    if (gameAccess === 'not_found') {
+      return (
+        <div
+          data-testid="game-route-not-found"
+          style={{
+            padding: 24,
+            color: '#888',
+            background: 'black',
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <p style={{ fontSize: 18, marginBottom: 16 }}>Game not found</p>
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            style={{ padding: '8px 16px' }}
+          >
+            Back to lobby
+          </button>
+        </div>
+      );
+    }
+    if (gameAccess === 'sign_in_required') {
+      const loginHref = buildGameLoginRedirect(gameId);
+      return (
+        <div
+          data-testid="game-route-sign-in-required"
+          style={{
+            padding: 24,
+            color: '#e2e8f0',
+            background: 'black',
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 16,
+            maxWidth: 480,
+            margin: '0 auto',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ fontSize: 18, margin: 0 }}>Sign in required</p>
+          <p style={{ fontSize: 14, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+            This game is not available for anonymous viewing. Sign in if you have access to this board.
+          </p>
+          <Link
+            href={loginHref}
+            style={{
+              display: 'inline-block',
+              padding: '10px 20px',
+              background: '#2563eb',
+              color: '#fff',
+              borderRadius: 8,
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            Sign in to view
+          </Link>
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            style={{ padding: '8px 16px', background: 'transparent', color: '#888', border: '1px solid #444' }}
+          >
+            Back to lobby
+          </button>
+        </div>
+      );
+    }
+    if (gameAccess === 'ecosystem_mismatch') {
+      return (
+        <div
+          data-testid="game-route-ecosystem-mismatch"
+          style={{
+            padding: 24,
+            color: '#e2e8f0',
+            background: 'black',
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            maxWidth: 480,
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ fontSize: 18, margin: 0 }}>Different ecosystem</p>
+          <p style={{ fontSize: 14, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+            This game is on another track (for example K–12 vs adult). Open the link from the matching Nexus or add{' '}
+            <code style={{ color: '#cbd5e1' }}>?eco=k12</code> or <code style={{ color: '#cbd5e1' }}>?eco=adult</code> as
+            appropriate.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            style={{ padding: '8px 16px' }}
+          >
+            Back to lobby
+          </button>
+        </div>
+      );
+    }
     return (
       <div
+        data-testid="game-route-unavailable"
         style={{
           padding: 24,
           color: '#888',
@@ -1814,7 +2030,7 @@ export default function GamePage() {
           justifyContent: 'center',
         }}
       >
-        <p style={{ fontSize: 18, marginBottom: 16 }}>Game not found</p>
+        <p style={{ fontSize: 18, marginBottom: 16 }}>{message || 'Unable to load this game.'}</p>
         <button
           type="button"
           onClick={() => router.push('/')}
@@ -1824,6 +2040,10 @@ export default function GamePage() {
         </button>
       </div>
     );
+  }
+
+  if (!game) {
+    return null;
   }
 
   const canPlayMoves = (g: GameRow) =>
@@ -2025,14 +2245,19 @@ export default function GamePage() {
         </p>
       ) : null}
 
-      {isSpectator && (
-        <p style={{ marginBottom: 8 }}>
+      {isSpectator && !isPublicViewer && (
+        <p style={{ marginBottom: 8 }} data-testid="game-logged-in-spectator-label">
           <strong>Spectating</strong>
         </p>
       )}
 
       <p data-testid="game-row-id">
-        <strong>Game ID:</strong> {game.id}
+        <strong>Game ID:</strong>{' '}
+        {isPublicViewer ? (
+          <span data-testid="game-row-id-public">{`${game.id.slice(0, 8)}…`}</span>
+        ) : (
+          game.id
+        )}
       </p>
       <p data-testid="game-row-status">
         <strong>Status:</strong> {game.status}
@@ -2095,6 +2320,7 @@ export default function GamePage() {
               game record. No interactive actions are available in public mode.
             </p>
           ) : null}
+          {!isPublicViewer ? (
           <p
             data-testid="game-record-readonly"
             style={{
@@ -2110,6 +2336,7 @@ export default function GamePage() {
             record. Dragging is disabled; use <strong>Replay</strong> below to step through the moves (
             <strong>Final position</strong> returns to the end of the game).
           </p>
+          ) : null}
           <div
             style={{ marginBottom: 10 }}
           >
@@ -2173,6 +2400,7 @@ export default function GamePage() {
               {finishedGameResultBannerText(game)}
             </p>
           </div>
+          {!isPublicViewer ? (
           <p
             data-testid="rating-classification-debug"
             data-rating-bucket={finishedRatingClass?.bucket ?? ''}
@@ -2192,6 +2420,8 @@ export default function GamePage() {
           >
             {finishedRatingClass ? ratingClassificationSummaryLine(finishedRatingClass) : null}
           </p>
+          ) : null}
+          {!isPublicViewer ? (
           <pre
             data-testid="rating-update-debug"
             style={{
@@ -2213,6 +2443,7 @@ export default function GamePage() {
               ? JSON.stringify(game.rating_last_update, null, 2)
               : 'No rating snapshot on this row yet (unrated free, tournament game, skipped result, or refetch after finish). Trigger runs when status → finished; reload if migration just applied.'}
           </pre>
+          ) : null}
           {canLoadFinishedGameArtifacts ? (
             <div
               data-testid="game-finished-analysis-stub"
@@ -2375,8 +2606,10 @@ export default function GamePage() {
         >
           Back to lobby
         </button>
+        {!isPublicViewer ? (
         <button
           type="button"
+          data-testid="game-export-pgn"
           onClick={() => {
             if (
               !isPgnExportLimitBypassed() &&
@@ -2398,7 +2631,8 @@ export default function GamePage() {
         >
           Export PGN
         </button>
-        {!isEngineProhibited && game.status === 'finished' && (
+        ) : null}
+        {!isPublicViewer && !isEngineProhibited && game.status === 'finished' && (
           <button
             type="button"
             onClick={() => setShowAnalysisPanel((open) => !open)}
@@ -2407,7 +2641,7 @@ export default function GamePage() {
             {showAnalysisPanel ? 'Hide analysis' : 'Analyze Game'}
           </button>
         )}
-        {game.status === 'finished' && game.black_player_id && (
+        {!isPublicViewer && game.status === 'finished' && game.black_player_id && (
           <>
             <p
               style={{
@@ -2525,7 +2759,7 @@ export default function GamePage() {
         </p>
       )}
 
-      {!isEngineProhibited && showAnalysisPanel && game.status === 'finished' && (
+      {!isPublicViewer && !isEngineProhibited && showAnalysisPanel && game.status === 'finished' && (
         <div
           style={{
             marginBottom: 16,
@@ -2783,23 +3017,33 @@ export default function GamePage() {
         </div>
       )}
 
+      {/* TEST CONTRACT: `game-turn-indicator` + `data-game-state` — E2E; UI "waiting" here does not change DB status */}
       {game.status !== 'finished' && (
         <p
           data-testid="game-turn-indicator"
           data-game-state={!bothPlayersSeated(game) ? 'waiting' : 'seated'}
+          data-spectator-readonly={isPublicViewer || (isSpectator && !!userId) ? '1' : '0'}
           style={{
             marginBottom: 8,
-            fontWeight: isMyTurn ? 'bold' : undefined,
-            color: isMyTurn ? 'red' : '#777',
+            fontWeight: isMyTurn && !isSpectator ? 'bold' : undefined,
+            color: isMyTurn && !isSpectator ? 'red' : '#777',
           }}
         >
-          {!bothPlayersSeated(game)
-            ? 'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
-            : !canPlayMoves(game)
-              ? 'Game is not ready for moves yet.'
-              : isMyTurn
-                ? 'YOUR TURN'
-                : "OPPONENT'S TURN"}
+          {isPublicViewer || (isSpectator && !!userId) ? (
+            !bothPlayersSeated(game) ? (
+              <>Waiting for players — you are watching (read-only).</>
+            ) : (
+              <>Live position — read-only for spectators.</>
+            )
+          ) : !bothPlayersSeated(game) ? (
+            'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
+          ) : !canPlayMoves(game) ? (
+            'Game is not ready for moves yet.'
+          ) : isMyTurn ? (
+            'YOUR TURN'
+          ) : (
+            "OPPONENT'S TURN"
+          )}
         </p>
       )}
 
@@ -2819,6 +3063,7 @@ export default function GamePage() {
 
       <div
         data-testid="game-board"
+        data-spectator-readonly={isPublicViewer ? '1' : '0'}
         style={{
           position: 'relative',
           zIndex: 100,
@@ -2836,6 +3081,7 @@ export default function GamePage() {
             boardOrientation,
             onPieceDrop,
             onSquareClick: ({ square }) => {
+              if (isPublicViewer) return;
               if (!boardInputEnabled) return;
               const board = chessRef.current;
               if (!board) return;
@@ -2855,8 +3101,9 @@ export default function GamePage() {
             },
             showAnimations: false,
             squareStyles: lastMoveSquareStyles,
-            allowDragging: boardInputEnabled,
+            allowDragging: boardInputEnabled && !isPublicViewer,
             canDragPiece: ({ square }) => {
+              if (isPublicViewer) return false;
               if (!square || !boardInputEnabled || !myColor) return false;
               const board = chessRef.current;
               if (!board) return false;
@@ -2956,6 +3203,24 @@ export default function GamePage() {
           </div>
         )}
       </div>
+      {userId ? (
+        <div style={{ marginTop: 20, maxWidth: 520 }}>
+          <TesterBugReportTrigger
+            label="Report issue"
+            className="rounded-md border border-amber-500/35 bg-amber-950/20 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/35"
+          />
+        </div>
+      ) : null}
+      {!isPublicViewer && game ? (
+        <GameTesterChatPanels
+          gameId={game.id}
+          gameStatus={game.status}
+          userId={userId}
+          isSpectator={isSpectator}
+          viewerEcosystem={viewerEcosystem}
+          accessToken={chatAccessToken}
+        />
+      ) : null}
       {isEngineProhibited && (
         <p style={{ marginTop: 20, color: '#e57373', fontSize: 12 }}>
           Analysis features are strictly disabled for this live PIT match.

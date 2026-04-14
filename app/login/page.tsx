@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { getStoredEntrySource, getStoredReferral } from '@/lib/public/referralTracking';
+import { validateAcclUsername } from '@/lib/usernameRules';
 import NavigationBar from '@/components/NavigationBar';
 
 async function attachGrowthProfile(accessToken: string) {
@@ -24,6 +25,19 @@ async function attachGrowthProfile(accessToken: string) {
   } catch {
     /* non-blocking */
   }
+}
+
+async function resolvePostAuthRoute(accessToken: string, nextParam: string | null): Promise<string> {
+  await attachGrowthProfile(accessToken);
+  const safe = getSafePostLoginRedirect(nextParam);
+  const res = await fetch('/api/profile/onboarding-status', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const j = (await res.json()) as { needsUsername?: boolean };
+  if (j.needsUsername) {
+    return `/onboarding/username?next=${encodeURIComponent(safe)}`;
+  }
+  return safe;
 }
 
 function loginShell(children: React.ReactNode) {
@@ -47,12 +61,12 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [signupUsername, setSignupUsername] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState(false);
   const intent = (searchParams.get('intent') ?? '').toLowerCase();
   const signupIntent = intent === 'signup';
-  const nextPath = getSafePostLoginRedirect(searchParams.get('next'));
 
   useEffect(() => {
     let cancelled = false;
@@ -67,16 +81,20 @@ function LoginPageInner() {
       if (cancelled) return;
       if (data.user?.id) {
         const { data: sess } = await supabase.auth.getSession();
-        if (sess.session?.access_token) void attachGrowthProfile(sess.session.access_token);
-        router.replace(nextPath);
+        if (sess.session?.access_token) {
+          const dest = await resolvePostAuthRoute(sess.session.access_token, searchParams.get('next'));
+          router.replace(dest);
+        }
         return;
       }
       setChecked(true);
     })();
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user?.id) {
-        if (session.access_token) void attachGrowthProfile(session.access_token);
-        router.replace(nextPath);
+      if (session?.user?.id && session.access_token) {
+        void (async () => {
+          const dest = await resolvePostAuthRoute(session.access_token, searchParams.get('next'));
+          router.replace(dest);
+        })();
       }
     });
     return () => {
@@ -84,7 +102,7 @@ function LoginPageInner() {
       window.clearTimeout(showFormFallback);
       listener.subscription.unsubscribe();
     };
-  }, [router, nextPath]);
+  }, [router, searchParams]);
 
   const signIn = async () => {
     setBusy(true);
@@ -95,14 +113,40 @@ function LoginPageInner() {
       setMessage(error.message);
       return;
     }
-    if (data.session?.access_token) void attachGrowthProfile(data.session.access_token);
-    router.replace(nextPath);
+    if (data.session?.access_token) {
+      try {
+        await fetch('/api/auth/audit-login', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+          },
+        });
+      } catch {
+        /* non-blocking */
+      }
+      const dest = await resolvePostAuthRoute(data.session.access_token, searchParams.get('next'));
+      router.replace(dest);
+    }
   };
 
   const signUp = async () => {
     setBusy(true);
     setMessage('');
-    const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+    let signupData: { username: string } | undefined;
+    if (signupIntent) {
+      const uv = validateAcclUsername(signupUsername);
+      if (!uv.ok) {
+        setMessage(uv.error);
+        setBusy(false);
+        return;
+      }
+      signupData = { username: uv.username };
+    }
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      ...(signupData ? { options: { data: signupData } } : {}),
+    });
     setBusy(false);
     if (error) {
       setMessage(error.message);
@@ -162,6 +206,26 @@ function LoginPageInner() {
                 className={loginInputClass}
               />
             </div>
+            {signupIntent ? (
+              <div>
+                <label htmlFor="signup-username" className="block text-xs font-medium text-gray-400 mb-1.5">
+                  Username
+                </label>
+                <input
+                  id="signup-username"
+                  data-testid="signup-username"
+                  type="text"
+                  placeholder="your_public_name"
+                  value={signupUsername}
+                  onChange={(e) => setSignupUsername(e.target.value)}
+                  autoComplete="username"
+                  className={loginInputClass}
+                />
+                <p className="mt-1.5 text-[11px] text-gray-500 leading-relaxed">
+                  Public identity (3–20 chars, letter then letters, numbers, underscores). Never your email.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3">

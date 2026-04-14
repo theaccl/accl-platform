@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { publicIdentityFromProfileUsername } from '@/lib/profileIdentity';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
 
@@ -175,16 +176,15 @@ export default function PublicProfilePage() {
     );
   }
 
-  const displayName = payload.profile.username?.trim() || 'Player';
-  const initials = initialsFromPublicName(payload.profile.username, payload.profile.id);
+  const isSelf = viewerId != null && viewerId === payload.profile.id;
+  const displayName = publicIdentityFromProfileUsername(payload.profile.username, null);
+  const initials = initialsFromPublicName(displayName, payload.profile.id);
   const avatarUrl = payload.profile.avatar_path
     ? supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(payload.profile.avatar_path).data.publicUrl
     : null;
   const joined = payload.profile.created_at
     ? new Date(payload.profile.created_at).toLocaleDateString()
     : '—';
-  const isSelf = viewerId != null && viewerId === payload.profile.id;
-
   return (
     <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
       <NavigationBar />

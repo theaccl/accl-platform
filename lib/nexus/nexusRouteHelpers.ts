@@ -8,7 +8,8 @@
 
 import { isSafeHubDocumentId, isValidNexusHubHref } from "@/lib/nexus/nexusHubMapping";
 
-const DEFAULT_POST_LOGIN_PATH = "/modes";
+/** Default landing after sign-in when `next` is absent or unsafe (tester entry surface). */
+const DEFAULT_POST_LOGIN_PATH = "/tester/welcome";
 
 /**
  * Strict post-login redirect target. URLSearchParams already decodes `next` once.
@@ -27,6 +28,9 @@ export function getSafePostLoginRedirect(nextParam: string | null | undefined): 
   if (next.includes("..")) return DEFAULT_POST_LOGIN_PATH;
   if (next.length > 512) return DEFAULT_POST_LOGIN_PATH;
   if (next === "/login" || next.startsWith("/login?") || next.startsWith("/login/")) {
+    return DEFAULT_POST_LOGIN_PATH;
+  }
+  if (next.startsWith("/onboarding")) {
     return DEFAULT_POST_LOGIN_PATH;
   }
 
@@ -61,6 +65,13 @@ export function buildLoginRedirect(next: string): string {
   const raw = String(next ?? "").trim();
   const path = raw ? (raw.startsWith("/") ? raw : `/${raw}`) : "/nexus";
   return `/login?next=${encodeURIComponent(path)}`;
+}
+
+/** Safe login link back to a specific game after sign-in (uses getSafePostLoginRedirect). */
+export function buildGameLoginRedirect(gameId: string): string {
+  const path = buildGameHref(gameId);
+  if (!path) return buildLoginRedirect(DEFAULT_POST_LOGIN_PATH);
+  return buildLoginRedirect(getSafePostLoginRedirect(path));
 }
 
 /** Same URL as `buildLoginRedirect("/nexus")` — safe for client components and middleware. */

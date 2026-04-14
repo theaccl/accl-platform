@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 import {
   buildGameHref,
+  buildGameLoginRedirect,
   buildTournamentHref,
   getSafePostLoginRedirect,
   isValidGameRoute,
@@ -12,11 +13,11 @@ const LOWER = "750e8400-e29b-41d4-a716-446655440002";
 const UPPER = "750E8400-E29B-41D4-A716-446655440002";
 
 test.describe("getSafePostLoginRedirect", () => {
-  test("empty or missing next falls back to /modes", () => {
-    expect(getSafePostLoginRedirect(null)).toBe("/modes");
-    expect(getSafePostLoginRedirect(undefined)).toBe("/modes");
-    expect(getSafePostLoginRedirect("")).toBe("/modes");
-    expect(getSafePostLoginRedirect("   ")).toBe("/modes");
+  test("empty or missing next falls back to default post-login path", () => {
+    expect(getSafePostLoginRedirect(null)).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect(undefined)).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("   ")).toBe("/tester/welcome");
   });
 
   test("internal paths pass through", () => {
@@ -33,22 +34,27 @@ test.describe("getSafePostLoginRedirect", () => {
   });
 
   test("rejects open redirects and protocol tricks", () => {
-    expect(getSafePostLoginRedirect("//evil.com")).toBe("/modes");
-    expect(getSafePostLoginRedirect("//evil.com/path")).toBe("/modes");
-    expect(getSafePostLoginRedirect("https://evil.com")).toBe("/modes");
-    expect(getSafePostLoginRedirect("http://evil.com")).toBe("/modes");
-    expect(getSafePostLoginRedirect("javascript:alert(1)")).toBe("/modes");
+    expect(getSafePostLoginRedirect("//evil.com")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("//evil.com/path")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("https://evil.com")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("http://evil.com")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("javascript:alert(1)")).toBe("/tester/welcome");
   });
 
   test("rejects backslashes and traversal", () => {
-    expect(getSafePostLoginRedirect("/foo\\bar")).toBe("/modes");
-    expect(getSafePostLoginRedirect("\\\\evil\\path")).toBe("/modes");
-    expect(getSafePostLoginRedirect("/safe/../admin")).toBe("/modes");
+    expect(getSafePostLoginRedirect("/foo\\bar")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("\\\\evil\\path")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("/safe/../admin")).toBe("/tester/welcome");
   });
 
   test("avoids redirect loop to login", () => {
-    expect(getSafePostLoginRedirect("/login")).toBe("/modes");
-    expect(getSafePostLoginRedirect("/login?next=/nexus")).toBe("/modes");
+    expect(getSafePostLoginRedirect("/login")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("/login?next=/nexus")).toBe("/tester/welcome");
+  });
+
+  test("avoids onboarding paths as post-login targets", () => {
+    expect(getSafePostLoginRedirect("/onboarding/username")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("/onboarding/username?next=/nexus")).toBe("/tester/welcome");
   });
 });
 
@@ -70,5 +76,13 @@ test.describe("UUID validation (via mapping /i)", () => {
     expect(isValidGameRoute("")).toBe(false);
     expect(buildGameHref("bad")).toBe("");
     expect(buildTournamentHref("")).toBe("");
+  });
+});
+
+test.describe("buildGameLoginRedirect", () => {
+  test("encodes next path to the game route", () => {
+    const href = buildGameLoginRedirect(LOWER);
+    const next = new URL(href, "http://localhost").searchParams.get("next");
+    expect(next).toBe("/game/" + LOWER);
   });
 });

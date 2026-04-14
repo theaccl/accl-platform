@@ -1,5 +1,6 @@
 import Link from "next/link";
 import NavigationBar from "@/components/NavigationBar";
+import { HomePlaySection } from "@/components/HomePlaySection";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
 
@@ -33,6 +34,14 @@ export default async function HomePage() {
             className="grid grid-cols-1 sm:grid-cols-2 gap-3"
             aria-label="Primary entry"
           >
+            {user ? (
+              <Link
+                href="/tester/welcome"
+                className="inline-flex items-center justify-center rounded-xl border border-amber-500/35 bg-amber-950/20 px-4 py-3.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-950/35 hover:border-amber-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117] sm:col-span-2 max-w-md sm:max-w-none mx-auto w-full"
+              >
+                Tester welcome
+              </Link>
+            ) : null}
             <div className="flex flex-col gap-1">
               <Link
                 href={enterNexusHref}
@@ -50,6 +59,11 @@ export default async function HomePage() {
             >
               Play Free
             </Link>
+            {user ? (
+              <div className="sm:col-span-2 mx-auto w-full max-w-md">
+                <HomePlaySection />
+              </div>
+            ) : null}
             <Link
               href="/tournaments"
               className="inline-flex items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117] sm:col-span-2 max-w-md sm:max-w-none mx-auto w-full"

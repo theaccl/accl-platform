@@ -80,9 +80,13 @@ async function saveAuthStateForUser(input: {
   await input.page.getByTestId('login-email').fill(input.email);
   await input.page.getByTestId('login-password').fill(input.password);
   await input.page.getByTestId('login-submit').click();
-  await input.page.waitForURL((url) => url.pathname === ROUTES.home || url.pathname === '/modes', {
-    timeout: 30_000,
-  });
+  await input.page.waitForURL(
+    (url) =>
+      url.pathname === ROUTES.home || url.pathname === '/modes' || url.pathname === '/tester/welcome',
+    {
+      timeout: 30_000,
+    },
+  );
   await expect(input.page.getByTestId('lobby-ready')).toBeAttached({ timeout: 30_000 });
   await mirrorSupabaseSessionToCookie(input.page);
   await input.page.context().storageState({ path: input.outputPath });

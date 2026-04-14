@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TesterBugReportTrigger } from "@/components/TesterBugReportDialog";
+import { useProfileUsername } from "@/hooks/useProfileUsername";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -37,9 +39,15 @@ function AcclMark() {
 const profilePanelOpen =
   "pointer-events-none invisible absolute left-0 top-full z-50 pt-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:opacity-100";
 
-function ProfileIdentityAnchor({ sessionUser }: { sessionUser: User | null }) {
+function ProfileIdentityAnchor({
+  sessionUser,
+  profileUsername,
+}: {
+  sessionUser: User | null;
+  profileUsername: string | null;
+}) {
   const router = useRouter();
-  const prev = identityPreviewFromUser(sessionUser);
+  const prev = identityPreviewFromUser(sessionUser, { profileUsername });
 
   return (
     <div className="group relative z-50">
@@ -61,7 +69,7 @@ function ProfileIdentityAnchor({ sessionUser }: { sessionUser: User | null }) {
             <AcclMark />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-white">{prev.displayName}</p>
-              <p className="text-xs text-gray-500">ACCL Identity</p>
+              <p className="text-xs text-gray-500">Public identity</p>
             </div>
           </div>
           <div className="space-y-3">
@@ -115,6 +123,7 @@ export default function NavigationBar() {
   const [checked, setChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const profileUsername = useProfileUsername(sessionUser);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,12 +158,12 @@ export default function NavigationBar() {
   return (
     <header className="mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 pb-0">
-        <div className="flex h-[52px] items-center justify-between">
-          <div className="flex items-center gap-4">
-            <nav className="flex items-center gap-4" aria-label="Account">
+        <div className="flex min-h-[52px] flex-wrap items-center justify-between gap-y-2 py-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+            <nav className="flex shrink-0 items-center gap-3" aria-label="Account">
               {checked ? (
                 isLoggedIn ? (
-                  <ProfileIdentityAnchor sessionUser={sessionUser} />
+                  <ProfileIdentityAnchor sessionUser={sessionUser} profileUsername={profileUsername} />
                 ) : (
                   <>
                     <button type="button" onClick={() => router.push("/login")} className={navBtnAuth}>
@@ -169,9 +178,35 @@ export default function NavigationBar() {
                 <span className="text-sm text-gray-400">…</span>
               )}
             </nav>
+            {checked && isLoggedIn ? (
+              <nav
+                className="flex max-w-full min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3"
+                aria-label="Tester and play areas"
+              >
+                <Link href="/tester/welcome" className={navBtn}>
+                  Welcome
+                </Link>
+                <Link href="/nexus" className={navBtn}>
+                  NEXUS
+                </Link>
+                <Link href="/free" className={navBtn}>
+                  Play free
+                </Link>
+                <Link href="/tester/lobby-chat" className={navBtn}>
+                  Lobby chat
+                </Link>
+                <Link href="/tester/messages" className={navBtn}>
+                  Messages
+                </Link>
+                <TesterBugReportTrigger
+                  className={`${navBtn} text-amber-200/90`}
+                  label="Report"
+                />
+              </nav>
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <nav className="flex items-center gap-3" aria-label="Site">
               <button type="button" onClick={() => router.back()} className={navBtnSite}>
                 Back

@@ -1,25 +1,47 @@
+import Link from "next/link";
 import NavigationBar from "@/components/NavigationBar";
-import HomeButton from "@/components/HomeButton";
+import { FreePlayLobbyClient } from "@/components/FreePlayLobbyClient";
+import { FreePlayMatchPanel } from "@/components/FreePlayMatchPanel";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
+import { redirect } from "next/navigation";
+
+const navLinkClass =
+  "text-sm font-medium text-gray-300 underline decoration-gray-600 underline-offset-2 hover:text-white";
 
 export default async function FreePage() {
   const user = await getSupabaseUserFromCookies();
-  const createGameRoute = user ? "/free/create" : buildLoginRedirect("/free/create");
+  if (!user) {
+    redirect(buildLoginRedirect("/free"));
+  }
+
+  const createGameRoute = "/free/create";
 
   return (
     <div className="min-h-screen bg-[#0D1117] text-white flex flex-col">
       <NavigationBar />
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6">
-        <h1 className="text-3xl font-bold mb-4">FREE PLAY</h1>
-
-        <HomeButton label="PLAY" route="/free/play" />
-        <HomeButton label="CREATE GAME" route={createGameRoute} />
-        <HomeButton label="PLAY COMPUTER" route="/free/computer" />
-        <HomeButton label="ACTIVE GAMES" route="/free/active" />
-        <HomeButton label="DIRECT CHALLENGES" route="/free/challenges" />
+      <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-[#243244] px-4 py-3 text-center">
+        <Link href={createGameRoute} className={navLinkClass}>
+          Create game
+        </Link>
+        <span
+          className="cursor-not-allowed text-sm font-medium text-gray-500 no-underline"
+          title="Play computer is unavailable until bot identities are provisioned in this environment."
+        >
+          Play computer (unavailable)
+        </span>
+        <Link href="/free/active" className={navLinkClass}>
+          Active games
+        </Link>
+        <Link href="/free/challenges" className={navLinkClass}>
+          Direct challenges
+        </Link>
       </div>
+
+      <FreePlayLobbyClient>
+        <FreePlayMatchPanel />
+      </FreePlayLobbyClient>
     </div>
   );
 }

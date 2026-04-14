@@ -19,7 +19,7 @@ test.describe('login', () => {
     const password = e2eUserPassword()!;
     await loginAs(page, email, password);
     const path = new URL(page.url()).pathname;
-    expect(path === '/' || path === '/modes').toBeTruthy();
+    expect(path === '/' || path === '/modes' || path === '/tester/welcome').toBeTruthy();
     await expect(page.getByTestId('lobby-ready')).toBeAttached();
   });
 
@@ -54,7 +54,8 @@ test.describe('login', () => {
       await loginAs(page, e2eUserEmail()!, e2eUserPassword()!);
       await page.goto(ROUTES.login);
       await expect(page).toHaveURL(
-        (u) => u.pathname === ROUTES.home || u.pathname === '/modes',
+        (u) =>
+          u.pathname === ROUTES.home || u.pathname === '/modes' || u.pathname === '/tester/welcome',
         { timeout: 30_000 }
       );
       await expect(page.getByTestId('lobby-ready')).toBeAttached({ timeout: 20_000 });

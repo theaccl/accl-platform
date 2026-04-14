@@ -72,9 +72,12 @@ export async function POST(request: Request): Promise<Response> {
   let supabase;
   try {
     supabase = createServiceRoleClient();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Service configuration error';
-    return json({ error: msg }, 503);
+  } catch {
+    auditApiLog('bot_game_start', { result: 'service_config', user: shortId(userId) });
+    return json(
+      { error: 'service_unavailable', message: 'Service temporarily unavailable. Try again in a moment.' },
+      503,
+    );
   }
 
   const validation = await getRuntimeConfigValidationReport();
@@ -122,7 +125,10 @@ export async function POST(request: Request): Promise<Response> {
 
   if (error) {
     auditApiLog('bot_game_start', { result: 'db_error', user: shortId(userId), bot });
-    return json({ error: error.message }, 500);
+    return json(
+      { error: 'game_create_failed', message: 'Could not start the game. Try again in a moment.' },
+      503,
+    );
   }
   auditApiLog('bot_game_start', {
     result: 'ok',

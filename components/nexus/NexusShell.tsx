@@ -4,6 +4,7 @@ import NexusActiveTournaments from "@/components/nexus/NexusActiveTournaments";
 import NexusHeader from "@/components/nexus/NexusHeader";
 import NexusIdentitySummary from "@/components/nexus/NexusIdentitySummary";
 import NexusQuickNav from "@/components/nexus/NexusQuickNav";
+import NexusTesterBugReportRow from "@/components/nexus/NexusTesterBugReportRow";
 import NexusRecentResults from "@/components/nexus/NexusRecentResults";
 import NexusStandingContext from "@/components/nexus/NexusStandingContext";
 import NexusSystemActivity from "@/components/nexus/NexusSystemActivity";
@@ -53,7 +54,8 @@ export default function NexusShell({ data }: { data: NexusHubPayload }) {
           ) : null}
         </div>
 
-        <div className="order-2">
+        <div className="order-2 flex flex-col gap-2">
+          <NexusTesterBugReportRow />
           <NexusQuickNav items={data.quickNav} />
         </div>
       </div>

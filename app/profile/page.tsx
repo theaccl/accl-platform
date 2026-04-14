@@ -7,7 +7,9 @@ import type { User } from "@supabase/supabase-js";
 import NavigationBar from "@/components/NavigationBar";
 import PlayerNexusInsightsPanel from "@/components/PlayerNexusInsightsPanel";
 import ProfileLogOutButton from "@/components/profile/ProfileLogOutButton";
-import { identityPreviewFromUser } from "@/lib/profileIdentity";
+import { ProfileUsernameCallout } from "@/components/profile/ProfileUsernameCallout";
+import { useProfileUsername } from "@/hooks/useProfileUsername";
+import { identityPreviewFromUser, publicIdentityFromProfileUsername } from "@/lib/profileIdentity";
 import { supabase } from "@/lib/supabaseClient";
 
 const nexusCard =
@@ -32,7 +34,8 @@ export default function ProfilePage() {
     };
   }, []);
 
-  const prev = identityPreviewFromUser(user);
+  const profileUsername = useProfileUsername(user);
+  const prev = identityPreviewFromUser(user, { profileUsername });
 
   return (
     <div className="min-h-screen bg-[#0D1117] text-white">
@@ -42,6 +45,8 @@ export default function ProfilePage() {
         <div className="flex w-full shrink-0 justify-end">
           <ProfileLogOutButton />
         </div>
+
+        <ProfileUsernameCallout username={profileUsername} accountEmail={user?.email ?? null} />
 
         {/* Main identity card — Nexus-style */}
         <section className={`${nexusCard} p-6 sm:p-8`}>
@@ -59,8 +64,11 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="min-w-0 flex-1 space-y-3 text-center sm:text-left">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">ACCL Identity</p>
-              <h1 className="text-2xl font-bold tracking-tight text-white">{prev.displayName}</h1>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">Public identity</p>
+              <h1 className="text-2xl font-bold tracking-tight text-white">
+                {publicIdentityFromProfileUsername(profileUsername, null)}
+              </h1>
+              <p className="text-xs text-gray-500">Same username as in the Username card above — not email.</p>
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                 <span className="rounded-lg border border-[#2a3442] bg-[#151d2c] px-3 py-1.5 text-sm text-gray-200">
                   <span className="text-gray-500">ELO </span>
@@ -96,6 +104,12 @@ export default function ProfilePage() {
         <PlayerNexusInsightsPanel />
 
         <div className="flex flex-col gap-4">
+          <Link
+            href="/account"
+            className="w-full rounded-xl border border-[#2a3442] bg-[#101722] py-4 text-center text-base font-semibold text-gray-100 transition hover:bg-[#192235]"
+          >
+            MANAGE ACCOUNT
+          </Link>
           <Link
             href="/vault"
             className="w-full rounded-xl bg-[#161b22] py-4 text-center text-lg font-semibold transition hover:bg-[#21262d]"

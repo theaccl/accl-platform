@@ -26,6 +26,8 @@ import { RatedUnratedToggle } from '@/components/RatedUnratedToggle';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
 import { logLiveTimeControlInsert, logSupabaseWriteError } from '@/lib/logSupabaseWriteError';
+import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
+import { validateAcclUsername } from '@/lib/usernameRules';
 import { supabase } from '@/lib/supabaseClient';
 
 type Profile = {
@@ -58,16 +60,75 @@ function tcChipStyle(active: boolean, disabled: boolean): CSSProperties {
 type Props = {
   /** Anchor id for in-page links */
   anchorId?: string;
+  /**
+   * One primary action: resolve opponent (email or validated username) and send the challenge.
+   * Use on `/free/create` so the flow cannot appear to do nothing.
+   */
+  singleStep?: boolean;
 };
 
-export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
+type LookupOutcome =
+  | { ok: true; profile: Profile }
+  | {
+      ok: false;
+      message: string;
+      code: 'empty' | 'invalid_username' | 'user_not_found' | 'lookup_failed';
+    };
+
+async function lookupProfileForChallenge(raw: string): Promise<LookupOutcome> {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { ok: false, message: 'Enter an opponent username', code: 'empty' };
+  }
+  if (trimmed.includes('@')) {
+    const lowerEmail = trimmed.toLowerCase();
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', lowerEmail)
+      .maybeSingle();
+    if (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[direct-challenge] profile lookup (email)', error);
+      }
+      return { ok: false, message: 'Could not look up opponent. Try again.', code: 'lookup_failed' };
+    }
+    if (!data) {
+      return { ok: false, message: 'User not found', code: 'user_not_found' };
+    }
+    return { ok: true, profile: data as Profile };
+  }
+  const v = validateAcclUsername(trimmed);
+  if (!v.ok) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[direct-challenge] invalid username', trimmed, v.error);
+    }
+    return { ok: false, message: 'Invalid username', code: 'invalid_username' };
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('username', v.username)
+    .maybeSingle();
+  if (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[direct-challenge] profile lookup (username)', error);
+    }
+    return { ok: false, message: 'Could not look up opponent. Try again.', code: 'lookup_failed' };
+  }
+  if (!data) {
+    return { ok: false, message: 'User not found', code: 'user_not_found' };
+  }
+  return { ok: true, profile: data as Profile };
+}
+
+export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep = false }: Props) {
   const router = useRouter();
   const [opponentEmail, setOpponentEmail] = useState('');
   const [opponentUserId, setOpponentUserId] = useState('');
   const [opponentResolvedUsername, setOpponentResolvedUsername] = useState<string | null>(null);
-  const [opponentResolvedEmailDisplay, setOpponentResolvedEmailDisplay] = useState<string | null>(
-    null
-  );
+  /** Used only to reject username == account email local-part; never rendered. */
+  const [opponentProfileEmail, setOpponentProfileEmail] = useState<string | null>(null);
   const [opponentResolvedRating, setOpponentResolvedRating] = useState<number | null>(null);
   const [challengeSentBanner, setChallengeSentBanner] = useState(false);
   const [challengeSentDetail, setChallengeSentDetail] = useState<string | null>(null);
@@ -80,6 +141,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
   const [challengeCorrPace, setChallengeCorrPace] = useState<CorrespondencePaceValue>('1d');
   const [challengeRated, setChallengeRated] = useState(true);
   const [message, setMessage] = useState('');
+  const [findBusy, setFindBusy] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   /** When set, subscribe to this row so the challenger auto-navigates when it is accepted. */
   const [pendingChallengeRequestId, setPendingChallengeRequestId] = useState<string | null>(null);
@@ -129,57 +191,39 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
   }, [pendingChallengeRequestId, router]);
 
   const findOpponent = async () => {
+    if (findBusy || challengeBusy) return;
     setMessage('');
     setChallengeSentBanner(false);
     setChallengeSentDetail(null);
 
-    const raw = opponentEmail.trim();
-    if (!raw) {
-      setMessage('Enter opponent email or username');
-      return;
+    setFindBusy(true);
+    try {
+      const result = await lookupProfileForChallenge(opponentEmail);
+      if (!result.ok) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[direct-challenge] findOpponent failed', result.code, result.message);
+        }
+        setMessage(result.message);
+        setOpponentUserId('');
+        setOpponentResolvedUsername(null);
+        setOpponentProfileEmail(null);
+        setOpponentResolvedRating(null);
+        return;
+      }
+
+      const p = result.profile;
+      setOpponentUserId(p.id);
+      setOpponentResolvedUsername(p.username?.trim() || null);
+      setOpponentProfileEmail(p.email ?? null);
+      setOpponentResolvedRating(Number.isFinite(p.rating) ? p.rating : null);
+      setOpponentEmail(p.username?.trim() ?? '');
+      setMessage('');
+    } finally {
+      setFindBusy(false);
     }
-
-    const escapeForILike = (v: string) =>
-      v.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-
-    const lowerEmail = raw.toLowerCase();
-    let q = supabase.from('profiles').select('*');
-    if (raw.includes('@')) {
-      q = q.eq('email', lowerEmail);
-    } else {
-      q = q.ilike('username', escapeForILike(raw));
-    }
-
-    const { data: foundProfile, error } = await q.maybeSingle();
-
-    if (error) {
-      console.log('Profile lookup error:', error);
-      setMessage(error.message);
-      setOpponentUserId('');
-      setOpponentResolvedUsername(null);
-      setOpponentResolvedEmailDisplay(null);
-      setOpponentResolvedRating(null);
-      return;
-    }
-
-    if (!foundProfile) {
-      setMessage('Opponent not found');
-      setOpponentUserId('');
-      setOpponentResolvedUsername(null);
-      setOpponentResolvedEmailDisplay(null);
-      setOpponentResolvedRating(null);
-      return;
-    }
-
-    const p = foundProfile as Profile;
-    setOpponentUserId(p.id);
-    setOpponentResolvedUsername(p.username?.trim() || null);
-    setOpponentResolvedEmailDisplay(p.email?.trim() || null);
-    setOpponentResolvedRating(Number.isFinite(p.rating) ? p.rating : null);
-    setMessage('');
   };
 
-  const sendManualChallengeRequest = async () => {
+  const sendChallengeForResolvedOpponent = async (opponentId: string) => {
     if (challengeBusy) return;
 
     const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -190,14 +234,9 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
     }
 
     const currentUserId = authData.user.id;
-    const opponentId = opponentUserId.trim();
+    const trimmedOpponent = opponentId.trim();
 
-    if (!opponentId) {
-      setMessage('Set opponent first (use Find opponent)');
-      return;
-    }
-
-    if (opponentId === currentUserId) {
+    if (trimmedOpponent === currentUserId) {
       setMessage('You cannot challenge yourself.');
       return;
     }
@@ -205,7 +244,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
     const { whiteId: challengeWhiteId, blackId: challengeBlackId } = resolveChallengeSeatIds(
       challengeColorPreference,
       currentUserId,
-      opponentId
+      trimmedOpponent
     );
 
     const rawChallengeToken: GameTimeControlToken =
@@ -221,7 +260,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
       .from('match_requests')
       .select('id')
       .eq('from_user_id', currentUserId)
-      .eq('to_user_id', opponentId)
+      .eq('to_user_id', trimmedOpponent)
       .eq('tempo', challengeTempo)
       .eq('live_time_control', challengeLtc)
       .eq('status', 'pending')
@@ -239,6 +278,9 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
         payload: { tempo: challengeTempo, live_time_control: challengeLtc },
         error: dupErr,
       });
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[direct-challenge] duplicate check error', dupErr);
+      }
       setMessage(dupErr.message);
       return;
     }
@@ -266,7 +308,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
         .from('match_requests')
         .insert({
           from_user_id: currentUserId,
-          to_user_id: opponentId,
+          to_user_id: trimmedOpponent,
           request_type: 'challenge',
           source_game_id: null,
           white_player_id: challengeWhiteId,
@@ -292,10 +334,16 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
           },
           error,
         });
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[direct-challenge] match_requests insert failed', error);
+        }
         setMessage(userMessageForMatchRequestInsertError(error));
         return;
       }
       if (!inserted?.id) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[direct-challenge] insert returned no id');
+        }
         setMessage('Could not confirm challenge request was saved.');
         return;
       }
@@ -307,15 +355,127 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
       setOpponentEmail('');
       setOpponentUserId('');
       setOpponentResolvedUsername(null);
-      setOpponentResolvedEmailDisplay(null);
+      setOpponentProfileEmail(null);
       setOpponentResolvedRating(null);
     } finally {
       setChallengeBusy(false);
     }
   };
 
+  const sendManualChallengeRequest = async () => {
+    const opponentId = opponentUserId.trim();
+    if (!opponentId) {
+      setMessage('Set opponent first (use Find opponent)');
+      return;
+    }
+    await sendChallengeForResolvedOpponent(opponentId);
+  };
+
+  const sendChallengeSingleStep = async () => {
+    if (challengeBusy || findBusy) return;
+    setChallengeSentBanner(false);
+    setChallengeSentDetail(null);
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      setMessage('You must be logged in first');
+      return;
+    }
+    const currentUserId = authData.user.id;
+
+    let resolvedOpponent: Profile | null = null;
+    setFindBusy(true);
+    try {
+      const result = await lookupProfileForChallenge(opponentEmail);
+      if (!result.ok) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[direct-challenge] single-step lookup failed', result.code, result.message);
+        }
+        setMessage(result.message);
+        setOpponentUserId('');
+        setOpponentResolvedUsername(null);
+        setOpponentProfileEmail(null);
+        setOpponentResolvedRating(null);
+        return;
+      }
+
+      const p = result.profile;
+      setOpponentUserId(p.id);
+      setOpponentResolvedUsername(p.username?.trim() || null);
+      setOpponentProfileEmail(p.email ?? null);
+      setOpponentResolvedRating(Number.isFinite(p.rating) ? p.rating : null);
+      setOpponentEmail(p.username?.trim() ?? '');
+
+      if (p.id === currentUserId) {
+        setMessage('You cannot challenge yourself.');
+        return;
+      }
+      resolvedOpponent = p;
+    } finally {
+      setFindBusy(false);
+    }
+
+    if (resolvedOpponent) {
+      await sendChallengeForResolvedOpponent(resolvedOpponent.id);
+    }
+  };
+
   const challengeOpponentIsSelf = Boolean(
     authUserId && opponentUserId && opponentUserId === authUserId
+  );
+
+  const controlsDisabled = challengeBusy || findBusy;
+
+  const opponentInputStyle: CSSProperties = {
+    display: 'block',
+    marginBottom: 8,
+    padding: '10px 12px',
+    width: '100%',
+    maxWidth: 360,
+    boxSizing: 'border-box',
+    background: controlsDisabled ? '#0c0c0c' : '#0f0f0f',
+    color: '#f5f5f5',
+    border: '1px solid #4a4a4a',
+    borderRadius: 6,
+    fontSize: 14,
+  };
+
+  const opponentLookupBlock = (opts: { showMessageBelow: boolean }) => (
+    <>
+      <label
+        htmlFor={`${anchorId}-lookup`}
+        style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}
+      >
+        Opponent username
+      </label>
+      <input
+        id={`${anchorId}-lookup`}
+        data-testid="challenge-opponent-lookup"
+        type="text"
+        placeholder="@username"
+        value={opponentEmail}
+        onChange={(e) => {
+          setOpponentEmail(e.target.value);
+          setOpponentUserId('');
+          setOpponentResolvedUsername(null);
+          setOpponentProfileEmail(null);
+          setOpponentResolvedRating(null);
+          setChallengeSentBanner(false);
+          setChallengeSentDetail(null);
+        }}
+        disabled={controlsDisabled}
+        autoComplete="off"
+        style={opponentInputStyle}
+      />
+      {opts.showMessageBelow && message ? (
+        <p
+          data-testid="challenge-opponent-error"
+          style={{ color: '#fecaca', margin: '0 0 14px 0', fontSize: 14 }}
+        >
+          {message}
+        </p>
+      ) : null}
+    </>
   );
 
   return (
@@ -345,11 +505,15 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
           INVITE ONE PERSON — NOT POSTED PUBLICLY
         </p>
         <p style={{ fontSize: 14, color: '#d4d4d8', margin: '0 0 14px 0', lineHeight: 1.5 }}>
-          Find them by <strong>email or username</strong>, pick tempo and color, then send. They accept under{' '}
+          Find them by <strong>username</strong>, pick tempo and color, then send. They accept under{' '}
           <Link href="/requests" style={{ color: '#a5b4fc', fontWeight: 700 }}>
             Match requests
           </Link>
-          . This is <em>not</em> the same as <strong>Find Match</strong> (open/public pairing below).
+          . This is <em>not</em> the same as <strong>Find Match</strong> (open/public pairing on{' '}
+          <Link href="/free/play" style={{ color: '#a5b4fc', fontWeight: 700 }}>
+            /free/play
+          </Link>
+          ).
         </p>
         <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 14px 0', lineHeight: 1.45 }}>
           Options here are <strong>tempo</strong> (live / daily / correspondence and clock), <strong>your color
@@ -357,9 +521,11 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
           selector.
         </p>
 
-        {message ? (
+        {!singleStep && message ? (
           <p style={{ color: '#fecaca', margin: '0 0 12px 0', fontSize: 14 }}>{message}</p>
         ) : null}
+
+        {singleStep ? opponentLookupBlock({ showMessageBelow: true }) : null}
 
         <label
           htmlFor={`${anchorId}-tempo`}
@@ -371,7 +537,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
           id={`${anchorId}-tempo`}
           value={challengeTempo}
           onChange={(e) => setChallengeTempo(e.target.value as GameTempo)}
-          disabled={challengeBusy}
+          disabled={controlsDisabled}
           title={gameTempoDescription(challengeTempo)}
           style={{
             display: 'block',
@@ -380,7 +546,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
             marginBottom: 12,
             padding: '10px 12px',
             boxSizing: 'border-box',
-            background: challengeBusy ? '#0c0c0c' : '#0f0f0f',
+            background: controlsDisabled ? '#0c0c0c' : '#0f0f0f',
             color: '#f5f5f5',
             border: '1px solid #4a4a4a',
             borderRadius: 6,
@@ -412,8 +578,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
                   key={opt.v}
                   type="button"
                   onClick={() => setChallengeLiveTc(opt.v)}
-                  disabled={challengeBusy}
-                  style={tcChipStyle(challengeLiveTc === opt.v, challengeBusy)}
+                  disabled={controlsDisabled}
+                  style={tcChipStyle(challengeLiveTc === opt.v, controlsDisabled)}
                 >
                   {opt.label}
                 </button>
@@ -430,16 +596,16 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
               <button
                 type="button"
                 onClick={() => setChallengeDailyTc('30m')}
-                disabled={challengeBusy}
-                style={tcChipStyle(challengeDailyTc === '30m', challengeBusy)}
+                disabled={controlsDisabled}
+                style={tcChipStyle(challengeDailyTc === '30m', controlsDisabled)}
               >
                 30 min
               </button>
               <button
                 type="button"
                 onClick={() => setChallengeDailyTc('60m')}
-                disabled={challengeBusy}
-                style={tcChipStyle(challengeDailyTc === '60m', challengeBusy)}
+                disabled={controlsDisabled}
+                style={tcChipStyle(challengeDailyTc === '60m', controlsDisabled)}
               >
                 60 min
               </button>
@@ -463,8 +629,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
                   key={opt.v}
                   type="button"
                   onClick={() => setChallengeCorrPace(opt.v)}
-                  disabled={challengeBusy}
-                  style={tcChipStyle(challengeCorrPace === opt.v, challengeBusy)}
+                  disabled={controlsDisabled}
+                  style={tcChipStyle(challengeCorrPace === opt.v, controlsDisabled)}
                 >
                   {opt.label}
                 </button>
@@ -476,7 +642,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
         <RatedUnratedToggle
           value={challengeRated}
           onChange={setChallengeRated}
-          disabled={challengeBusy}
+          disabled={controlsDisabled}
           testIdPrefix={`${anchorId}-match`}
         />
         <p style={{ fontSize: 12, color: '#9ca3af', margin: '-4px 0 14px 0', lineHeight: 1.45 }}>
@@ -493,7 +659,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
           id={`${anchorId}-color`}
           value={challengeColorPreference}
           onChange={(e) => setChallengeColorPreference(e.target.value as ChallengeColorPreference)}
-          disabled={challengeBusy}
+          disabled={controlsDisabled}
           style={{
             display: 'block',
             width: '100%',
@@ -501,7 +667,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
             marginBottom: 12,
             padding: '10px 12px',
             boxSizing: 'border-box',
-            background: challengeBusy ? '#0c0c0c' : '#0f0f0f',
+            background: controlsDisabled ? '#0c0c0c' : '#0f0f0f',
             color: '#f5f5f5',
             border: '1px solid #4a4a4a',
             borderRadius: 6,
@@ -513,114 +679,112 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge' }: Props) {
           <option value="random">Random — assigned when you send</option>
         </select>
 
-        <label
-          htmlFor={`${anchorId}-lookup`}
-          style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}
-        >
-          Opponent (email or username)
-        </label>
-        <input
-          id={`${anchorId}-lookup`}
-          data-testid="challenge-opponent-lookup"
-          type="text"
-          placeholder="email or @username"
-          value={opponentEmail}
-          onChange={(e) => {
-            setOpponentEmail(e.target.value);
-            setOpponentUserId('');
-            setOpponentResolvedUsername(null);
-            setOpponentResolvedEmailDisplay(null);
-            setOpponentResolvedRating(null);
-            setChallengeSentBanner(false);
-            setChallengeSentDetail(null);
-          }}
-          disabled={challengeBusy}
-          autoComplete="off"
-          style={{
-            display: 'block',
-            marginBottom: 8,
-            padding: '10px 12px',
-            width: '100%',
-            maxWidth: 360,
-            boxSizing: 'border-box',
-            background: challengeBusy ? '#0c0c0c' : '#0f0f0f',
-            color: '#f5f5f5',
-            border: '1px solid #4a4a4a',
-            borderRadius: 6,
-            fontSize: 14,
-          }}
-        />
-        <button
-          type="button"
-          data-testid="challenge-find-opponent"
-          onClick={() => void findOpponent()}
-          disabled={challengeBusy}
-          style={{
-            padding: '8px 14px',
-            marginBottom: 8,
-            background: challengeBusy ? '#1e3a5f' : '#2563eb',
-            color: '#ffffff',
-            border: `1px solid ${challengeBusy ? '#2c5282' : '#3b82f6'}`,
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 14,
-            cursor: challengeBusy ? 'not-allowed' : 'pointer',
-          }}
-        >
-          Find opponent
-        </button>
+        {!singleStep ? opponentLookupBlock({ showMessageBelow: false }) : null}
 
-        {opponentUserId && challengeOpponentIsSelf ? (
-          <p style={{ color: '#fecaca', margin: '8px 0' }}>You cannot challenge yourself.</p>
-        ) : opponentUserId ? (
-          <div
-            data-testid={`user-row-${opponentUserId}`}
+        {!singleStep ? (
+          <>
+            <button
+              type="button"
+              data-testid="challenge-find-opponent"
+              onClick={() => void findOpponent()}
+              disabled={controlsDisabled}
+              style={{
+                padding: '8px 14px',
+                marginBottom: 8,
+                background: controlsDisabled ? '#1e3a5f' : '#2563eb',
+                color: '#ffffff',
+                border: `1px solid ${controlsDisabled ? '#2c5282' : '#3b82f6'}`,
+                borderRadius: 6,
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: controlsDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {findBusy ? 'Finding…' : 'Find opponent'}
+            </button>
+
+            {opponentUserId && challengeOpponentIsSelf ? (
+              <p style={{ color: '#fecaca', margin: '8px 0' }}>You cannot challenge yourself.</p>
+            ) : opponentUserId ? (
+              <div
+                data-testid={`user-row-${opponentUserId}`}
+                style={{
+                  marginTop: 8,
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: '1px solid #2d6a4f',
+                  background: '#0d1f15',
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#7dce9e', marginBottom: 6 }}>
+                  OPPONENT FOUND
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#f4fff8' }}>
+                  {publicDisplayNameFromProfileUsername(
+                    opponentResolvedUsername,
+                    opponentUserId,
+                    opponentProfileEmail
+                  )}
+                </div>
+                {opponentResolvedRating != null ? (
+                  <div style={{ marginTop: 6, color: '#b8e3c9' }}>Rating: {opponentResolvedRating}</div>
+                ) : null}
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: '#9ca3af', margin: '8px 0' }}>
+            Run <strong>Find opponent</strong> after entering their username.
+          </p>
+            )}
+
+            <button
+              data-testid="challenge-send-submit"
+              type="button"
+              onClick={() => void sendManualChallengeRequest()}
+              disabled={controlsDisabled || challengeOpponentIsSelf || !opponentUserId}
+              style={{
+                padding: '10px 16px',
+                marginTop: 4,
+                background:
+                  controlsDisabled || challengeOpponentIsSelf || !opponentUserId ? '#3f3f46' : '#7c3aed',
+                color: '#ffffff',
+                border: '1px solid #8b5cf6',
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 15,
+                cursor:
+                  controlsDisabled || challengeOpponentIsSelf || !opponentUserId
+                    ? 'not-allowed'
+                    : 'pointer',
+              }}
+            >
+              {challengeBusy ? 'Sending…' : 'Send direct challenge'}
+            </button>
+          </>
+        ) : (
+          <button
+            data-testid="challenge-send-submit"
+            type="button"
+            onClick={() => void sendChallengeSingleStep()}
+            disabled={controlsDisabled}
             style={{
-              marginTop: 8,
-              marginBottom: 12,
-              padding: 12,
+              padding: '12px 18px',
+              marginTop: 4,
+              width: '100%',
+              maxWidth: 360,
+              boxSizing: 'border-box',
+              background: controlsDisabled ? '#3f3f46' : '#7c3aed',
+              color: '#ffffff',
+              border: '1px solid #8b5cf6',
               borderRadius: 8,
-              border: '1px solid #2d6a4f',
-              background: '#0d1f15',
+              fontWeight: 700,
+              fontSize: 16,
+              cursor: controlsDisabled ? 'not-allowed' : 'pointer',
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#7dce9e', marginBottom: 6 }}>
-              OPPONENT FOUND
-            </div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#f4fff8' }}>
-              {opponentResolvedUsername ?? opponentResolvedEmailDisplay ?? opponentUserId.slice(0, 8)}
-            </div>
-            {opponentResolvedRating != null ? (
-              <div style={{ marginTop: 6, color: '#b8e3c9' }}>Rating: {opponentResolvedRating}</div>
-            ) : null}
-          </div>
-        ) : (
-          <p style={{ fontSize: 13, color: '#9ca3af', margin: '8px 0' }}>
-            Run <strong>Find opponent</strong> after entering email or username.
-          </p>
+            {findBusy ? 'Looking up…' : challengeBusy ? 'Sending…' : 'Send challenge'}
+          </button>
         )}
-
-        <button
-          data-testid="challenge-send-submit"
-          type="button"
-          onClick={() => void sendManualChallengeRequest()}
-          disabled={challengeBusy || challengeOpponentIsSelf || !opponentUserId}
-          style={{
-            padding: '10px 16px',
-            marginTop: 4,
-            background:
-              challengeBusy || challengeOpponentIsSelf || !opponentUserId ? '#3f3f46' : '#7c3aed',
-            color: '#ffffff',
-            border: '1px solid #8b5cf6',
-            borderRadius: 8,
-            fontWeight: 700,
-            fontSize: 15,
-            cursor:
-              challengeBusy || challengeOpponentIsSelf || !opponentUserId ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {challengeBusy ? 'Sending…' : 'Send direct challenge'}
-        </button>
       </div>
       {challengeSentBanner ? (
         <div data-testid="challenge-sent-awaiting">

@@ -108,8 +108,11 @@ async function fetchHonestActiveTournaments(ecosystem: NexusEcosystem): Promise<
 }
 
 const QUICK_NAV: NexusQuickNavItem[] = [
+  { label: "Tester welcome", href: "/tester/welcome" },
   { label: "Profile", href: "/profile" },
   { label: "Free Play", href: "/free" },
+  { label: "Lobby chat", href: "/tester/lobby-chat" },
+  { label: "Messages", href: "/tester/messages" },
   { label: "Tournaments", href: "/tournaments" },
   { label: "Finished Games", href: "/finished" },
   { label: "Players", href: "/players" },
@@ -144,7 +147,14 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
   const generatedAt = new Date().toISOString();
 
   const user = await getSupabaseUserFromCookies();
-  const prev = identityPreviewFromUser(user);
+  let profileUsername: string | null = null;
+  if (user?.id) {
+    const supabase = createServiceRoleClient();
+    const { data: prof } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
+    const u = (prof as { username?: string | null } | null)?.username;
+    profileUsername = typeof u === "string" && u.trim() ? u.trim() : null;
+  }
+  const prev = identityPreviewFromUser(user, { profileUsername });
   const identity = toIdentitySummary(user, prev);
 
   const [recentWinners, activityFeed, liveGames, standings, tournamentRowsRaw] = await Promise.all([

@@ -103,13 +103,6 @@ async function main() {
   const moveBody = {
     gameId: gid,
     fenBefore: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-    nextFen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-    nextTurn: 'black',
-    statusBefore: 'active',
-    tempo: 'live',
-    currentTurn: 'white',
-    whiteClockMs: 300000,
-    blackClockMs: 300000,
     move: { san: 'e4', from_sq: 'e2', to_sq: 'e4', move_duration_ms: 1200 },
   };
   const submit = await fetch(`${BASE_URL}/api/game/submit-move`, {
@@ -123,16 +116,50 @@ async function main() {
   const logs = await service.from('game_move_logs').select('id', { count: 'exact', head: true }).eq('game_id', gid);
   if ((logs.count ?? 0) < 1) fail('submit-move did not write move log');
 
-  const badFen = await fetch(`${BASE_URL}/api/game/submit-move`, {
+  const outOfTurn = await fetch(`${BASE_URL}/api/game/submit-move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ ...moveBody, fenBefore: '8/8/8/8/8/8/8/8 w - - 0 1' }),
+  });
+  const outOfTurnJson = await outOfTurn.json();
+  if (
+    outOfTurn.status !== 409 ||
+    outOfTurnJson?.error !== 'invalid_move' ||
+    !/not your turn/i.test(String(outOfTurnJson?.message ?? ''))
+  ) {
+    fail(`out-of-turn rejection invalid: status=${outOfTurn.status} body=${JSON.stringify(outOfTurnJson)}`);
+  }
+
+  const conflictGame = await service
+    .from('games')
+    .insert({
+      white_player_id: userId,
+      black_player_id: opponent,
+      status: 'active',
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      turn: 'white',
+      source_type: 'challenge',
+      play_context: 'free',
+      mode: 'SKETCH',
+      rated: false,
+      tempo: 'live',
+    })
+    .select('id')
+    .single();
+  if (conflictGame.error || !conflictGame.data?.id) {
+    fail(`create optimistic-conflict game failed: ${conflictGame.error?.message ?? 'unknown'}`);
+  }
+
+  const badFen = await fetch(`${BASE_URL}/api/game/submit-move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ...moveBody, gameId: conflictGame.data.id, fenBefore: '8/8/8/8/8/8/8/8 w - - 0 1' }),
   });
   const badJson = await badFen.json();
   if (badFen.status !== 409 || badJson?.error?.code !== 'optimistic_state_conflict') {
     fail(`optimistic conflict payload invalid: status=${badFen.status} body=${JSON.stringify(badJson)}`);
   }
-  ok('submit-move authoritative path + normalized optimistic conflict');
+  ok('submit-move authoritative path + out-of-turn + normalized optimistic conflict');
 
   // 3) bot auto-response proof (start + human ply + bot ply)
   const botStart = await fetch(`${BASE_URL}/api/bot/game/start`, {
@@ -149,13 +176,6 @@ async function main() {
     body: JSON.stringify({
       gameId: botGameId,
       fenBefore: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      nextFen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-      nextTurn: 'black',
-      statusBefore: 'active',
-      tempo: 'live',
-      currentTurn: 'white',
-      whiteClockMs: 300000,
-      blackClockMs: 300000,
       move: { san: 'e4', from_sq: 'e2', to_sq: 'e4', move_duration_ms: 800 },
     }),
   });

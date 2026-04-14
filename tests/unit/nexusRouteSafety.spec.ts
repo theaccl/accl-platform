@@ -27,6 +27,12 @@ test.describe("NEXUS hub route safety", () => {
     expect(isValidNexusHubHref("/tournaments/")).toBe(false);
   });
 
+  test("tester static routes are valid hub hrefs", () => {
+    expect(isValidNexusHubHref("/tester/welcome")).toBe(true);
+    expect(isValidNexusHubHref("/tester/lobby-chat")).toBe(true);
+    expect(isValidNexusHubHref("/tester/messages")).toBe(true);
+  });
+
   test("login redirect format is encoded", () => {
     expect(NEXUS_HUB_LOGIN_HREF).toBe(`/login?next=${encodeURIComponent("/nexus")}`);
     expect(NEXUS_HUB_LOGIN_HREF).toMatch(/^\/login\?next=%2Fnexus$/);

@@ -39,6 +39,9 @@ const STATIC_ROUTES = new Set([
   "/players",
   "/modes",
   "/login",
+  "/tester/welcome",
+  "/tester/lobby-chat",
+  "/tester/messages",
 ]);
 
 function isAllowedStaticHref(href: string): boolean {
