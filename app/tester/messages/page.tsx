@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import { supabase } from '@/lib/supabaseClient';
+
+export const dynamic = 'force-dynamic';
 
 type ChatMsg = {
   id: string;
@@ -14,7 +16,7 @@ type ChatMsg = {
   sender_username: string | null;
 };
 
-export default function TesterDmPage() {
+function TesterDmPageInner() {
   const searchParams = useSearchParams();
   const peerFromQuery = searchParams.get('peer')?.trim() ?? '';
 
@@ -171,5 +173,19 @@ export default function TesterDmPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function TesterDmPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ padding: 24, color: '#94a3b8' }} data-testid="tester-dm-suspense-fallback">
+          Loading...
+        </div>
+      }
+    >
+      <TesterDmPageInner />
+    </Suspense>
   );
 }
