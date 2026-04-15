@@ -26,10 +26,16 @@ type MatchRequestRow = {
   rated?: boolean | null;
 };
 
-type GameRow = { id: string };
-
 function isDirect(r: MatchRequestRow): boolean {
   return r.visibility !== 'open';
+}
+
+function supabaseErrText(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = String((err as { message: unknown }).message ?? '').trim();
+    if (m) return m;
+  }
+  return fallback;
 }
 
 export default function RequestsPage() {
@@ -109,9 +115,22 @@ export default function RequestsPage() {
       const { data: newGame, error: gErr } = await createSeatedGameGuard(supabase, {
         row: { ...gameInsertFromAcceptedChallenge(r) },
       });
-      if (gErr) return { error: gErr };
-      const gid = (newGame as GameRow).id;
-      const { error: uErr } = await supabase
+      if (gErr) {
+        return { error: new Error(supabaseErrText(gErr, 'Could not create the game from this request.')) };
+      }
+      const rawId =
+        newGame && typeof newGame === 'object' && 'id' in newGame
+          ? String((newGame as { id?: string }).id ?? '').trim()
+          : '';
+      if (!rawId) {
+        return {
+          error: new Error(
+            'Game was not created (empty server response). Try again, or refresh if the request already resolved.'
+          ),
+        };
+      }
+      const gid = rawId;
+      const { data: updatedRows, error: uErr } = await supabase
         .from('match_requests')
         .update({
           status: 'accepted',
@@ -119,8 +138,26 @@ export default function RequestsPage() {
           responded_at: new Date().toISOString(),
         })
         .eq('id', r.id)
-        .eq('status', 'pending');
-      if (uErr) return { error: uErr };
+        .eq('status', 'pending')
+        .select('id');
+      if (uErr) {
+        return {
+          error: new Error(
+            supabaseErrText(
+              uErr,
+              'Game may have been created but the match request could not be marked accepted. Refresh match requests.'
+            )
+          ),
+        };
+      }
+      const n = Array.isArray(updatedRows) ? updatedRows.length : updatedRows ? 1 : 0;
+      if (n === 0) {
+        return {
+          error: new Error(
+            'This request is no longer pending — it may have been accepted, cancelled, or declined already. Refresh the page.'
+          ),
+        };
+      }
       return { gameId: gid };
     },
     []

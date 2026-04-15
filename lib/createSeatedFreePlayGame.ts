@@ -13,8 +13,12 @@ export async function createSeatedGameGuard(
     row: Record<string, unknown>;
   }
 ) {
-  return supabase.rpc('create_seated_game_guard', {
+  const res = await supabase.rpc('create_seated_game_guard', {
     p_existing_open_seat_id: args.existingOpenSeatId ?? null,
     p_row: args.row,
   });
+  if (res.error) return res;
+  const raw = res.data as unknown;
+  const row = Array.isArray(raw) ? raw[0] : raw;
+  return { data: row ?? null, error: null };
 }

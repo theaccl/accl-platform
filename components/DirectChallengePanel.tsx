@@ -80,46 +80,53 @@ async function lookupProfileForChallenge(raw: string): Promise<LookupOutcome> {
   if (!trimmed) {
     return { ok: false, message: 'Enter an opponent username', code: 'empty' };
   }
-  if (trimmed.includes('@')) {
-    const lowerEmail = trimmed.toLowerCase();
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('email', lowerEmail)
-      .maybeSingle();
-    if (error) {
+  const isEmailShape = trimmed.includes('@');
+  let normalizedUsername: string | null = null;
+  if (!isEmailShape) {
+    const v = validateAcclUsername(trimmed);
+    if (!v.ok) {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[direct-challenge] profile lookup (email)', error);
+        console.warn('[direct-challenge] invalid username', trimmed, v.error);
       }
-      return { ok: false, message: 'Could not look up opponent. Try again.', code: 'lookup_failed' };
+      return { ok: false, message: v.error, code: 'invalid_username' };
     }
-    if (!data) {
-      return { ok: false, message: 'User not found', code: 'user_not_found' };
-    }
-    return { ok: true, profile: data as Profile };
+    normalizedUsername = v.username;
   }
-  const v = validateAcclUsername(trimmed);
-  if (!v.ok) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[direct-challenge] invalid username', trimmed, v.error);
-    }
-    return { ok: false, message: 'Invalid username', code: 'invalid_username' };
-  }
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('username', v.username)
-    .maybeSingle();
+
+  const { data, error } = await supabase.rpc('resolve_profile_for_challenge_lookup', {
+    p_username: normalizedUsername,
+    p_email: isEmailShape ? trimmed.toLowerCase() : null,
+  });
   if (error) {
     if (process.env.NODE_ENV === 'development') {
-      console.warn('[direct-challenge] profile lookup (username)', error);
+      console.warn('[direct-challenge] profile lookup rpc', error);
     }
     return { ok: false, message: 'Could not look up opponent. Try again.', code: 'lookup_failed' };
   }
-  if (!data) {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) {
     return { ok: false, message: 'User not found', code: 'user_not_found' };
   }
-  return { ok: true, profile: data as Profile };
+  const row = data as Record<string, unknown>;
+  const id = row.id != null ? String(row.id) : '';
+  if (!id) {
+    return { ok: false, message: 'User not found', code: 'user_not_found' };
+  }
+  const ratingRaw = row.rating;
+  const rating =
+    typeof ratingRaw === 'number' && Number.isFinite(ratingRaw)
+      ? ratingRaw
+      : typeof ratingRaw === 'string' && Number.isFinite(Number(ratingRaw))
+        ? Number(ratingRaw)
+        : 0;
+  return {
+    ok: true,
+    profile: {
+      id,
+      email: row.email != null && String(row.email).trim() !== '' ? String(row.email) : null,
+      username: row.username != null && String(row.username).trim() !== '' ? String(row.username) : null,
+      rating,
+    },
+  };
 }
 
 export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep = false }: Props) {
