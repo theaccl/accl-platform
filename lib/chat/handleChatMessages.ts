@@ -60,7 +60,18 @@ export async function handleChatMessagesGet(request: Request, userId: string): P
   const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.floor(limitRaw))) : 40;
   const viewerEcosystem: ViewerEcosystem = viewerEcosystemFromRequest(request);
 
-  const supabase = createServiceRoleClient();
+  let supabase: ReturnType<typeof createServiceRoleClient>;
+  try {
+    supabase = createServiceRoleClient();
+  } catch (e) {
+    return json(
+      {
+        error: 'server_misconfigured',
+        message: e instanceof Error ? e.message : 'Server chat is not configured (Supabase service role).',
+      },
+      503
+    );
+  }
   const mutes = await getMutedUserIds(supabase, userId);
 
   if (channel === 'lobby') {

@@ -80,6 +80,10 @@ export async function getOrCreateDmThread(
   return null;
 }
 
+export type InsertChatMessageResult =
+  | { ok: true; row: ChatMessageRow }
+  | { ok: false; supabase: { code?: string; message: string; details?: string | null; hint?: string | null } };
+
 export async function insertChatMessage(
   supabase: SupabaseClient,
   row: {
@@ -90,7 +94,7 @@ export async function insertChatMessage(
     sender_id: string;
     body: string;
   }
-): Promise<ChatMessageRow | null> {
+): Promise<InsertChatMessageResult> {
   const { data, error } = await supabase
     .from('tester_chat_messages')
     .insert({
@@ -103,8 +107,21 @@ export async function insertChatMessage(
     })
     .select('id,created_at,channel,game_id,lobby_room,dm_thread_id,sender_id,body')
     .single();
-  if (error || !data) return null;
-  return data as ChatMessageRow;
+  if (error) {
+    return {
+      ok: false,
+      supabase: {
+        code: error.code,
+        message: error.message,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+      },
+    };
+  }
+  if (!data) {
+    return { ok: false, supabase: { message: 'Insert returned no row.' } };
+  }
+  return { ok: true, row: data as ChatMessageRow };
 }
 
 async function usernamesForSenders(

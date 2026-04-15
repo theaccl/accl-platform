@@ -14,13 +14,33 @@ type ChatMsg = {
 
 function formatChatSendError(payload: unknown): string {
   if (payload && typeof payload === 'object') {
-    const o = payload as { message?: unknown; error?: unknown };
+    const o = payload as {
+      message?: unknown;
+      error?: unknown;
+      db_message?: unknown;
+      db_code?: unknown;
+    };
     if (typeof o.message === 'string' && o.message.trim()) return o.message;
     if (o.error === 'rate_limited') return 'Too many messages. Wait a moment and try again.';
     if (o.error === 'Unauthorized') return 'Session expired — sign in again.';
     if (o.error === 'forbidden') return 'You cannot post in this channel.';
     if (o.error === 'game_unavailable') return 'This game chat is not available.';
-    if (o.error === 'send_failed') return 'Message could not be saved. Try again.';
+    if (o.error === 'server_misconfigured') {
+      return typeof o.message === 'string' && o.message.trim()
+        ? o.message
+        : 'Chat server is not configured. Check Supabase service role env on Vercel.';
+    }
+    if (o.error === 'send_failed') {
+      const db = typeof o.db_message === 'string' ? o.db_message.trim() : '';
+      const code = typeof o.db_code === 'string' ? o.db_code.trim() : '';
+      if (db || code) {
+        return [code && `(${code})`, db].filter(Boolean).join(' ');
+      }
+      return 'Message could not be saved. Try again.';
+    }
+    if (o.error === 'internal_error' && typeof o.message === 'string' && o.message.trim()) {
+      return o.message;
+    }
   }
   return 'Send failed. Try again.';
 }
@@ -203,7 +223,20 @@ export default function GameTesterChatPanels({
     );
     setSpecBusy(false);
     if (!res.ok) {
-      setSpecErr((await res.json().catch(() => ({})))?.error ?? 'Load failed');
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        message?: unknown;
+        db_message?: unknown;
+        db_code?: unknown;
+      };
+      setSpecErr(
+        formatChatSendError({
+          error: j.error,
+          message: j.message,
+          db_message: j.db_message,
+          db_code: j.db_code,
+        })
+      );
       return;
     }
     const j = (await res.json()) as { messages?: ChatMsg[] };
@@ -221,7 +254,20 @@ export default function GameTesterChatPanels({
     );
     setPlayBusy(false);
     if (!res.ok) {
-      setPlayErr((await res.json().catch(() => ({})))?.error ?? 'Load failed');
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        message?: unknown;
+        db_message?: unknown;
+        db_code?: unknown;
+      };
+      setPlayErr(
+        formatChatSendError({
+          error: j.error,
+          message: j.message,
+          db_message: j.db_message,
+          db_code: j.db_code,
+        })
+      );
       return;
     }
     const j = (await res.json()) as { messages?: ChatMsg[] };

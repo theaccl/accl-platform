@@ -79,7 +79,18 @@ export async function handleChatSend(
   const bodyNorm = normalizeChatBody(payload.body);
   if (!bodyNorm.ok) return json({ error: bodyNorm.error }, 400);
 
-  const supabase = createServiceRoleClient();
+  let supabase: ReturnType<typeof createServiceRoleClient>;
+  try {
+    supabase = createServiceRoleClient();
+  } catch (e) {
+    return json(
+      {
+        error: 'server_misconfigured',
+        message: e instanceof Error ? e.message : 'Server chat is not configured (Supabase service role).',
+      },
+      503
+    );
+  }
 
   if (channel === 'lobby') {
     const lobbyRoom =
@@ -91,16 +102,24 @@ export async function handleChatSend(
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : 'invalid_scope' }, 400);
     }
-    const row = await insertChatMessage(supabase, {
+    const ins = await insertChatMessage(supabase, {
       channel: 'lobby',
       lobby_room: lobbyRoom,
       sender_id: userId,
       body: bodyNorm.body,
     });
-    if (!row) {
-      return json({ error: 'send_failed', message: 'Message could not be saved. Try again.' }, 503);
+    if (!ins.ok) {
+      return json(
+        {
+          error: 'send_failed',
+          message: 'Message could not be saved.',
+          db_code: ins.supabase.code,
+          db_message: ins.supabase.message,
+        },
+        503
+      );
     }
-    return json({ message: row });
+    return json({ message: ins.row });
   }
 
   if (channel === 'dm') {
@@ -118,16 +137,24 @@ export async function handleChatSend(
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : 'invalid_scope' }, 400);
     }
-    const row = await insertChatMessage(supabase, {
+    const ins = await insertChatMessage(supabase, {
       channel: 'dm',
       dm_thread_id: thread.id,
       sender_id: userId,
       body: bodyNorm.body,
     });
-    if (!row) {
-      return json({ error: 'send_failed', message: 'Message could not be saved. Try again.' }, 503);
+    if (!ins.ok) {
+      return json(
+        {
+          error: 'send_failed',
+          message: 'Message could not be saved.',
+          db_code: ins.supabase.code,
+          db_message: ins.supabase.message,
+        },
+        503
+      );
     }
-    return json({ message: row, dm_thread_id: thread.id });
+    return json({ message: ins.row, dm_thread_id: thread.id });
   }
 
   const gameId = typeof payload.gameId === 'string' ? payload.gameId.trim() : '';
@@ -165,14 +192,22 @@ export async function handleChatSend(
     return json({ error: e instanceof Error ? e.message : 'invalid_scope' }, 400);
   }
 
-  const row = await insertChatMessage(supabase, {
+  const ins = await insertChatMessage(supabase, {
     channel,
     game_id: gameId,
     sender_id: userId,
     body: bodyNorm.body,
   });
-  if (!row) {
-    return json({ error: 'send_failed', message: 'Message could not be saved. Try again.' }, 503);
+  if (!ins.ok) {
+    return json(
+      {
+        error: 'send_failed',
+        message: 'Message could not be saved.',
+        db_code: ins.supabase.code,
+        db_message: ins.supabase.message,
+      },
+      503
+    );
   }
-  return json({ message: row });
+  return json({ message: ins.row });
 }
