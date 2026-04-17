@@ -9,6 +9,8 @@ import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
+import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
+import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 
 type MatchRequestRow = {
   id: string;
@@ -30,6 +32,14 @@ function isDirect(r: MatchRequestRow): boolean {
   return r.visibility !== 'open';
 }
 
+function shortPlayerLabel(id: string, nameById: Record<string, string>): string {
+  const n = nameById[id];
+  if (n) return n;
+  const t = id.trim();
+  if (t.length <= 10) return t;
+  return `${t.slice(0, 8)}…`;
+}
+
 function supabaseErrText(err: unknown, fallback: string): string {
   if (err && typeof err === 'object' && 'message' in err) {
     const m = String((err as { message: unknown }).message ?? '').trim();
@@ -40,12 +50,14 @@ function supabaseErrText(err: unknown, fallback: string): string {
 
 export default function RequestsPage() {
   const router = useRouter();
+  const openIdentity = useOpenPublicIdentityCard();
   const actionInFlightRef = useRef(false);
   const [authResolved, setAuthResolved] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [requests, setRequests] = useState<MatchRequestRow[]>([]);
   const [busyReqId, setBusyReqId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [nameById, setNameById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +95,24 @@ export default function RequestsPage() {
     if (!authResolved || !authUserId) return;
     void fetchRequests();
   }, [authResolved, authUserId, fetchRequests]);
+
+  useEffect(() => {
+    if (!requests.length) return;
+    let cancelled = false;
+    const ids = [...new Set(requests.flatMap((r) => [r.from_user_id, r.to_user_id].filter(Boolean)))];
+    void (async () => {
+      const { data, error } = await supabase.from('profiles').select('id, username').in('id', ids);
+      if (cancelled || error || !data?.length) return;
+      const next: Record<string, string> = {};
+      for (const row of data as { id: string; username: string | null }[]) {
+        next[row.id] = publicDisplayNameFromProfileUsername(row.username, row.id);
+      }
+      setNameById((prev) => ({ ...prev, ...next }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [requests]);
 
   useEffect(() => {
     if (!authResolved || !authUserId) return;
@@ -342,6 +372,30 @@ export default function RequestsPage() {
                 {gameDisplayTempoLabel({ tempo: r.tempo, liveTimeControl: r.live_time_control })} |{' '}
                 {gameRatedListLabel(r.rated)}
               </p>
+              <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
+                From{' '}
+                {openIdentity ? (
+                  <button
+                    type="button"
+                    data-testid={`incoming-request-from-${r.from_user_id}`}
+                    onClick={() => openIdentity(r.from_user_id)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      color: '#e2e8f0',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      textDecorationStyle: 'dotted',
+                      font: 'inherit',
+                    }}
+                  >
+                    {shortPlayerLabel(r.from_user_id, nameById)}
+                  </button>
+                ) : (
+                  <span style={{ color: '#e2e8f0' }}>{shortPlayerLabel(r.from_user_id, nameById)}</span>
+                )}
+              </p>
               {authUserId && r.white_player_id === authUserId ? (
                 <p
                   data-testid={`incoming-request-seat-${r.id}`}
@@ -392,6 +446,32 @@ export default function RequestsPage() {
                 {gameDisplayTempoLabel({ tempo: r.tempo, liveTimeControl: r.live_time_control })} |{' '}
                 {gameRatedListLabel(r.rated)}
               </p>
+              {r.to_user_id ? (
+                <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
+                  To{' '}
+                  {openIdentity ? (
+                    <button
+                      type="button"
+                      data-testid={`outgoing-request-to-${r.to_user_id}`}
+                      onClick={() => openIdentity(r.to_user_id)}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        color: '#e2e8f0',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        textDecorationStyle: 'dotted',
+                        font: 'inherit',
+                      }}
+                    >
+                      {shortPlayerLabel(r.to_user_id, nameById)}
+                    </button>
+                  ) : (
+                    <span style={{ color: '#e2e8f0' }}>{shortPlayerLabel(r.to_user_id, nameById)}</span>
+                  )}
+                </p>
+              ) : null}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button type="button" disabled={busyReqId === r.id} onClick={() => cancelOutgoing(r)}>
                   {busyReqId === r.id ? 'Cancelling...' : 'Cancel'}
@@ -416,6 +496,30 @@ export default function RequestsPage() {
                 <strong>{r.id.slice(0, 8)}...</strong> |{' '}
                 {gameDisplayTempoLabel({ tempo: r.tempo, liveTimeControl: r.live_time_control })} |{' '}
                 {gameRatedListLabel(r.rated)}
+              </p>
+              <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#94a3b8' }}>
+                Host{' '}
+                {openIdentity ? (
+                  <button
+                    type="button"
+                    data-testid={`open-listing-host-${r.from_user_id}`}
+                    onClick={() => openIdentity(r.from_user_id)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      color: '#e2e8f0',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      textDecorationStyle: 'dotted',
+                      font: 'inherit',
+                    }}
+                  >
+                    {shortPlayerLabel(r.from_user_id, nameById)}
+                  </button>
+                ) : (
+                  <span style={{ color: '#e2e8f0' }}>{shortPlayerLabel(r.from_user_id, nameById)}</span>
+                )}
               </p>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button type="button" disabled={busyReqId === r.id} onClick={() => joinOpenListing(r)}>

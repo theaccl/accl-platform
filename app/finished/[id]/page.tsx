@@ -15,6 +15,7 @@ import {
 import { gameDisplayTempoLabel } from "@/lib/gameDisplayLabel";
 import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
 import { publicDisplayNameFromProfileUsername } from "@/lib/profileIdentity";
+import { useOpenPublicIdentityCard } from "@/components/identity/PublicIdentityCardContext";
 import { START_FEN } from "@/lib/startFen";
 import { supabase } from "@/lib/supabaseClient";
 import { useReplayState, type MoveLogRow, type ReplayPairedRow } from "@/hooks/useReplayState";
@@ -66,6 +67,7 @@ function isEnPassantMoveLog(m: MoveLogRow): boolean {
 export default function FinishedGameDetailPage() {
   const params = useParams<{ id: string }>();
   const gameId = String(params?.id ?? "").trim();
+  const openIdentity = useOpenPublicIdentityCard();
 
   const [phase, setPhase] = useState<"loading" | "ready" | "signed_out" | "not_found" | "not_finished" | "error">(
     "loading"
@@ -284,16 +286,43 @@ export default function FinishedGameDetailPage() {
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-500">White</p>
                   <p className="text-lg font-semibold text-white">
-                    {displayNameById[game.white_player_id] ?? game.white_player_id}
+                    {openIdentity ? (
+                      <button
+                        type="button"
+                        data-testid="finished-player-name-white"
+                        onClick={() => openIdentity(game.white_player_id)}
+                        className="border-0 bg-transparent p-0 text-left text-inherit font-semibold underline decoration-dotted decoration-gray-500 underline-offset-2 hover:decoration-solid"
+                      >
+                        {displayNameById[game.white_player_id] ?? game.white_player_id}
+                      </button>
+                    ) : (
+                      displayNameById[game.white_player_id] ?? game.white_player_id
+                    )}
                   </p>
                 </div>
                 <div className="text-center text-gray-500 text-sm font-medium pt-1">vs</div>
                 <div className="sm:text-right">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Black</p>
                   <p className="text-lg font-semibold text-white">
-                    {game.black_player_id
-                      ? displayNameById[game.black_player_id] ?? game.black_player_id
-                      : "—"}
+                    {game.black_player_id ? (
+                      openIdentity ? (
+                        <button
+                          type="button"
+                          data-testid="finished-player-name-black"
+                          onClick={() => {
+                            const bp = game.black_player_id;
+                            if (bp) openIdentity(bp);
+                          }}
+                          className="border-0 bg-transparent p-0 text-left text-inherit font-semibold underline decoration-dotted decoration-gray-500 underline-offset-2 hover:decoration-solid sm:text-right"
+                        >
+                          {displayNameById[game.black_player_id] ?? game.black_player_id}
+                        </button>
+                      ) : (
+                        displayNameById[game.black_player_id] ?? game.black_player_id
+                      )
+                    ) : (
+                      "—"
+                    )}
                   </p>
                 </div>
               </div>

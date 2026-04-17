@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { NotificationsNavLink } from "@/components/notifications/NotificationsNavLink";
 import { TesterBugReportTrigger } from "@/components/TesterBugReportDialog";
 import { useProfileUsername } from "@/hooks/useProfileUsername";
 import { usePublicProfileAcclRating } from "@/hooks/usePublicProfileAcclRating";
@@ -233,9 +234,19 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
 
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {checked && isLoggedIn ? (
-              <Link href="/tester/messages" className={`${navBtnSite} whitespace-nowrap`}>
-                Mailbox
-              </Link>
+              <>
+                <Link
+                  href="/friends"
+                  className={`${navBtnSite} whitespace-nowrap`}
+                  data-testid="nav-friends-link"
+                >
+                  Friends
+                </Link>
+                <NotificationsNavLink />
+                <Link href="/tester/messages" className={`${navBtnSite} whitespace-nowrap`}>
+                  Mailbox
+                </Link>
+              </>
             ) : null}
             <nav className="flex items-center gap-2 sm:gap-3" aria-label="Site">
               <button

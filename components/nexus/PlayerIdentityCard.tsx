@@ -42,6 +42,8 @@ type Props = {
   narrativeTag?: string | null;
   /** Phase 23 — contextual label for major-event spotlight (derived, not persistent rank) */
   eventContextLabel?: string | null;
+  /** When set, the headline (`icon` + `label`) opens the public identity card for this player. */
+  onHeadlineClick?: () => void;
 };
 
 function trendMeta(delta: number | null) {
@@ -94,6 +96,7 @@ function PlayerIdentityCard({
   championRole = null,
   narrativeTag = null,
   eventContextLabel = null,
+  onHeadlineClick,
 }: Props) {
   const showRep = showReputation ?? !k12;
 
@@ -141,7 +144,23 @@ function PlayerIdentityCard({
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 min-w-0">
         <p className={`${compact ? "text-xs" : "text-sm"} text-white font-semibold truncate`}>
-          {icon} {label}
+          {onHeadlineClick ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onHeadlineClick();
+              }}
+              className="inline-flex min-w-0 max-w-full items-center gap-1 border-0 bg-transparent p-0 text-left font-semibold text-inherit underline decoration-dotted decoration-white/35 underline-offset-2 hover:decoration-solid"
+            >
+              <span aria-hidden>{icon}</span>
+              <span className="truncate">{label}</span>
+            </button>
+          ) : (
+            <>
+              {icon} {label}
+            </>
+          )}
         </p>
         <p className="text-[11px] text-gray-400 shrink-0">{flag}</p>
       </div>

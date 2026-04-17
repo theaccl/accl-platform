@@ -78,7 +78,7 @@ export default async function TesterWelcomePage() {
               href="/tester/messages"
               className="inline-flex flex-1 min-w-[140px] items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3 text-sm font-medium text-gray-100 transition hover:border-red-500/35"
             >
-              Messages
+              Mailbox
             </Link>
           </nav>
 

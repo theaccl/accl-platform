@@ -65,6 +65,7 @@ import { buildGameLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
 import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
+import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
 type GameRow = {
   id: string;
@@ -738,6 +739,7 @@ export default function GamePage() {
   const publicSpectate =
     searchParams.get('public') === '1' || searchParams.get('spectate') === '1';
   const viewerEcosystem = searchParams.get('eco') === 'k12' ? 'k12' : 'adult';
+  const openIdentity = useOpenPublicIdentityCard();
 
   const [game, setGame] = useState<GameRow | null>(null);
   const [gameAccess, setGameAccess] = useState<GameRouteAccessKind>('loading');
@@ -2297,13 +2299,41 @@ export default function GamePage() {
         aria-hidden
       />
       <p>
-        <strong>White:</strong> {displayNameById[game.white_player_id] ?? game.white_player_id}
+        <strong>White:</strong>{' '}
+        {openIdentity ? (
+          <button
+            type="button"
+            data-testid="game-player-name-white"
+            onClick={() => openIdentity(game.white_player_id)}
+            className="inline border-0 bg-transparent p-0 text-left text-inherit underline decoration-dotted decoration-gray-500 underline-offset-2 hover:decoration-solid"
+          >
+            {displayNameById[game.white_player_id] ?? game.white_player_id}
+          </button>
+        ) : (
+          <span>{displayNameById[game.white_player_id] ?? game.white_player_id}</span>
+        )}
       </p>
       <p>
         <strong>Black:</strong>{' '}
-        {game.black_player_id
-          ? displayNameById[game.black_player_id] ?? game.black_player_id
-          : '-'}
+        {game.black_player_id ? (
+          openIdentity ? (
+            <button
+              type="button"
+              data-testid="game-player-name-black"
+              onClick={() => {
+                const bp = game.black_player_id;
+                if (bp) openIdentity(bp);
+              }}
+              className="inline border-0 bg-transparent p-0 text-left text-inherit underline decoration-dotted decoration-gray-500 underline-offset-2 hover:decoration-solid"
+            >
+              {displayNameById[game.black_player_id] ?? game.black_player_id}
+            </button>
+          ) : (
+            <span>{displayNameById[game.black_player_id] ?? game.black_player_id}</span>
+          )
+        ) : (
+          '-'
+        )}
       </p>
       <p><strong>You are:</strong> {myColor ?? 'spectator'}</p>
       {game.status !== 'finished' && (

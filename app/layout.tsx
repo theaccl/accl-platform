@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
+import { AppProviders } from "@/components/AppProviders";
 import { PendingMatchRequestsBanner } from "@/components/PendingMatchRequestsBanner";
 
 const inter = Inter({
@@ -29,18 +30,20 @@ export default function RootLayout({
       className={`${inter.variable} ${robotoMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <div
-          style={{
-            maxWidth: 500,
-            margin: '0 auto',
-            padding: '12px 16px',
-            borderBottom: '1px solid #243244',
-            background: '#0f1724',
-          }}
-        >
-          <PendingMatchRequestsBanner />
-        </div>
-        {children}
+        <AppProviders>
+          <div
+            style={{
+              maxWidth: 500,
+              margin: '0 auto',
+              padding: '12px 16px',
+              borderBottom: '1px solid #243244',
+              background: '#0f1724',
+            }}
+          >
+            <PendingMatchRequestsBanner />
+          </div>
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

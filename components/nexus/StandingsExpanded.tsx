@@ -3,6 +3,7 @@
 import { memo, useMemo, useRef, useState } from "react";
 import type { NexusSocialLayer, NexusStanding } from "@/lib/nexus/getNexusData";
 import PlayerIdentityCard from "@/components/nexus/PlayerIdentityCard";
+import { useOpenPublicIdentityCard } from "@/components/identity/PublicIdentityCardContext";
 import Link from "next/link";
 import { assignPlayerIdentity } from "@/lib/reputation/titleAssignment";
 import { socialLineForPair } from "@/lib/social/buildNexusSocialLayer";
@@ -44,6 +45,7 @@ function StandingsExpanded({
   economyFunnelHint?: string;
   social?: NexusSocialLayer;
 }) {
+  const openIdentity = useOpenPublicIdentityCard();
   const [showSelfPinned, setShowSelfPinned] = useState(false);
   const [jumpFlash, setJumpFlash] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +114,7 @@ function StandingsExpanded({
                   )
                 : null
             }
+            onHeadlineClick={openIdentity ? () => openIdentity(pin.user_id) : undefined}
           />
         ) : (
           <p className="text-sm text-white font-semibold">No standings yet</p>
@@ -135,10 +138,17 @@ function StandingsExpanded({
       {me ? (
         <div className={`mb-3 rounded-xl border p-2 ${k12 ? "border-[#2a4564] bg-[#0f1b2a]" : "border-[#2a3442] bg-[#0f1420]"}`}>
           <p className="text-xs text-gray-400 mb-1">You</p>
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={jumpToMe}
-            className="w-full min-h-[48px] text-left text-sm text-white rounded-lg touch-manipulation active:opacity-90 py-1 -my-1"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                jumpToMe();
+              }
+            }}
+            className="w-full min-h-[48px] text-left text-sm text-white rounded-lg touch-manipulation active:opacity-90 py-1 -my-1 cursor-pointer"
           >
             <PlayerIdentityCard
               label={`#${me.rank} ${me.username}`}
@@ -164,8 +174,9 @@ function StandingsExpanded({
               showVault={false}
               emphasis="high"
               presenceHint={social?.presence[me.user_id]}
+              onHeadlineClick={openIdentity ? () => openIdentity(me.user_id) : undefined}
             />
-          </button>
+          </div>
         </div>
       ) : null}
       <div
@@ -207,9 +218,20 @@ function StandingsExpanded({
           >
             <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 min-w-0">
               <p className="text-sm text-white min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="truncate">
-                  #{r.rank} {r.username}
-                </span>
+                {openIdentity ? (
+                  <button
+                    type="button"
+                    data-testid={`nexus-standing-name-${r.user_id}`}
+                    onClick={() => openIdentity(r.user_id)}
+                    className="truncate max-w-full border-0 bg-transparent p-0 text-left text-inherit underline decoration-dotted decoration-white/30 underline-offset-2 hover:decoration-solid"
+                  >
+                    #{r.rank} {r.username}
+                  </button>
+                ) : (
+                  <span className="truncate">
+                    #{r.rank} {r.username}
+                  </span>
+                )}
                 <span
                   className={`text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0 ${
                     k12 ? "border-cyan-500/45 text-cyan-100 bg-cyan-950/35" : "border-amber-500/40 text-amber-100 bg-amber-950/25"

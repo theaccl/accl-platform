@@ -31,6 +31,8 @@ test.describe("NEXUS hub route safety", () => {
     expect(isValidNexusHubHref("/tester/welcome")).toBe(true);
     expect(isValidNexusHubHref("/tester/lobby-chat")).toBe(true);
     expect(isValidNexusHubHref("/tester/messages")).toBe(true);
+    expect(isValidNexusHubHref("/notifications")).toBe(true);
+    expect(isValidNexusHubHref("/friends")).toBe(true);
   });
 
   test("login redirect format is encoded", () => {

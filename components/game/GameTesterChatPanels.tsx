@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
+import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
 const CHAT_BODY_MAX = 2000;
 
@@ -81,6 +82,7 @@ function ChatStrip({
   onReport,
   reportingId,
   maxLen,
+  onSenderClick,
 }: {
   title: string;
   subtitle: string;
@@ -95,6 +97,8 @@ function ChatStrip({
   onReport: (messageId: string) => void;
   reportingId: string | null;
   maxLen: number;
+  /** When set, clicking the sender display name opens the public identity card. */
+  onSenderClick?: (senderId: string) => void;
 }) {
   const remaining = maxLen - draft.length;
   return (
@@ -131,9 +135,30 @@ function ChatStrip({
         ) : null}
         {messages.map((m) => (
           <div key={m.id} style={{ marginBottom: 8 }}>
-            <span style={{ color: '#94a3b8' }}>
-              {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
-            </span>
+            {onSenderClick ? (
+              <button
+                type="button"
+                data-testid={`game-chat-sender-${m.sender_id}`}
+                onClick={() => onSenderClick(m.sender_id)}
+                style={{
+                  color: '#94a3b8',
+                  border: 'none',
+                  background: 'transparent',
+                  padding: 0,
+                  cursor: 'pointer',
+                  font: 'inherit',
+                  textDecoration: 'underline',
+                  textDecorationStyle: 'dotted',
+                  textUnderlineOffset: '2px',
+                }}
+              >
+                {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
+              </button>
+            ) : (
+              <span style={{ color: '#94a3b8' }}>
+                {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
+              </span>
+            )}
             <span style={{ color: '#475569', margin: '0 6px' }}>·</span>
             <span>{m.body}</span>
             <button
@@ -405,6 +430,7 @@ export default function GameTesterChatPanels({
   };
 
   const lobbyHref = useMemo(() => '/tester/lobby-chat', []);
+  const openIdentity = useOpenPublicIdentityCard();
 
   if (!userId) return null;
 
@@ -447,6 +473,7 @@ export default function GameTesterChatPanels({
           onReport={report}
           reportingId={reportingId}
           maxLen={CHAT_BODY_MAX}
+          onSenderClick={openIdentity ?? undefined}
         />
       ) : null}
       {showSpectator ? (
@@ -468,6 +495,7 @@ export default function GameTesterChatPanels({
           onReport={report}
           reportingId={reportingId}
           maxLen={CHAT_BODY_MAX}
+          onSenderClick={openIdentity ?? undefined}
         />
       ) : null}
     </div>

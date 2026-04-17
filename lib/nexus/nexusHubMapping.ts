@@ -44,6 +44,8 @@ const STATIC_ROUTES = new Set([
   "/tester/welcome",
   "/tester/lobby-chat",
   "/tester/messages",
+  "/notifications",
+  "/friends",
 ]);
 
 function isAllowedStaticHref(href: string): boolean {

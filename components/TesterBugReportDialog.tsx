@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -15,9 +15,12 @@ const CATEGORIES = [
 export default function TesterBugReportDialog({
   open,
   onClose,
+  initialMessage,
 }: {
   open: boolean;
   onClose: () => void;
+  /** When opening, seed the description (e.g. player report from identity card). */
+  initialMessage?: string | null;
 }) {
   const pathname = usePathname();
   const [message, setMessage] = useState('');
@@ -25,6 +28,20 @@ export default function TesterBugReportDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setDone(false);
+    setError(null);
+    const seed = typeof initialMessage === 'string' ? initialMessage.trim() : '';
+    if (seed) {
+      setMessage(seed);
+      setCategory('suspicious');
+    } else {
+      setMessage('');
+      setCategory('');
+    }
+  }, [open, initialMessage]);
 
   const submit = useCallback(async () => {
     setError(null);

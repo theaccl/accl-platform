@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -35,6 +35,7 @@ import {
 } from '@/lib/p1PublicRatingRead';
 import { validateAcclUsername } from '@/lib/usernameRules';
 import { supabase } from '@/lib/supabaseClient';
+import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
 type Profile = {
   id: string;
@@ -155,6 +156,7 @@ async function loadOpponentP1Snapshot(profile: Profile): Promise<{
 
 export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep = false }: Props) {
   const router = useRouter();
+  const openIdentity = useOpenPublicIdentityCard();
   const [opponentEmail, setOpponentEmail] = useState('');
   const [opponentUserId, setOpponentUserId] = useState('');
   const [opponentResolvedUsername, setOpponentResolvedUsername] = useState<string | null>(null);
@@ -177,6 +179,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   /** When set, subscribe to this row so the challenger auto-navigates when it is accepted. */
   const [pendingChallengeRequestId, setPendingChallengeRequestId] = useState<string | null>(null);
+  const urlOpponentSeeded = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +189,45 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  /** Prefill opponent from `/free/create?opponent=<username>` (no new routes). */
+  useEffect(() => {
+    if (urlOpponentSeeded.current) return;
+    if (typeof window === 'undefined') return;
+    const raw = new URLSearchParams(window.location.search).get('opponent')?.trim();
+    if (!raw) return;
+    urlOpponentSeeded.current = true;
+    const decoded = decodeURIComponent(raw);
+    void (async () => {
+      setFindBusy(true);
+      setMessage('');
+      setChallengeSentBanner(false);
+      setChallengeSentDetail(null);
+      try {
+        const result = await lookupProfileForChallenge(decoded);
+        if (!result.ok) {
+          setOpponentEmail(decoded);
+          setMessage(result.message);
+          setOpponentUserId('');
+          setOpponentResolvedUsername(null);
+          setOpponentProfileEmail(null);
+          setOpponentP1(null);
+          setOpponentLegacyRating(null);
+          return;
+        }
+        const p = result.profile;
+        const snap = await loadOpponentP1Snapshot(p);
+        setOpponentUserId(p.id);
+        setOpponentResolvedUsername(p.username?.trim() || null);
+        setOpponentProfileEmail(p.email ?? null);
+        setOpponentP1(snap.p1);
+        setOpponentLegacyRating(snap.legacyRating);
+        setOpponentEmail(p.username?.trim() ?? decoded);
+      } finally {
+        setFindBusy(false);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -736,6 +778,56 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
           <option value="random">Random — assigned when you send</option>
         </select>
 
+        {singleStep && opponentUserId && !challengeOpponentIsSelf ? (
+          <div
+            data-testid="challenge-opponent-resolved-preview"
+            style={{
+              marginTop: 8,
+              marginBottom: 12,
+              padding: 12,
+              borderRadius: 8,
+              border: '1px solid #2d6a4f',
+              background: '#0d1f15',
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#7dce9e', marginBottom: 6 }}>OPPONENT</div>
+            {openIdentity ? (
+              <button
+                type="button"
+                data-testid={`challenge-opponent-name-${opponentUserId}`}
+                onClick={() => openIdentity(opponentUserId)}
+                style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: '#f4fff8',
+                  border: 'none',
+                  background: 'transparent',
+                  padding: 0,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  textDecorationStyle: 'dotted',
+                  textUnderlineOffset: '3px',
+                  textAlign: 'left',
+                }}
+              >
+                {publicDisplayNameFromProfileUsername(
+                  opponentResolvedUsername,
+                  opponentUserId,
+                  opponentProfileEmail,
+                )}
+              </button>
+            ) : (
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#f4fff8' }}>
+                {publicDisplayNameFromProfileUsername(
+                  opponentResolvedUsername,
+                  opponentUserId,
+                  opponentProfileEmail,
+                )}
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {!singleStep ? opponentLookupBlock({ showMessageBelow: false }) : null}
 
         {!singleStep ? (
@@ -777,13 +869,40 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
                 <div style={{ fontSize: 12, fontWeight: 800, color: '#7dce9e', marginBottom: 6 }}>
                   OPPONENT FOUND
                 </div>
-                <div style={{ fontSize: 17, fontWeight: 700, color: '#f4fff8' }}>
-                  {publicDisplayNameFromProfileUsername(
-                    opponentResolvedUsername,
-                    opponentUserId,
-                    opponentProfileEmail
-                  )}
-                </div>
+                {openIdentity ? (
+                  <button
+                    type="button"
+                    data-testid={`challenge-opponent-name-${opponentUserId}`}
+                    onClick={() => openIdentity(opponentUserId)}
+                    style={{
+                      fontSize: 17,
+                      fontWeight: 700,
+                      color: '#f4fff8',
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      textDecorationStyle: 'dotted',
+                      textUnderlineOffset: '3px',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {publicDisplayNameFromProfileUsername(
+                      opponentResolvedUsername,
+                      opponentUserId,
+                      opponentProfileEmail,
+                    )}
+                  </button>
+                ) : (
+                  <div style={{ fontSize: 17, fontWeight: 700, color: '#f4fff8' }}>
+                    {publicDisplayNameFromProfileUsername(
+                      opponentResolvedUsername,
+                      opponentUserId,
+                      opponentProfileEmail,
+                    )}
+                  </div>
+                )}
                 <div style={{ marginTop: 6, color: '#b8e3c9' }}>
                   Rating: {formatRatingDisplay(opponentRatingForSelectedMode)}
                 </div>

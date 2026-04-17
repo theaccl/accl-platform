@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { publicDisplayNameFromProfileUsername } from "@/lib/profileIdentity";
+import { useOpenPublicIdentityCard } from "@/components/identity/PublicIdentityCardContext";
 import { supabase } from "@/lib/supabaseClient";
 import { nexusPrestigeCard } from "@/components/nexus/nexusShellTheme";
 import { nexusModuleHeadingClass } from "@/components/nexus/NexusHeader";
@@ -46,6 +47,7 @@ export default function NexusLobbyChatColumn({
   const [draft, setDraft] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const openIdentity = useOpenPublicIdentityCard();
 
   const lobbyRoom = ROOM[mode];
 
@@ -152,9 +154,20 @@ export default function NexusLobbyChatColumn({
         {!userId ? <p className="text-gray-500">Sign in to chat.</p> : null}
         {messages.map((m) => (
           <div key={m.id} className="mb-2">
-            <span className="text-gray-500">
-              {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
-            </span>
+            {openIdentity ? (
+              <button
+                type="button"
+                data-testid={`nexus-lobby-chat-sender-${m.sender_id}`}
+                onClick={() => openIdentity(m.sender_id)}
+                className="border-0 bg-transparent p-0 text-left text-gray-500 underline decoration-dotted decoration-gray-600 underline-offset-2 hover:text-gray-300 hover:decoration-solid"
+              >
+                {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
+              </button>
+            ) : (
+              <span className="text-gray-500">
+                {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
+              </span>
+            )}
             <span className="text-gray-600"> · </span>
             <span className="text-gray-200">{m.body}</span>
           </div>
