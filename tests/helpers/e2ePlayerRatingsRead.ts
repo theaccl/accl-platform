@@ -96,6 +96,27 @@ export async function readE2ePairRatingSnapshots(client: SupabaseClient, userAId
   return { ok: true, a: a.snapshot, b: b.snapshot };
 }
 
+/** Single bucket read (e.g. P1 dual-write spot-checks). */
+export async function readPlayerRatingBucketRow(
+  client: SupabaseClient,
+  userId: string,
+  bucket: string
+): Promise<{ ok: true; row: { rating: number; games_played: number } } | { ok: false; reason: string }> {
+  const { data, error } = await client
+    .from('player_ratings')
+    .select('rating,games_played')
+    .eq('user_id', userId)
+    .eq('bucket', bucket)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, reason: error.message };
+  }
+  if (!data) {
+    return { ok: false, reason: `missing bucket ${bucket}` };
+  }
+  return { ok: true, row: data as { rating: number; games_played: number } };
+}
+
 /** After a **rated** free finish, trigger should set this true when `apply_free_play_rating_update_core` succeeds. */
 export async function waitForGameRatingAppliedRow(
   client: SupabaseClient,

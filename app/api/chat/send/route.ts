@@ -6,6 +6,13 @@ import { auditApiLog, shortId } from '@/lib/server/prodLog';
 export const runtime = 'nodejs';
 
 export async function POST(request: Request): Promise<Response> {
+  console.error('[api/chat/send] env presence', {
+    has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL?.trim()),
+    has_NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
+    has_E2E_SUPABASE_URL: Boolean(process.env.E2E_SUPABASE_URL?.trim()),
+    has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
+    has_E2E_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.E2E_SUPABASE_SERVICE_ROLE_KEY?.trim()),
+  });
   try {
     const userId = await resolveAuthenticatedUserId(request);
     if (!userId) {

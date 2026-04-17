@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
+
+const CHAT_BODY_MAX = 2000;
 
 type ChatMsg = {
   id: string;
@@ -20,6 +22,11 @@ function formatChatSendError(payload: unknown): string {
       db_message?: unknown;
       db_code?: unknown;
     };
+    const code = typeof o.db_code === 'string' ? o.db_code.trim() : '';
+    const db = typeof o.db_message === 'string' ? o.db_message.trim() : '';
+    if (code === 'PGRST205' || /schema cache/i.test(db)) {
+      return 'Chat storage is not available on this server yet (database migration missing).';
+    }
     if (typeof o.message === 'string' && o.message.trim()) return o.message;
     if (o.error === 'rate_limited') return 'Too many messages. Wait a moment and try again.';
     if (o.error === 'Unauthorized') return 'Session expired — sign in again.';
@@ -31,8 +38,6 @@ function formatChatSendError(payload: unknown): string {
         : 'Chat server is not configured. Check Supabase service role env on Vercel.';
     }
     if (o.error === 'send_failed') {
-      const db = typeof o.db_message === 'string' ? o.db_message.trim() : '';
-      const code = typeof o.db_code === 'string' ? o.db_code.trim() : '';
       if (db || code) {
         return [code && `(${code})`, db].filter(Boolean).join(' ');
       }
@@ -75,6 +80,7 @@ function ChatStrip({
   sending,
   onReport,
   reportingId,
+  maxLen,
 }: {
   title: string;
   subtitle: string;
@@ -88,7 +94,9 @@ function ChatStrip({
   sending: boolean;
   onReport: (messageId: string) => void;
   reportingId: string | null;
+  maxLen: number;
 }) {
+  const remaining = maxLen - draft.length;
   return (
     <section
       style={{
@@ -149,31 +157,39 @@ function ChatStrip({
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, padding: 8, borderTop: '1px solid #1e293b', alignItems: 'flex-end' }}>
-        <textarea
-          value={draft}
-          onChange={(e) => onDraft(e.target.value)}
-          rows={2}
-          placeholder="Message (testers only)…"
-          style={{
-            flex: 1,
-            resize: 'vertical',
-            minHeight: 44,
-            maxHeight: 120,
-            padding: 8,
-            fontSize: 13,
-            borderRadius: 6,
-            border: '1px solid #334155',
-            background: '#0f172a',
-            color: '#e2e8f0',
-          }}
-        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <textarea
+            value={draft}
+            maxLength={maxLen}
+            onChange={(e) => onDraft(e.target.value.slice(0, maxLen))}
+            rows={2}
+            placeholder="Message (testers only)…"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              resize: 'vertical',
+              minHeight: 44,
+              maxHeight: 120,
+              padding: 8,
+              fontSize: 13,
+              borderRadius: 6,
+              border: '1px solid #334155',
+              background: '#0f172a',
+              color: '#e2e8f0',
+            }}
+          />
+          <span style={{ fontSize: 10, color: remaining < 80 ? '#fbbf24' : '#64748b' }}>
+            {draft.length}/{maxLen}
+          </span>
+        </div>
         <button
           type="button"
-          onClick={onSend}
+          data-testid={`game-chat-send-${title.includes('Player') ? 'player' : 'spectator'}`}
+          onClick={() => void onSend()}
           disabled={sending || !draft.trim()}
           style={{ padding: '8px 12px', alignSelf: 'stretch' }}
         >
-          {sending ? '…' : 'Send'}
+          {sending ? 'Sending…' : 'Send'}
         </button>
       </div>
     </section>
@@ -183,6 +199,7 @@ function ChatStrip({
 export default function GameTesterChatPanels({
   gameId,
   gameStatus,
+  gameTempo,
   userId,
   isSpectator,
   viewerEcosystem,
@@ -190,13 +207,22 @@ export default function GameTesterChatPanels({
 }: {
   gameId: string;
   gameStatus: string;
+  /** `live` enables spectator chat; daily/correspondence have no in-game spectator channel (P2). */
+  gameTempo: string | null;
   userId: string;
   isSpectator: boolean;
   viewerEcosystem: 'adult' | 'k12';
   accessToken: string | null;
 }) {
-  const showSpectator = isSpectator || gameStatus === 'finished';
-  const showPlayer = !isSpectator;
+  if (!gameTempo) {
+    console.warn('Game missing tempo:', gameId);
+  }
+
+  const isLive = String(gameTempo ?? '').trim().toLowerCase() === 'live';
+  /** Post-game player thread only — no player channel during active games. */
+  const showPlayer = !isSpectator && gameStatus === 'finished';
+  /** Live games only: in-game chat uses spectator channel (players + viewers); not for daily/corr. */
+  const showSpectator = isLive;
 
   const [specMessages, setSpecMessages] = useState<ChatMsg[]>([]);
   const [playMessages, setPlayMessages] = useState<ChatMsg[]>([]);
@@ -209,11 +235,16 @@ export default function GameTesterChatPanels({
   const [specSending, setSpecSending] = useState(false);
   const [playSending, setPlaySending] = useState(false);
   const [reportingId, setReportingId] = useState<string | null>(null);
+  const [reportErr, setReportErr] = useState<string | null>(null);
+
+  const specSendLock = useRef(false);
+  const playSendLock = useRef(false);
 
   const canUseChat = !!accessToken && !!userId;
 
   const loadSpectator = useCallback(async () => {
     if (!canUseChat || !showSpectator) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     setSpecBusy(true);
     setSpecErr(null);
     const res = await chatFetch(
@@ -245,6 +276,7 @@ export default function GameTesterChatPanels({
 
   const loadPlayer = useCallback(async () => {
     if (!canUseChat || !showPlayer) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     setPlayBusy(true);
     setPlayErr(null);
     const res = await chatFetch(
@@ -283,65 +315,93 @@ export default function GameTesterChatPanels({
   }, [loadPlayer]);
 
   useEffect(() => {
-    const t = window.setInterval(() => {
+    const tick = () => {
       void loadSpectator();
       void loadPlayer();
-    }, 12000);
-    return () => window.clearInterval(t);
+    };
+    const id = window.setInterval(tick, 15000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [loadSpectator, loadPlayer]);
 
   const sendSpectator = async () => {
-    if (!canUseChat || !specDraft.trim() || specSending) return;
+    const body = specDraft.trim();
+    if (!canUseChat || !body || specSending || specSendLock.current) return;
+    specSendLock.current = true;
     setSpecSending(true);
     setSpecErr(null);
-    const res = await chatFetch('/api/chat/send', accessToken!, viewerEcosystem, {
-      method: 'POST',
-      body: JSON.stringify({
-        channel: 'game_spectator',
-        gameId,
-        body: specDraft.trim(),
-      }),
-    });
-    setSpecSending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setSpecErr(formatChatSendError(j));
-      return;
+    try {
+      const res = await chatFetch('/api/chat/send', accessToken!, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({
+          channel: 'game_spectator',
+          gameId,
+          body,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setSpecErr(formatChatSendError(j));
+        return;
+      }
+      setSpecDraft('');
+      void loadSpectator();
+    } finally {
+      specSendLock.current = false;
+      setSpecSending(false);
     }
-    setSpecDraft('');
-    void loadSpectator();
   };
 
   const sendPlayer = async () => {
-    if (!canUseChat || !playDraft.trim() || playSending) return;
+    const body = playDraft.trim();
+    if (!canUseChat || !body || playSending || playSendLock.current) return;
+    playSendLock.current = true;
     setPlaySending(true);
     setPlayErr(null);
-    const res = await chatFetch('/api/chat/send', accessToken!, viewerEcosystem, {
-      method: 'POST',
-      body: JSON.stringify({
-        channel: 'game_player',
-        gameId,
-        body: playDraft.trim(),
-      }),
-    });
-    setPlaySending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setPlayErr(formatChatSendError(j));
-      return;
+    try {
+      const res = await chatFetch('/api/chat/send', accessToken!, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({
+          channel: 'game_player',
+          gameId,
+          body,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setPlayErr(formatChatSendError(j));
+        return;
+      }
+      setPlayDraft('');
+      void loadPlayer();
+    } finally {
+      playSendLock.current = false;
+      setPlaySending(false);
     }
-    setPlayDraft('');
-    void loadPlayer();
   };
 
   const report = async (messageId: string) => {
     if (!canUseChat) return;
     setReportingId(messageId);
-    await chatFetch('/api/chat/report', accessToken!, viewerEcosystem, {
-      method: 'POST',
-      body: JSON.stringify({ messageId }),
-    });
-    setReportingId(null);
+    setReportErr(null);
+    try {
+      const res = await chatFetch('/api/chat/report', accessToken!, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({ messageId }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        setReportErr(j.message || j.error || 'Report could not be submitted.');
+      }
+    } finally {
+      setReportingId(null);
+    }
   };
 
   const lobbyHref = useMemo(() => '/tester/lobby-chat', []);
@@ -360,16 +420,22 @@ export default function GameTesterChatPanels({
     <div data-testid="game-tester-chat-panels" style={{ marginTop: 20, maxWidth: 520 }}>
       <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
         <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — authenticated only; channels are separated.
-        Spectator discussion does not appear in player chat.{' '}
+        During live games, only spectator chat is available in-game; player chat unlocks after the game ends.
+        Spectator chat is not used for daily/correspondence games.{' '}
         <Link href={lobbyHref} style={{ color: '#93c5fd' }}>
-          Lobby chat
+          Tester mode chat
         </Link>
         .
       </p>
+      {reportErr ? (
+        <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#f87171' }} role="alert">
+          {reportErr}
+        </p>
+      ) : null}
       {showPlayer ? (
         <ChatStrip
-          title="Player chat (in-game)"
-          subtitle="Only the two players see this — not shown in spectator chat."
+          title="Player chat (post-game)"
+          subtitle="Only the two players — opens after the game finishes; not used during play."
           accent="#3b82f6"
           messages={playMessages}
           busy={playBusy}
@@ -380,15 +446,16 @@ export default function GameTesterChatPanels({
           sending={playSending}
           onReport={report}
           reportingId={reportingId}
+          maxLen={CHAT_BODY_MAX}
         />
       ) : null}
       {showSpectator ? (
         <ChatStrip
-          title="Spectator chat"
+          title="Spectator chat (live games)"
           subtitle={
             isSpectator
-              ? 'For viewers only — separate from player chat.'
-              : 'Shown after the game ends — separate from player chat.'
+              ? 'Viewers and players use this channel during the game — separate from post-game player chat.'
+              : 'During an active live game, use this channel; separate from post-game player chat.'
           }
           accent="#a855f7"
           messages={specMessages}
@@ -400,6 +467,7 @@ export default function GameTesterChatPanels({
           sending={specSending}
           onReport={report}
           reportingId={reportingId}
+          maxLen={CHAT_BODY_MAX}
         />
       ) : null}
     </div>

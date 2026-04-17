@@ -27,6 +27,12 @@ import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
 import { logLiveTimeControlInsert, logSupabaseWriteError } from '@/lib/logSupabaseWriteError';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
+import {
+  formatRatingDisplay,
+  modeRatingFromP1Context,
+  parseP1FromSnapshotPayload,
+  type PublicP1Read,
+} from '@/lib/p1PublicRatingRead';
 import { validateAcclUsername } from '@/lib/usernameRules';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -129,6 +135,24 @@ async function lookupProfileForChallenge(raw: string): Promise<LookupOutcome> {
   };
 }
 
+async function loadOpponentP1Snapshot(profile: Profile): Promise<{
+  p1: PublicP1Read | null;
+  legacyRating: number | null;
+}> {
+  const legacyRating =
+    typeof profile.rating === 'number' && Number.isFinite(profile.rating) ? profile.rating : null;
+  const { data, error } = await supabase.rpc('get_public_profile_snapshot', {
+    p_profile_id: profile.id,
+  });
+  if (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[direct-challenge] get_public_profile_snapshot', error);
+    }
+    return { p1: null, legacyRating };
+  }
+  return { p1: parseP1FromSnapshotPayload(data), legacyRating };
+}
+
 export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep = false }: Props) {
   const router = useRouter();
   const [opponentEmail, setOpponentEmail] = useState('');
@@ -136,7 +160,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
   const [opponentResolvedUsername, setOpponentResolvedUsername] = useState<string | null>(null);
   /** Used only to reject username == account email local-part; never rendered. */
   const [opponentProfileEmail, setOpponentProfileEmail] = useState<string | null>(null);
-  const [opponentResolvedRating, setOpponentResolvedRating] = useState<number | null>(null);
+  const [opponentP1, setOpponentP1] = useState<PublicP1Read | null>(null);
+  const [opponentLegacyRating, setOpponentLegacyRating] = useState<number | null>(null);
   const [challengeSentBanner, setChallengeSentBanner] = useState(false);
   const [challengeSentDetail, setChallengeSentDetail] = useState<string | null>(null);
   const [challengeBusy, setChallengeBusy] = useState(false);
@@ -214,15 +239,18 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
         setOpponentUserId('');
         setOpponentResolvedUsername(null);
         setOpponentProfileEmail(null);
-        setOpponentResolvedRating(null);
+        setOpponentP1(null);
+        setOpponentLegacyRating(null);
         return;
       }
 
       const p = result.profile;
+      const snap = await loadOpponentP1Snapshot(p);
       setOpponentUserId(p.id);
       setOpponentResolvedUsername(p.username?.trim() || null);
       setOpponentProfileEmail(p.email ?? null);
-      setOpponentResolvedRating(Number.isFinite(p.rating) ? p.rating : null);
+      setOpponentP1(snap.p1);
+      setOpponentLegacyRating(snap.legacyRating);
       setOpponentEmail(p.username?.trim() ?? '');
       setMessage('');
     } finally {
@@ -363,7 +391,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
       setOpponentUserId('');
       setOpponentResolvedUsername(null);
       setOpponentProfileEmail(null);
-      setOpponentResolvedRating(null);
+      setOpponentP1(null);
+      setOpponentLegacyRating(null);
     } finally {
       setChallengeBusy(false);
     }
@@ -402,15 +431,18 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
         setOpponentUserId('');
         setOpponentResolvedUsername(null);
         setOpponentProfileEmail(null);
-        setOpponentResolvedRating(null);
+        setOpponentP1(null);
+        setOpponentLegacyRating(null);
         return;
       }
 
       const p = result.profile;
+      const snap = await loadOpponentP1Snapshot(p);
       setOpponentUserId(p.id);
       setOpponentResolvedUsername(p.username?.trim() || null);
       setOpponentProfileEmail(p.email ?? null);
-      setOpponentResolvedRating(Number.isFinite(p.rating) ? p.rating : null);
+      setOpponentP1(snap.p1);
+      setOpponentLegacyRating(snap.legacyRating);
       setOpponentEmail(p.username?.trim() ?? '');
 
       if (p.id === currentUserId) {
@@ -429,6 +461,23 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
 
   const challengeOpponentIsSelf = Boolean(
     authUserId && opponentUserId && opponentUserId === authUserId
+  );
+
+  const challengeRawTokenForRating: GameTimeControlToken =
+    challengeTempo === 'live'
+      ? challengeLiveTc
+      : challengeTempo === 'daily'
+        ? challengeDailyTc
+        : challengeCorrPace;
+  const challengeLtcForRating =
+    canonicalLiveTimeControlForInsert(challengeTempo, challengeRawTokenForRating) ??
+    challengeRawTokenForRating;
+  const opponentRatingForSelectedMode = modeRatingFromP1Context(
+    opponentP1,
+    'free',
+    challengeTempo,
+    challengeLtcForRating,
+    opponentLegacyRating,
   );
 
   const controlsDisabled = challengeBusy || findBusy;
@@ -466,7 +515,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
           setOpponentUserId('');
           setOpponentResolvedUsername(null);
           setOpponentProfileEmail(null);
-          setOpponentResolvedRating(null);
+          setOpponentP1(null);
+          setOpponentLegacyRating(null);
           setChallengeSentBanner(false);
           setChallengeSentDetail(null);
         }}
@@ -734,9 +784,9 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
                     opponentProfileEmail
                   )}
                 </div>
-                {opponentResolvedRating != null ? (
-                  <div style={{ marginTop: 6, color: '#b8e3c9' }}>Rating: {opponentResolvedRating}</div>
-                ) : null}
+                <div style={{ marginTop: 6, color: '#b8e3c9' }}>
+                  Rating: {formatRatingDisplay(opponentRatingForSelectedMode)}
+                </div>
               </div>
             ) : (
               <p style={{ fontSize: 13, color: '#9ca3af', margin: '8px 0' }}>

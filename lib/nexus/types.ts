@@ -21,11 +21,6 @@ export type NexusIdentitySummaryData = {
   isAnonymous: boolean;
 };
 
-export type NexusQuickNavItem = {
-  label: string;
-  href: string;
-};
-
 export type NexusTournamentRow = {
   id: string;
   name: string;
@@ -111,7 +106,6 @@ export type NexusActionCard = {
 
 export type NexusHubPayload = {
   identity: NexusIdentitySummaryData;
-  quickNav: NexusQuickNavItem[];
   activeTournaments: NexusTournamentSnapshotState;
   recentResults: NexusRecentResultsState;
   standingContext: NexusStandingContextState;

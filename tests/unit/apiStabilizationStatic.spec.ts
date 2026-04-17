@@ -9,6 +9,8 @@ test.describe('API stabilization (static source checks)', () => {
     expect(src).not.toContain('db_error');
     expect(src).toContain('game_unavailable');
     expect(src).toContain('apply_move_and_maybe_finish_system');
+    expect(src).toContain('finish_game_system');
+    expect(src).toContain('botTerminal');
     expect(src).toContain("error: 'invalid_move'");
     expect(src).toContain("result: 'out_of_turn'");
   });

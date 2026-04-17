@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { NexusEcosystem, NexusLiveGame } from '@/lib/nexus/getNexusData';
+import { ratingFromPlayerRatingsMap } from '@/lib/p1PublicRatingRead';
 
 const WATCH_TCS = new Set(['10m', '15m', '30m', '60m']);
 
@@ -7,7 +8,9 @@ export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLive
   const supabase = createServiceRoleClient();
   const { data } = await supabase
     .from('games')
-    .select('id,white_player_id,black_player_id,status,fen,live_time_control,tempo,ecosystem_scope,tournament_id,white_clock_ms,black_clock_ms,updated_at')
+    .select(
+      'id,white_player_id,black_player_id,status,fen,live_time_control,tempo,play_context,ecosystem_scope,tournament_id,white_clock_ms,black_clock_ms,updated_at',
+    )
     .eq('status', 'active')
     .eq('tempo', 'live')
     .eq('ecosystem_scope', ecosystem)
@@ -27,13 +30,35 @@ export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLive
   const ids = [...new Set(pool.flatMap((r) => [String(r.white_player_id ?? ''), String(r.black_player_id ?? '')]).filter(Boolean))];
   const tidList = [...new Set(pool.map((r) => String(r.tournament_id ?? '')).filter(Boolean))];
 
-  const [profilesRes, tournamentsRes] = await Promise.all([
+  const p1Buckets = [
+    'tournament_unified',
+    'free_bullet',
+    'free_blitz',
+    'free_rapid',
+    'free_day',
+  ] as const;
+
+  const [profilesRes, tournamentsRes, p1Res] = await Promise.all([
     ids.length > 0 ? supabase.from('profiles').select('id,username,rating').in('id', ids) : Promise.resolve({ data: [] as { id: string; username: string | null; rating: number | null }[] }),
     tidList.length > 0
       ? supabase.from('tournaments').select('id,name,status').in('id', tidList).eq('ecosystem_scope', ecosystem)
       : Promise.resolve({ data: [] as { id: string; name: string | null; status: string | null }[] }),
+    ids.length > 0
+      ? supabase
+          .from('player_ratings')
+          .select('user_id,bucket,rating')
+          .in('user_id', ids)
+          .in('bucket', [...p1Buckets])
+      : Promise.resolve({ data: [] as { user_id: string; bucket: string; rating: number }[] }),
   ]);
   const profiles = new Map((profilesRes.data ?? []).map((p) => [String(p.id), p]));
+  const p1ByUser = new Map<string, Map<string, number>>();
+  for (const row of p1Res.data ?? []) {
+    const uid = String(row.user_id);
+    const m = p1ByUser.get(uid) ?? new Map<string, number>();
+    m.set(String(row.bucket), Number(row.rating));
+    p1ByUser.set(uid, m);
+  }
   const tournaments = new Map((tournamentsRes.data ?? []).map((t) => [String(t.id), t]));
   const maskK12 = (id: string) => `K12-${id.replace(/-/g, '').slice(0, 6) || 'player'}`;
   const playerLabel = (id: string, fallback: string) => {
@@ -55,12 +80,30 @@ export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLive
     white_player_id: (r.white_player_id as string | null) ?? null,
     black_player_id: (r.black_player_id as string | null) ?? null,
     white_rating: (() => {
-      const p = profiles.get(String(r.white_player_id ?? ''));
-      return typeof p?.rating === 'number' ? p.rating : null;
+      const pid = String(r.white_player_id ?? '');
+      const p = profiles.get(pid);
+      const legacy = typeof p?.rating === 'number' ? p.rating : null;
+      return ratingFromPlayerRatingsMap(
+        p1ByUser,
+        pid,
+        String(r.play_context ?? 'free'),
+        String(r.tempo ?? 'live'),
+        String(r.live_time_control ?? ''),
+        legacy,
+      );
     })(),
     black_rating: (() => {
-      const p = profiles.get(String(r.black_player_id ?? ''));
-      return typeof p?.rating === 'number' ? p.rating : null;
+      const pid = String(r.black_player_id ?? '');
+      const p = profiles.get(pid);
+      const legacy = typeof p?.rating === 'number' ? p.rating : null;
+      return ratingFromPlayerRatingsMap(
+        p1ByUser,
+        pid,
+        String(r.play_context ?? 'free'),
+        String(r.tempo ?? 'live'),
+        String(r.live_time_control ?? ''),
+        legacy,
+      );
     })(),
     white_tier: null,
     black_tier: null,

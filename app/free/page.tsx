@@ -1,13 +1,11 @@
-import Link from "next/link";
 import NavigationBar from "@/components/NavigationBar";
+import { FreePlayLobbyGrid } from "@/components/free/FreePlayLobbyGrid";
+import { FreeTopActionStrip } from "@/components/free/FreeTopActionStrip";
 import { FreePlayLobbyClient } from "@/components/FreePlayLobbyClient";
-import { FreePlayMatchPanel } from "@/components/FreePlayMatchPanel";
+import { HomePlaySection } from "@/components/HomePlaySection";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
 import { redirect } from "next/navigation";
-
-const navLinkClass =
-  "text-sm font-medium text-gray-300 underline decoration-gray-600 underline-offset-2 hover:text-white";
 
 export default async function FreePage() {
   const user = await getSupabaseUserFromCookies();
@@ -15,32 +13,18 @@ export default async function FreePage() {
     redirect(buildLoginRedirect("/free"));
   }
 
-  const createGameRoute = "/free/create";
-
   return (
-    <div className="min-h-screen bg-[#0D1117] text-white flex flex-col">
+    <div className="flex min-h-screen flex-col bg-[#07080c] text-white">
       <NavigationBar />
 
-      <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-[#243244] px-4 py-3 text-center">
-        <Link href={createGameRoute} className={navLinkClass}>
-          Create game
-        </Link>
-        <span
-          className="cursor-not-allowed text-sm font-medium text-gray-500 no-underline"
-          title="Play computer is unavailable until bot identities are provisioned in this environment."
-        >
-          Play computer (unavailable)
-        </span>
-        <Link href="/free/active" className={navLinkClass}>
-          Active games
-        </Link>
-        <Link href="/free/challenges" className={navLinkClass}>
-          Direct challenges
-        </Link>
-      </div>
+      <FreeTopActionStrip />
 
       <FreePlayLobbyClient>
-        <FreePlayMatchPanel />
+        <FreePlayLobbyGrid>
+          <div className="mx-auto flex w-full max-w-md flex-col gap-4">
+            <HomePlaySection />
+          </div>
+        </FreePlayLobbyGrid>
       </FreePlayLobbyClient>
     </div>
   );

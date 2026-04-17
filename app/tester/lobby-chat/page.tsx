@@ -42,7 +42,7 @@ export default function TesterLobbyChatPage() {
     });
     setBusy(false);
     if (!res.ok) {
-      setErr('Failed to load lobby chat.');
+      setErr('Failed to load mode chat.');
       return;
     }
     const j = (await res.json()) as { messages?: ChatMsg[] };
@@ -81,7 +81,7 @@ export default function TesterLobbyChatPage() {
   if (!userId || !token) {
     return (
       <div style={{ padding: 24, maxWidth: 560, margin: '0 auto', color: '#e2e8f0' }}>
-        <p>Sign in required for lobby chat.</p>
+        <p>Sign in required for mode chat.</p>
         <Link href="/modes" style={{ color: '#93c5fd' }}>
           Back
         </Link>
@@ -92,7 +92,7 @@ export default function TesterLobbyChatPage() {
   return (
     <div style={{ padding: 24, maxWidth: 560, margin: '0 auto', color: '#e2e8f0' }}>
       <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
-        <strong style={{ color: '#e2e8f0' }}>Tester lobby chat</strong> — authenticated only; separate from game
+        <strong style={{ color: '#e2e8f0' }}>Tester mode chat</strong> — authenticated only; separate from game
         channels.
       </p>
       <div

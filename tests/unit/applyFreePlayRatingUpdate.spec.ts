@@ -58,7 +58,14 @@ test.describe('applyFreePlayRatingUpdate', () => {
         expect(name).toBe('apply_free_play_rating_update');
         expect(args.p_game_id).toBe('g1');
         return {
-          data: { applied: true, bucket: 'free_live', white: { before: 1500, after: 1510 } },
+          data: {
+            applied: true,
+            bucket: 'free_live',
+            p1_bucket: 'free_blitz',
+            white: { before: 1500, after: 1510 },
+            p1_white: { before: 1500, after: 1510 },
+            p1_black: { before: 1500, after: 1490 },
+          },
           error: null,
         };
       },
@@ -77,6 +84,7 @@ test.describe('applyFreePlayRatingUpdate', () => {
     if (!r.skipped) {
       expect(r.payload.applied).toBe(true);
       expect(r.payload.bucket).toBe('free_live');
+      expect((r.payload as { p1_bucket?: string }).p1_bucket).toBe('free_blitz');
     }
   });
 });

@@ -23,7 +23,13 @@ type Props = {
 
 export default function NexusHeader({ meta, className = "" }: Props) {
   const t = new Date(meta.generatedAt);
-  const stamp = Number.isFinite(t.getTime()) ? t.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : meta.generatedAt;
+  const utcDisplay = Number.isFinite(t.getTime())
+    ? t.toLocaleString(undefined, {
+        timeZone: "UTC",
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : String(meta.generatedAt);
   const generatedRelative = formatRelativeTimeUtc(meta.generatedAt);
 
   return (
@@ -37,11 +43,12 @@ export default function NexusHeader({ meta, className = "" }: Props) {
           <p className="mt-0.5 text-sm text-gray-500">Live command center</p>
         </div>
         <div className="text-right">
-          <p className="text-[11px] text-gray-500" title={meta.generatedAt}>
-            Snapshot <span className="text-gray-400">{stamp}</span>
+          <p className="text-[11px] text-gray-500" title={`${meta.generatedAt} (UTC)`}>
+            <span className="font-semibold uppercase tracking-wide text-gray-400">UTC</span>{" "}
+            <span className="tabular-nums text-gray-300">{utcDisplay}</span>
           </p>
           <p className="mt-0.5 text-[10px] leading-snug text-gray-600" title={meta.generatedAt}>
-            Page generated {generatedRelative}
+            Snapshot generated {generatedRelative}
           </p>
         </div>
       </div>

@@ -15,7 +15,7 @@ test.describe("NEXUS Phase 8 recovery guidance", () => {
   });
 
   test("recovery routing targets used in UI are valid hub handoff hrefs", () => {
-    for (const href of ["/tournaments", "/finished", "/free", "/profile"]) {
+    for (const href of ["/tournaments", "/finished", "/trainer/review", "/free", "/free/active", "/profile"]) {
       expect(isValidHubHandoffHref(href), href).toBe(true);
     }
   });
@@ -42,11 +42,10 @@ test.describe("NEXUS Phase 8 recovery guidance", () => {
       expect(c.href).toBeTruthy();
       expect(isValidHubHandoffHref(c.href)).toBe(true);
     }
-    expect(loggedOut.some((c) => c.href === "/free")).toBe(true);
-    expect(loggedOut.some((c) => c.href === "/tournaments")).toBe(true);
+    expect(loggedOut.some((c) => c.id === "login")).toBe(true);
   });
 
-  test("logged-in user still gets profile and browse fallbacks when no continue/tournament", () => {
+  test("logged-in user gets current-games list card", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const cards = buildNexusHubActionCards({
       userId: uid,
@@ -54,14 +53,14 @@ test.describe("NEXUS Phase 8 recovery guidance", () => {
       userTournamentEntryIds: [],
       hasRecentFinishedWins: false,
     });
-    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.length).toBe(4);
     for (const c of cards) {
       expect(isValidHubHandoffHref(c.href)).toBe(true);
     }
-    expect(cards.some((c) => c.id === "profile")).toBe(true);
+    expect(cards.some((c) => c.id === "current-games" && c.href === "/free/active")).toBe(true);
   });
 
-  test("continue-game card uses valid game href when live game exists", () => {
+  test("current-games card uses list href even when a live game exists", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const gid = "750e8400-e29b-41d4-a716-446655440002";
     const g: NexusLiveGame = {
@@ -91,8 +90,8 @@ test.describe("NEXUS Phase 8 recovery guidance", () => {
       userTournamentEntryIds: [],
       hasRecentFinishedWins: false,
     });
-    const cont = cards.find((c) => c.id === "continue-game");
-    expect(cont?.href).toBe(`/game/${gid}`);
-    expect(isValidHubHandoffHref(cont?.href ?? "")).toBe(true);
+    const cg = cards.find((c) => c.id === "current-games");
+    expect(cg?.href).toBe("/free/active");
+    expect(isValidHubHandoffHref(cg?.href ?? "")).toBe(true);
   });
 });

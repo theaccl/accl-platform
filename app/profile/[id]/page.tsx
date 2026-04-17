@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import type { PublicP1Read } from '@/lib/p1PublicRatingRead';
 import { publicIdentityFromProfileUsername } from '@/lib/profileIdentity';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
@@ -44,6 +45,11 @@ type PublicPrestigeFrame = {
   updated_at: string;
 } | null;
 
+type PublicP1BucketRow = {
+  rating: number;
+  games_played: number;
+} | null;
+
 type PublicProfilePayload = {
   profile: {
     id: string;
@@ -53,6 +59,8 @@ type PublicProfilePayload = {
     avatar_path: string | null;
   };
   ratings: PublicRatingRow[];
+  /** P1 ratings (dual-write targets); legacy `ratings` array remains unchanged. */
+  p1?: PublicP1Read;
   trophies: PublicTrophyRow[];
   vault_relics: PublicRelicRow[];
   prestige_frame: PublicPrestigeFrame;
@@ -78,6 +86,18 @@ const BUCKET_LABEL: Record<(typeof BUCKET_ORDER)[number], string> = {
   tournament_daily: 'Tournament · Daily',
   tournament_correspondence: 'Tournament · Correspondence',
 };
+
+const P1_FREE_ORDER = [
+  { key: 'free_bullet' as const, label: 'P1 · Bullet' },
+  { key: 'free_blitz' as const, label: 'P1 · Blitz' },
+  { key: 'free_rapid' as const, label: 'P1 · Rapid' },
+  { key: 'free_day' as const, label: 'P1 · Daily (calendar)' },
+];
+
+function formatP1Row(row: PublicP1BucketRow): string {
+  if (row == null) return '—';
+  return `Rating ${row.rating} · Games ${row.games_played}`;
+}
 
 function initialsFromPublicName(username: string | null, id: string): string {
   const raw = (username ?? '').trim() || id;
@@ -177,6 +197,7 @@ export default function PublicProfilePage() {
   }
 
   const isSelf = viewerId != null && viewerId === payload.profile.id;
+  const p1Read = payload.p1 ?? null;
   const displayName = publicIdentityFromProfileUsername(payload.profile.username, null);
   const initials = initialsFromPublicName(displayName, payload.profile.id);
   const avatarUrl = payload.profile.avatar_path
@@ -198,10 +219,10 @@ export default function PublicProfilePage() {
           Player lookup
         </Link>
         <Link href="/free" style={{ color: '#93c5fd' }}>
-          Free lobby
+          Free play
         </Link>
-        <Link href="/finished" style={{ color: '#93c5fd' }}>
-          Finished games
+        <Link href="/trainer/review" style={{ color: '#93c5fd' }}>
+          Trainer review
         </Link>
         <Link href="/profile" style={{ color: '#93c5fd' }}>
           Your profile
@@ -263,7 +284,10 @@ export default function PublicProfilePage() {
         style={{ border: '1px solid #243244', borderRadius: 12, padding: 16, background: '#111a27', marginTop: 16 }}
       >
         <h2 style={{ marginTop: 0, fontSize: 16 }}>Rating breakdown</h2>
-        <p style={{ marginTop: 0, color: '#9fb0c5' }}>Six-bucket ACCL ratings (public read model).</p>
+        <p style={{ marginTop: 0, color: '#9fb0c5' }}>
+          Legacy six-bucket pace ratings (public read model). Full row list remains in <code>ratings</code> for API
+          compatibility.
+        </p>
         <div style={{ display: 'grid', gap: 8 }}>
           {BUCKET_ORDER.map((bucket) => {
             const row = ratingsByBucket.get(bucket);
@@ -291,6 +315,95 @@ export default function PublicProfilePage() {
         </div>
       </section>
 
+      {p1Read ? (
+        <section
+          data-testid="public-profile-p1-ratings"
+          style={{
+            border: '1px solid #243244',
+            borderRadius: 12,
+            padding: 16,
+            background: '#111a27',
+            marginTop: 16,
+          }}
+        >
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>P1 ratings (read path)</h2>
+          <p style={{ marginTop: 0, color: '#9fb0c5' }}>
+            ACCL Rating and Tournament Rating use the same value (P1 tournament_unified). Shown below for verification.
+          </p>
+          <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+            <div
+              style={{
+                border: '1px solid #2f3f54',
+                borderRadius: 10,
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>ACCL Rating</span>
+              <span style={{ color: '#cbd5e1', fontSize: 13 }}>
+                <strong style={{ color: '#f8fafc' }}>{p1Read.accl_rating ?? '—'}</strong>
+              </span>
+            </div>
+            <div
+              style={{
+                border: '1px solid #2f3f54',
+                borderRadius: 10,
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>Tournament Rating</span>
+              <span style={{ color: '#cbd5e1', fontSize: 13 }}>
+                <strong style={{ color: '#f8fafc' }}>{p1Read.tournament_rating ?? '—'}</strong>
+              </span>
+            </div>
+            <div
+              style={{
+                border: '1px solid #2f3f54',
+                borderRadius: 10,
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>Tournament unified</span>
+              <span style={{ color: '#cbd5e1', fontSize: 13 }}>{formatP1Row(p1Read.tournament_unified)}</span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {P1_FREE_ORDER.map(({ key, label }) => (
+              <div
+                key={key}
+                style={{
+                  border: '1px solid #2f3f54',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{label}</span>
+                <span style={{ color: '#cbd5e1', fontSize: 13 }}>{formatP1Row(p1Read[key])}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section
         data-testid="public-profile-history"
         style={{ border: '1px solid #243244', borderRadius: 12, padding: 16, background: '#111a27', marginTop: 16 }}
@@ -305,7 +418,7 @@ export default function PublicProfilePage() {
           </Link>
         </p>
         {isSelf ? (
-          <Link href="/finished" style={{ color: '#93c5fd', fontWeight: 700 }}>
+          <Link href="/trainer/review" style={{ color: '#93c5fd', fontWeight: 700 }}>
             Open your finished game history
           </Link>
         ) : (

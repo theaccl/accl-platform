@@ -71,7 +71,7 @@ export default function ProfilePage() {
               <p className="text-xs text-gray-500">Same username as in the Username card above — not email.</p>
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                 <span className="rounded-lg border border-[#2a3442] bg-[#151d2c] px-3 py-1.5 text-sm text-gray-200">
-                  <span className="text-gray-500">ELO </span>
+                  <span className="text-gray-500">ACCL </span>
                   <span className="font-semibold text-white tabular-nums">{prev.elo}</span>
                 </span>
                 <span className="rounded-full border border-red-500/45 bg-red-950/35 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-100/95">
@@ -108,28 +108,28 @@ export default function ProfilePage() {
             href="/account"
             className="w-full rounded-xl border border-[#2a3442] bg-[#101722] py-4 text-center text-base font-semibold text-gray-100 transition hover:bg-[#192235]"
           >
-            MANAGE ACCOUNT
+            Manage account
           </Link>
           <Link
             href="/vault"
             className="w-full rounded-xl bg-[#161b22] py-4 text-center text-lg font-semibold transition hover:bg-[#21262d]"
           >
-            ENTER VAULT
+            Enter vault
           </Link>
 
-          <button
-            type="button"
-            className="w-full rounded-xl bg-[#161b22] py-4 text-lg font-semibold transition hover:bg-[#21262d]"
+          <Link
+            href="/trainer/review"
+            className="w-full rounded-xl bg-[#161b22] py-4 text-center text-lg font-semibold transition hover:bg-[#21262d]"
           >
-            VIEW FINISHED GAMES
-          </button>
+            Review finished games
+          </Link>
 
-          <button
-            type="button"
-            className="w-full rounded-xl bg-[#161b22] py-4 text-lg font-semibold transition hover:bg-[#21262d]"
+          <Link
+            href="/trainer"
+            className="w-full rounded-xl bg-[#161b22] py-4 text-center text-lg font-semibold transition hover:bg-[#21262d]"
           >
-            GO TO TRAINER
-          </button>
+            Open Trainer
+          </Link>
         </div>
 
         <div className="border-t border-gray-800 pt-4">

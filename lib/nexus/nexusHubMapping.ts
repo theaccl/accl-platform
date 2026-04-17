@@ -34,8 +34,10 @@ export function pickActiveGameForUser(games: NexusLiveGame[], userId: string): N
 const STATIC_ROUTES = new Set([
   "/profile",
   "/free",
+  "/free/active",
   "/tournaments",
   "/finished",
+  "/trainer/review",
   "/players",
   "/modes",
   "/login",
@@ -327,7 +329,7 @@ function sortActionCardsByUrgency(cards: NexusActionCard[]): NexusActionCard[] {
  * Dedupes by href; invalid routes dropped.
  */
 export function buildNexusHubActionCards(params: HubActionCardsParams): NexusActionCard[] {
-  const { userId, liveGames, userTournamentEntryIds, hasRecentFinishedWins } = params;
+  const { userId } = params;
   const candidates: NexusActionCard[] = [];
 
   const push = (c: NexusActionCard) => {
@@ -345,114 +347,43 @@ export function buildNexusHubActionCards(params: HubActionCardsParams): NexusAct
       urgency: 90,
       emphasis: "primary",
     });
-    push({
-      id: "free",
-      title: "Free play",
-      description: "Rated or casual games outside bracket pressure.",
-      href: "/free",
-      priority: 20,
-      urgency: 30,
-      emphasis: "secondary",
-    });
-    push({
-      id: "tournaments",
-      title: "Tournament area",
-      description: "Browse and join structured events.",
-      href: "/tournaments",
-      priority: 30,
-      urgency: 25,
-      emphasis: "secondary",
-    });
-    push({
-      id: "finished",
-      title: "Review finished games",
-      description: "Analysis and history from completed games.",
-      href: "/finished",
-      priority: hasRecentFinishedWins ? 25 : 40,
-      urgency: hasRecentFinishedWins ? 35 : 20,
-      emphasis: "secondary",
-    });
   } else {
-    const continueGame = pickActiveGameForUser(liveGames, userId);
-    const hasContinue = Boolean(continueGame && isSafeHubDocumentId(continueGame.id));
-
-    if (hasContinue && continueGame) {
-      push({
-        id: "continue-game",
-        title: "Continue active game",
-        description: `Resume your current match · ${continueGame.white_label} vs ${continueGame.black_label} · ${continueGame.time_control}`,
-        href: `/game/${continueGame.id.trim()}`,
-        priority: 10,
-        urgency: 100,
-        emphasis: "primary",
-      });
-    }
-
-    const firstEntryTid = userTournamentEntryIds.find((tid) => isSafeHubDocumentId(tid));
-    if (firstEntryTid) {
-      push({
-        id: "tournament-status",
-        title: "Check tournament status",
-        description: "Open a tournament you are entered in.",
-        href: `/tournaments/${firstEntryTid.trim()}`,
-        priority: 25,
-        urgency: 80,
-        emphasis: "secondary",
-      });
-    }
-
     push({
-      id: "profile",
-      title: "Open profile",
-      description: "Identity, stats, and account controls.",
-      href: "/profile",
-      priority: 35,
-      urgency: 40,
-      emphasis: hasContinue ? "secondary" : "primary",
+      id: "current-games",
+      title: "Resume game",
+      description: "Open your full active and waiting games list — always /free/active, never a single-game deep link.",
+      href: "/free/active",
+      priority: 1,
+      urgency: 100,
+      emphasis: "primary",
     });
-
-    if (hasRecentFinishedWins) {
-      push({
-        id: "finished-priority",
-        title: "Review finished games",
-        description: "Recent finishes are on record — review or analyze.",
-        href: "/finished",
-        priority: 38,
-        urgency: 60,
-        emphasis: "secondary",
-      });
-    }
-
     push({
-      id: "free",
-      title: "Free play",
-      description: "Rated or casual games outside bracket pressure.",
-      href: "/free",
-      priority: 45,
-      urgency: 30,
+      id: "trainer-review",
+      title: "Review finished games",
+      description: "Trainer review hub for completed games — replay, analysis, and training entry points.",
+      href: "/trainer/review",
+      priority: 2,
+      urgency: 85,
       emphasis: "secondary",
     });
     push({
-      id: "tournaments",
+      id: "tournaments-area",
       title: "Tournament area",
-      description: "Browse and join structured events.",
+      description: "Browse and enter tournament play — brackets, entries, and scheduled events.",
       href: "/tournaments",
-      priority: 50,
-      urgency: 25,
+      priority: 3,
+      urgency: 75,
       emphasis: "secondary",
     });
-
-    if (!hasRecentFinishedWins) {
-      push({
-        id: "finished",
-        title: "Review finished games",
-        description: "Analysis and history from completed games.",
-        href: "/finished",
-        priority: 52,
-        urgency: 20,
-        emphasis: "secondary",
-      });
-    }
+    push({
+      id: "nexus-free-play",
+      title: "Free play",
+      description: "Live lobby, find match, open seats, and direct challenges on the free-play surface.",
+      href: "/free",
+      priority: 4,
+      urgency: 65,
+      emphasis: "secondary",
+    });
   }
 
   const sorted = sortActionCardsByUrgency(candidates);

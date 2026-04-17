@@ -8,6 +8,7 @@ export type GameRowMinimal = {
   white_player_id: string;
   black_player_id: string | null;
   ecosystem_scope: string;
+  tempo: string | null;
 };
 
 /**
@@ -33,11 +34,17 @@ export async function loadGameRow(
 ): Promise<GameRowMinimal | null> {
   const { data, error } = await supabase
     .from('games')
-    .select('id,status,white_player_id,black_player_id,ecosystem_scope')
+    .select('id,status,white_player_id,black_player_id,ecosystem_scope,tempo')
     .eq('id', gameId)
     .maybeSingle();
   if (error || !data) return null;
-  return data as GameRowMinimal;
+
+  const game = data as GameRowMinimal;
+  if (!game.tempo) {
+    console.warn('Game missing tempo:', game.id);
+  }
+
+  return game;
 }
 
 export function ecosystemsCompatible(game: GameRowMinimal, viewer: ViewerEcosystem): boolean {

@@ -6,6 +6,7 @@ import {
   createE2eServiceDbContext,
   E2E_RATING_BUCKETS,
   readE2ePairRatingSnapshots,
+  readPlayerRatingBucketRow,
   resolveE2ePairProfileIds,
   waitForGameRatingAppliedRow,
   type UserRatingBucketsSnapshot,
@@ -65,7 +66,7 @@ test.describe('free-play rating mutation (player_ratings)', () => {
     }
   });
 
-  test('rated free live: free_live bucket mutates for both users; other buckets unchanged', async ({
+  test('rated free live (5m): dual-write free_live + free_blitz; other legacy buckets unchanged', async ({
     browser,
   }) => {
     if (!ctxResult.ok) return;
@@ -78,6 +79,12 @@ test.describe('free-play rating mutation (player_ratings)', () => {
     expect(beforePair.ok, beforePair.ok ? '' : beforePair.reason).toBe(true);
     if (!beforePair.ok) return;
 
+    const beforeBlitzA = await readPlayerRatingBucketRow(client, ids.userAId, 'free_blitz');
+    const beforeBlitzB = await readPlayerRatingBucketRow(client, ids.userBId, 'free_blitz');
+    expect(beforeBlitzA.ok, beforeBlitzA.ok ? '' : beforeBlitzA.reason).toBe(true);
+    expect(beforeBlitzB.ok, beforeBlitzB.ok ? '' : beforeBlitzB.reason).toBe(true);
+    if (!beforeBlitzA.ok || !beforeBlitzB.ok) return;
+
     const { pageA, pageB, gameId, dispose } = await setupAcceptedFreeDirectChallenge(browser, {
       rated: true,
       tempo: 'live',
@@ -88,18 +95,34 @@ test.describe('free-play rating mutation (player_ratings)', () => {
 
       const applied = await waitForGameRatingAppliedRow(client, gameId);
       expect(applied.rating_last_update).toBeTruthy();
-      const payload = applied.rating_last_update as { bucket?: string; applied?: boolean };
+      const payload = applied.rating_last_update as {
+        bucket?: string;
+        p1_bucket?: string;
+        applied?: boolean;
+      };
       expect(payload.bucket).toBe('free_live');
+      expect(payload.p1_bucket).toBe('free_blitz');
 
       const afterPair = await readE2ePairRatingSnapshots(client, ids.userAId, ids.userBId);
       expect(afterPair.ok, afterPair.ok ? '' : afterPair.reason).toBe(true);
       if (!afterPair.ok) return;
+
+      const afterBlitzA = await readPlayerRatingBucketRow(client, ids.userAId, 'free_blitz');
+      const afterBlitzB = await readPlayerRatingBucketRow(client, ids.userBId, 'free_blitz');
+      expect(afterBlitzA.ok, afterBlitzA.ok ? '' : afterBlitzA.reason).toBe(true);
+      expect(afterBlitzB.ok, afterBlitzB.ok ? '' : afterBlitzB.reason).toBe(true);
+      if (!afterBlitzA.ok || !afterBlitzB.ok) return;
 
       /* White (A) wins vs resigning Black (B); migration uses ±10 when not draw. */
       expect(afterPair.a.free_live.rating).toBe(beforePair.a.free_live.rating + 10);
       expect(afterPair.a.free_live.games_played).toBe(beforePair.a.free_live.games_played + 1);
       expect(afterPair.b.free_live.rating).toBe(beforePair.b.free_live.rating - 10);
       expect(afterPair.b.free_live.games_played).toBe(beforePair.b.free_live.games_played + 1);
+
+      expect(afterBlitzA.row.rating).toBe(beforeBlitzA.row.rating + 10);
+      expect(afterBlitzA.row.games_played).toBe(beforeBlitzA.row.games_played + 1);
+      expect(afterBlitzB.row.rating).toBe(beforeBlitzB.row.rating - 10);
+      expect(afterBlitzB.row.games_played).toBe(beforeBlitzB.row.games_played + 1);
 
       for (const k of E2E_RATING_BUCKETS) {
         if (k === 'free_live') continue;

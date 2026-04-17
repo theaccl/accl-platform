@@ -36,6 +36,15 @@ export async function getStandings(ecosystem: NexusEcosystem): Promise<NexusStan
     : { data: [] as Array<{ id: string; username: string | null }> };
   const nameById = new Map((profiles ?? []).map((p) => [String(p.id), String(p.username ?? 'Player')]));
 
+  const { data: tuRows } = ids.length
+    ? await supabase
+        .from('player_ratings')
+        .select('user_id,rating')
+        .eq('bucket', 'tournament_unified')
+        .in('user_id', ids)
+    : { data: [] as Array<{ user_id: string; rating: number }> };
+  const tuByUser = new Map((tuRows ?? []).map((r) => [String(r.user_id), Number(r.rating)]));
+
   const ranked = [...stats.entries()]
     .map(([id, s]) => ({
       user_id: id,
@@ -44,7 +53,7 @@ export async function getStandings(ecosystem: NexusEcosystem): Promise<NexusStan
       games: s.games,
       streak: s.streak,
       earned: s.earned,
-      rating: 1000 + s.wins * 8,
+      rating: tuByUser.get(id) ?? 1000 + s.wins * 8,
       tier: s.wins > 30 ? 'S' : s.wins > 20 ? 'A' : s.wins > 10 ? 'B' : 'C',
       flag: '♞',
     }))

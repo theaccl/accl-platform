@@ -1,6 +1,5 @@
 import Link from "next/link";
 import NavigationBar from "@/components/NavigationBar";
-import { HomePlaySection } from "@/components/HomePlaySection";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
 
@@ -34,15 +33,7 @@ export default async function HomePage() {
             className="grid grid-cols-1 sm:grid-cols-2 gap-3"
             aria-label="Primary entry"
           >
-            {user ? (
-              <Link
-                href="/tester/welcome"
-                className="inline-flex items-center justify-center rounded-xl border border-amber-500/35 bg-amber-950/20 px-4 py-3.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-950/35 hover:border-amber-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117] sm:col-span-2 max-w-md sm:max-w-none mx-auto w-full"
-              >
-                Tester welcome
-              </Link>
-            ) : null}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 sm:col-span-2">
               <Link
                 href={enterNexusHref}
                 className="inline-flex items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]"
@@ -53,23 +44,14 @@ export default async function HomePage() {
                 <p className="text-center text-[11px] text-gray-500 sm:text-left">Account required</p>
               ) : null}
             </div>
-            <Link
-              href="/free"
-              className="inline-flex items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117]"
-            >
-              Play Free
-            </Link>
             {user ? (
-              <div className="sm:col-span-2 mx-auto w-full max-w-md">
-                <HomePlaySection />
-              </div>
+              <Link
+                href="/trainer"
+                className="inline-flex items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117] sm:col-span-2 max-w-md sm:max-w-none mx-auto w-full"
+              >
+                Trainer
+              </Link>
             ) : null}
-            <Link
-              href="/tournaments"
-              className="inline-flex items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D1117] sm:col-span-2 max-w-md sm:max-w-none mx-auto w-full"
-            >
-              Tournaments
-            </Link>
           </nav>
 
           <section className="border-t border-[#243244] pt-8">

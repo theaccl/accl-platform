@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
@@ -40,6 +40,7 @@ function supabaseErrText(err: unknown, fallback: string): string {
 
 export default function RequestsPage() {
   const router = useRouter();
+  const actionInFlightRef = useRef(false);
   const [authResolved, setAuthResolved] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [requests, setRequests] = useState<MatchRequestRow[]>([]);
@@ -86,8 +87,9 @@ export default function RequestsPage() {
   useEffect(() => {
     if (!authResolved || !authUserId) return;
     const poll = window.setInterval(() => {
+      if (actionInFlightRef.current) return;
       void fetchRequests();
-    }, 4000);
+    }, 5000);
     return () => {
       window.clearInterval(poll);
     };
@@ -166,6 +168,8 @@ export default function RequestsPage() {
   const acceptRequest = useCallback(
     async (r: MatchRequestRow) => {
       if (!authUserId || r.to_user_id !== authUserId) return;
+      if (actionInFlightRef.current) return;
+      actionInFlightRef.current = true;
       setBusyReqId(r.id);
       setMessage('');
       try {
@@ -177,6 +181,7 @@ export default function RequestsPage() {
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
         if (res.gameId) router.push(`/game/${res.gameId}`);
       } finally {
+        actionInFlightRef.current = false;
         setBusyReqId(null);
       }
     },
@@ -186,6 +191,8 @@ export default function RequestsPage() {
   const joinOpenListing = useCallback(
     async (r: MatchRequestRow) => {
       if (!authUserId || r.visibility !== 'open') return;
+      if (actionInFlightRef.current) return;
+      actionInFlightRef.current = true;
       setBusyReqId(r.id);
       setMessage('');
       try {
@@ -211,6 +218,7 @@ export default function RequestsPage() {
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
         if (res.gameId) router.push(`/game/${res.gameId}`);
       } finally {
+        actionInFlightRef.current = false;
         setBusyReqId(null);
       }
     },
@@ -220,23 +228,29 @@ export default function RequestsPage() {
   const declineRequest = useCallback(
     async (r: MatchRequestRow) => {
       if (!authUserId || r.to_user_id !== authUserId) return;
+      if (actionInFlightRef.current) return;
+      actionInFlightRef.current = true;
       setBusyReqId(r.id);
       setMessage('');
-      const { error } = await supabase
-        .from('match_requests')
-        .update({
-          status: 'declined',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', r.id)
-        .eq('status', 'pending')
-        .eq('to_user_id', authUserId);
-      setBusyReqId(null);
-      if (error) {
-        setMessage(error.message);
-        return;
+      try {
+        const { error } = await supabase
+          .from('match_requests')
+          .update({
+            status: 'declined',
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', r.id)
+          .eq('status', 'pending')
+          .eq('to_user_id', authUserId);
+        if (error) {
+          setMessage(error.message);
+          return;
+        }
+        setRequests((prev) => prev.filter((x) => x.id !== r.id));
+      } finally {
+        actionInFlightRef.current = false;
+        setBusyReqId(null);
       }
-      setRequests((prev) => prev.filter((x) => x.id !== r.id));
     },
     [authUserId]
   );
@@ -244,23 +258,29 @@ export default function RequestsPage() {
   const cancelOutgoing = useCallback(
     async (r: MatchRequestRow) => {
       if (!authUserId || r.from_user_id !== authUserId) return;
+      if (actionInFlightRef.current) return;
+      actionInFlightRef.current = true;
       setBusyReqId(r.id);
       setMessage('');
-      const { error } = await supabase
-        .from('match_requests')
-        .update({
-          status: 'cancelled',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', r.id)
-        .eq('status', 'pending')
-        .eq('from_user_id', authUserId);
-      setBusyReqId(null);
-      if (error) {
-        setMessage(error.message);
-        return;
+      try {
+        const { error } = await supabase
+          .from('match_requests')
+          .update({
+            status: 'cancelled',
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', r.id)
+          .eq('status', 'pending')
+          .eq('from_user_id', authUserId);
+        if (error) {
+          setMessage(error.message);
+          return;
+        }
+        setRequests((prev) => prev.filter((x) => x.id !== r.id));
+      } finally {
+        actionInFlightRef.current = false;
+        setBusyReqId(null);
       }
-      setRequests((prev) => prev.filter((x) => x.id !== r.id));
     },
     [authUserId]
   );
@@ -301,7 +321,7 @@ export default function RequestsPage() {
         <strong className="text-gray-200">Direct challenge (private)</strong> — labeled below when someone picked you as opponent.
         Open / public listings are separate.{' '}
         <Link href="/free" className="text-red-300/90 hover:text-red-200 underline-offset-2 hover:underline">
-          Alternate lobby
+          Open Free play
         </Link>
       </p>
       {message ? <p data-testid="requests-inbox-message">{message}</p> : null}
@@ -352,7 +372,7 @@ export default function RequestsPage() {
                   disabled={busyReqId === r.id}
                   onClick={() => declineRequest(r)}
                 >
-                  Decline
+                  {busyReqId === r.id ? 'Declining…' : 'Decline'}
                 </button>
               </div>
             </div>

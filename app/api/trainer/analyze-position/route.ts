@@ -11,7 +11,6 @@ import {
 } from '@/lib/trainer/formatTrainerEvaluation';
 import { getClientIp } from '@/lib/server/clientIp';
 import { checkRateLimit } from '@/lib/server/rateLimit';
-import { tooManyRequests } from '@/lib/server/httpJson';
 
 export const runtime = 'nodejs';
 
@@ -44,18 +43,38 @@ function json(body: unknown, status = 200): Response {
 
 type Body = { fen?: unknown; gameId?: unknown };
 
-export async function POST(request: Request): Promise<Response> {
+async function postTrainerAnalyze(request: Request): Promise<Response> {
   const ip = getClientIp(request);
   const userId = await resolveAuthenticatedUserId(request);
   const rlKey = userId ? `trainer-analyze:${userId}` : `trainer-analyze:${ip}`;
   const limited = checkRateLimit(rlKey, 45, 60_000);
-  if (!limited.allowed) return tooManyRequests(limited.retryAfterSec);
+  if (!limited.allowed) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: 'rate_limited',
+        code: 'RATE_LIMIT',
+        retry_after_sec: limited.retryAfterSec,
+        availability: 'unavailable',
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': String(limited.retryAfterSec),
+        },
+      }
+    );
+  }
 
   let body: Body;
   try {
     body = (await request.json()) as Body;
   } catch {
-    return json({ error: 'Invalid JSON body' }, 400);
+    return json(
+      { ok: false, error: 'invalid_json', code: 'BAD_JSON', availability: 'unavailable' },
+      400
+    );
   }
 
   const fen = String(body.fen ?? '').trim();
@@ -65,20 +84,30 @@ export async function POST(request: Request): Promise<Response> {
   try {
     new Chess(fen);
   } catch {
-    return json({ error: 'Invalid FEN' }, 400);
+    return json({ ok: false, error: 'invalid_fen', code: 'BAD_FEN', availability: 'unavailable' }, 400);
   }
 
   let supabase;
   try {
     supabase = createServiceRoleClient();
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'Service configuration error' }, 503);
+    const detail = e instanceof Error ? e.message.slice(0, 160) : '';
+    console.error('[api/trainer/analyze-position] service_client_unavailable', detail);
+    return json(
+      {
+        ok: false,
+        error: 'Server is not configured for trainer analysis.',
+        code: 'SUPABASE_CONFIG',
+        availability: 'unavailable',
+      },
+      503
+    );
   }
 
   const guard = await assertTrainerAnalysisAllowed(supabase, { fen, gameId, userId });
   if (!guard.ok) {
     return json(
-      { error: guard.message, code: guard.code },
+      { ok: false, error: guard.message, code: guard.code, availability: 'blocked' },
       guard.httpStatus
     );
   }
@@ -89,9 +118,27 @@ export async function POST(request: Request): Promise<Response> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'engine_error';
     if (msg.includes('engine_eval_timeout')) {
-      return json({ error: 'Engine timed out — try again or simplify.', code: 'ENGINE_TIMEOUT' }, 504);
+      return json(
+        {
+          ok: false,
+          error: 'Engine timed out — try again or simplify.',
+          code: 'ENGINE_TIMEOUT',
+          availability: 'degraded',
+        },
+        504
+      );
     }
-    return json({ error: 'Engine unavailable.', code: 'ENGINE_ERROR' }, 503);
+    console.error('[api/trainer/analyze-position] engine_failed', msg.slice(0, 160));
+    return json(
+      {
+        ok: false,
+        error: 'Engine analysis is not available on this deployment (Stockfish UCI could not run).',
+        code: 'ENGINE_ERROR',
+        availability: 'unavailable',
+        reason: 'uci_or_engine_init_failed',
+      },
+      503
+    );
   }
 
   const lines = uci.lines;
@@ -116,6 +163,7 @@ export async function POST(request: Request): Promise<Response> {
     ok: true,
     fen,
     gameId,
+    availability: 'available',
     summary: centipawnToHumanLine(best?.scoreCp ?? null),
     evaluation: {
       bestMove: uci.bestMove,
@@ -124,4 +172,22 @@ export async function POST(request: Request): Promise<Response> {
       spreadClassification: spreadClass,
     },
   });
+}
+
+export async function POST(request: Request): Promise<Response> {
+  try {
+    return await postTrainerAnalyze(request);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'error';
+    console.error('[api/trainer/analyze-position] unhandled', msg.slice(0, 200));
+    return json(
+      {
+        ok: false,
+        error: 'unexpected_error',
+        code: 'INTERNAL',
+        availability: 'unavailable',
+      },
+      500
+    );
+  }
 }

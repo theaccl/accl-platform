@@ -54,7 +54,7 @@ test.describe("NEXUS freeze-pass — hub handoffs and routes", () => {
     }
   });
 
-  test("continue-game href matches live game id", () => {
+  test("current-games href is list view when live games exist", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const gid = "750e8400-e29b-41d4-a716-446655440002";
     const live: NexusLiveGame = {
@@ -84,14 +84,15 @@ test.describe("NEXUS freeze-pass — hub handoffs and routes", () => {
       userTournamentEntryIds: [],
       hasRecentFinishedWins: false,
     });
-    const cont = cards.find((c) => c.id === "continue-game");
-    expect(cont?.href).toBe(`/game/${gid}`);
-    expect(isValidHubHandoffHref(cont?.href ?? "")).toBe(true);
+    const cg = cards.find((c) => c.id === "current-games");
+    expect(cg?.href).toBe("/free/active");
+    expect(isValidHubHandoffHref(cg?.href ?? "")).toBe(true);
   });
 });
 
 test.describe("NEXUS freeze-pass — hint hierarchy (no scores in copy)", () => {
   test("top-card trust only for known high-signal ids", () => {
+    expect(trustMessageForTopActionCard("current-games")).toBeTruthy();
     expect(trustMessageForTopActionCard("continue-game")).toBeTruthy();
     expect(trustMessageForTopActionCard("free")).toBeNull();
     expect(trustMessageForTopActionCard("login")).toBeNull();

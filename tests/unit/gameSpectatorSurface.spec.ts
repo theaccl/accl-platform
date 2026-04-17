@@ -8,7 +8,7 @@ test.describe("game page spectator surface (static guards)", () => {
   test("source retains public-spectator hardening markers", () => {
     const src = readFileSync(gamePagePath, "utf8");
     expect(src).toContain("if (isPublicViewer)");
-    expect(src).toContain("allowDragging: boardInputEnabled && !isPublicViewer");
+    expect(src).toContain("arePiecesDraggable={boardInputEnabled && !isPublicViewer}");
     expect(src).toContain("if (isPublicViewer) return;");
     expect(src).toContain("data-spectator-readonly");
     expect(src).toContain("isPublicViewer ||");

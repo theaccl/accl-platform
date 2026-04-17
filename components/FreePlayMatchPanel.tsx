@@ -46,12 +46,24 @@ function modeLabel(m: PlatMode): string {
   return MODE_LABELS.find((x) => x.id === m)?.label ?? m;
 }
 
+type FreePlayMatchPanelProps = {
+  /** When set, mode is controlled by parent (e.g. lobby chat mode sync). */
+  mode?: PlatMode;
+  onModeChange?: (m: PlatMode) => void;
+};
+
 /**
  * PLAT free-play match controls: open-seat queue with tempo / rated / clock.
  */
-export function FreePlayMatchPanel() {
+export function FreePlayMatchPanel({ mode: controlledMode, onModeChange }: FreePlayMatchPanelProps = {}) {
   const router = useRouter();
-  const [mode, setMode] = useState<PlatMode>('blitz');
+  const [internalMode, setInternalMode] = useState<PlatMode>('blitz');
+  const isControlled = controlledMode !== undefined;
+  const mode = isControlled ? controlledMode : internalMode;
+  const setMode = (m: PlatMode) => {
+    if (!isControlled) setInternalMode(m);
+    onModeChange?.(m);
+  };
   const [clock, setClock] = useState<LiveClockValue>('3m');
   const [rated, setRated] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -92,7 +104,11 @@ export function FreePlayMatchPanel() {
   }, [busy, mode, clock, rated, router]);
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8" data-testid="free-plat-play-root">
+    <div
+      id="free-find-match-anchor"
+      className="max-w-2xl mx-auto px-6 py-8"
+      data-testid="free-plat-play-root"
+    >
       <p className="text-sm text-gray-400 mb-4">
         <Link href="/trainer/lab" className="text-red-300 underline hover:text-red-200">
           Open Trainer lab

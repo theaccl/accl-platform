@@ -13,6 +13,7 @@ const ALL_ACTIVITY_KINDS: NexusActivityKind[] = ["game_finished", "tournament_up
 
 test.describe("NEXUS Phase 9 trust signals", () => {
   test("top action card trust lines only for high-signal ids", () => {
+    expect(trustMessageForTopActionCard("current-games")).toContain("seat");
     expect(trustMessageForTopActionCard("continue-game")).toContain("active game");
     expect(trustMessageForTopActionCard("tournament-status")).toContain("participating");
     expect(trustMessageForTopActionCard("finished-priority")).toContain("recent results");

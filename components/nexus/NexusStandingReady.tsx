@@ -50,7 +50,15 @@ export default function NexusStandingReady(state: NexusStandingReadyProps) {
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-[10px] uppercase tracking-wide text-gray-500">Rank</dt>
-            <dd className="font-semibold text-gray-100">#{state.rank}</dd>
+            <dd
+              className={
+                state.rank <= 3
+                  ? "font-semibold tabular-nums text-[color:var(--nexus-gold,#d4a017)]"
+                  : "font-semibold text-gray-100"
+              }
+            >
+              #{state.rank}
+            </dd>
           </div>
           <div>
             <dt className="text-[10px] uppercase tracking-wide text-gray-500">Tier</dt>

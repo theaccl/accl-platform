@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import NavigationBar from "@/components/NavigationBar";
+import { FreePlayLobbyGrid } from "@/components/free/FreePlayLobbyGrid";
 import { FreePlayLobbyClient } from "@/components/FreePlayLobbyClient";
-import { FreePlayMatchPanel } from "@/components/FreePlayMatchPanel";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
 
@@ -12,10 +12,14 @@ export default async function FreePlayMatchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0D1117] text-white">
+    <div className="flex min-h-screen flex-col bg-[#07080c] text-white">
       <NavigationBar />
       <FreePlayLobbyClient>
-        <FreePlayMatchPanel />
+        <FreePlayLobbyGrid>
+          <p className="text-center text-sm text-gray-500">
+            Pick mode and clock below — same mode as mode chat on Free play.
+          </p>
+        </FreePlayLobbyGrid>
       </FreePlayLobbyClient>
     </div>
   );

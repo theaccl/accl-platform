@@ -176,8 +176,8 @@ export default function LandingPage() {
         ) : null}
 
         <footer className="text-center text-[11px] text-gray-600 pt-6">
-          <Link href="/free" className="text-gray-500 hover:text-gray-400">
-            Classic lobby shortcuts
+          <Link href={NEXUS_LOGIN_ENTRY_HREF} className="text-gray-500 hover:text-gray-400">
+            Open Nexus (sign in)
           </Link>
         </footer>
       </main>

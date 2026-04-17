@@ -20,6 +20,7 @@ export type TrainerPanelProps = {
 
 type AnalyzeResponse = {
   ok?: boolean;
+  availability?: string;
   error?: string;
   code?: string;
   summary?: string;
@@ -67,9 +68,34 @@ export default function TrainerPanel({
         },
         body: JSON.stringify({ fen: fen.trim(), gameId }),
       });
-      const payload = (await res.json()) as AnalyzeResponse;
-      if (!res.ok) {
-        setError(payload.error ?? "Analysis failed.");
+      const payload = (await res.json().catch(() => ({}))) as AnalyzeResponse & {
+        retry_after_sec?: number;
+      };
+      const success = res.ok && payload.ok !== false && (payload.ok === true || Boolean(payload.evaluation));
+      if (!success) {
+        if (payload.code === "RATE_LIMIT" && payload.retry_after_sec != null) {
+          setError(`Too many analysis requests. Try again in about ${payload.retry_after_sec}s.`);
+          return;
+        }
+        if (payload.code === "INTERNAL") {
+          setError("Analysis hit an unexpected error. Try again in a moment.");
+          return;
+        }
+        if (payload.availability === "blocked") {
+          setError(payload.error ?? "This analysis is not allowed for this position or account.");
+          return;
+        }
+        const hint =
+          payload.code === "ENGINE_ERROR" ||
+          payload.code === "SUPABASE_CONFIG" ||
+          payload.availability === "unavailable"
+            ? " Trainer engine is not available on this host (common on some serverless deployments)."
+            : "";
+        const base =
+          typeof payload.error === "string" && payload.error.trim()
+            ? payload.error
+            : "Analysis could not complete.";
+        setError(base + hint);
         return;
       }
       setResult(payload);

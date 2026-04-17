@@ -27,9 +27,9 @@ export default async function NexusPage({
   const data = await getNexusHubData(ecosystem);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#0D1117] text-white antialiased">
+    <div className="flex min-h-screen flex-col bg-[#07080c] text-white antialiased">
       <NexusBfcacheAuthGuard />
-      <NavigationBar />
+      <NavigationBar variant="nexusShell" />
       <NexusShell data={data} />
     </div>
   );

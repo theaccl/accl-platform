@@ -12,7 +12,7 @@ test.describe('NEXUS / profile identity parity (static)', () => {
     const profile = readFileSync(profilePath, 'utf8');
     expect(hub).toContain('identityPreviewFromUser(user, { profileUsername })');
     expect(hub).toContain('.from("profiles")');
-    expect(hub).toContain('select("username")');
+    expect(hub).toMatch(/\.select\([^)]*\busername\b[^)]*\)/);
     expect(profile).toContain('identityPreviewFromUser(user, { profileUsername })');
     expect(profile).toContain('useProfileUsername');
   });

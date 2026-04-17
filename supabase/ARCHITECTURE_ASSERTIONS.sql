@@ -2,9 +2,10 @@
 -- Purpose: detect drift between documented invariants and deployed DB behavior.
 
 -- 1) Fixed rating bucket namespace contract
--- Expected set:
+-- Expected set (legacy six + P1 five):
 --   free_live, free_daily, free_correspondence,
---   tournament_live, tournament_daily, tournament_correspondence
+--   tournament_live, tournament_daily, tournament_correspondence,
+--   free_bullet, free_blitz, free_rapid, free_day, tournament_unified
 select
   conname as constraint_name,
   pg_get_constraintdef(oid) as constraint_def
@@ -41,6 +42,7 @@ join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
   and p.proname in (
     'classify_rating_bucket',
+    'classify_p1_rating_bucket',
     'apply_free_play_rating_update',
     'apply_free_play_rating_update_core',
     'finish_game'

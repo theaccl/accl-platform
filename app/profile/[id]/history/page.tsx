@@ -137,7 +137,7 @@ export default function PublicProfileHistoryPage() {
           Public profile
         </Link>
         {isSelf ? (
-          <Link href="/finished" style={{ color: '#93c5fd' }}>
+          <Link href="/trainer/review" style={{ color: '#93c5fd' }}>
             Your finished games
           </Link>
         ) : null}

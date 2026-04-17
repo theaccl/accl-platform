@@ -9,7 +9,7 @@ import { hubHrefFromActivityFeedId, isValidHubHandoffHref } from "@/lib/nexus/ne
 import { formatRelativeTimeUtc } from "@/lib/nexus/nexusHubMapping";
 import type { NexusActivityKind, NexusSystemActivityState } from "@/lib/nexus/types";
 
-const FINISHED_HREF = "/finished";
+const FINISHED_HREF = "/trainer/review";
 const TOURNAMENTS_HREF = "/tournaments";
 
 const typeLabel: Record<string, string> = {
@@ -120,13 +120,13 @@ export default function NexusSystemActivity({ state }: { state: NexusSystemActiv
                               <NexusLinkWrapper
                                 href={FINISHED_HREF}
                                 isValid
-                                title="Opens finished games"
+                                title="Opens Trainer review"
                                 className="font-medium text-red-300/75 underline-offset-2 hover:underline"
                               >
-                                finished games
+                                Trainer review
                               </NexusLinkWrapper>
                             ) : (
-                              "finished games"
+                              "Trainer review"
                             )}{" "}
                             or{" "}
                             {isValidHubHandoffHref(TOURNAMENTS_HREF) ? (

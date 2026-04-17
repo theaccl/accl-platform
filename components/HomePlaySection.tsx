@@ -20,7 +20,8 @@ type LobbyRow = {
 };
 
 /**
- * Home: Find Match (same queue semantics as /free) + resume link for seated in-progress games.
+ * Find Match (same queue semantics as free lobby) + resume link for seated in-progress games.
+ * Rendered on /free (Nexus-owned gameplay surface). Not on Home (/).
  * TEST CONTRACT: `data-testid="home-find-match"` — Playwright/E2E depend on it; do not rename or remove.
  */
 export function HomePlaySection() {

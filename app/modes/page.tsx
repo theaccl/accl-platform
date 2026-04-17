@@ -21,29 +21,28 @@ const MODE_CARDS: ModeCardDef[] = [
     href: '/',
     label: 'Home',
     description:
-      'Primary entry at / : random queue, open seats, direct challenge, and quick game tools.',
+      'Launcher: enter Nexus or Trainer — gameplay starts from Nexus.',
     variant: 'primary',
   },
   {
     id: 'free',
-    href: '/free',
-    label: 'Free',
-    description: 'Same free-play ecosystem with the classic free lobby layout and shortcuts.',
+    href: '/nexus',
+    label: 'Nexus',
+    description: 'Arena hub: free play, tournaments, and standings from one doorway.',
     variant: 'secondary',
   },
   {
     id: 'tournaments',
-    href: '/tournaments',
+    href: '/nexus',
     label: 'Tournaments',
-    description: 'Bracket events: browse tournaments, open a bracket, and follow match progress.',
+    description: 'Structured events — open Nexus, then pick tournaments.',
     variant: 'secondary',
   },
   {
     id: 'finished',
-    href: '/finished',
-    label: 'Finished',
-    description:
-      'Canonical completed-game archive — pick Free or Tournament filters on the hub.',
+    href: '/trainer/review',
+    label: 'Trainer',
+    description: 'Completed games and review — canonical archive in Trainer.',
     variant: 'secondary',
   },
 ];
@@ -54,10 +53,10 @@ const btnSecondary =
   'inline-flex w-full items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723]';
 
 function shellHintLabel(active: ReturnType<typeof shellContextCardId>): string | null {
-  if (active === 'home') return 'You were just on Home (main lobby).';
+  if (active === 'home') return 'You were just on Home.';
   if (active === 'free') return 'You were just in Free play.';
   if (active === 'tournaments') return 'You were just in Tournaments.';
-  if (active === 'finished') return 'You were just in Finished games.';
+  if (active === 'finished') return 'You were just reviewing finished games.';
   if (active === 'profile') return 'You were just on Profile — pick a play area below.';
   if (active === 'vault') return 'You were just in Vault — pick a play area below.';
   return null;

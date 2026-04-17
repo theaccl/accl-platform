@@ -89,17 +89,38 @@ function syncStates(): ValidationState[] {
     ['BOT_USER_ID_AGGRO', process.env.BOT_USER_ID_AGGRO?.trim() ?? ''],
     ['BOT_USER_ID_ENDGAME', process.env.BOT_USER_ID_ENDGAME?.trim() ?? ''],
   ] as const;
-  for (const [key, value] of botEnv) {
-    if (!value) push(states, key, false, 'missing_env', 'required');
-    else if (!UUID_RE.test(value)) push(states, key, false, 'invalid_env', 'must be UUID');
-    else push(states, key, true, 'ok', 'present');
-  }
-
-  const unique = new Set(botEnv.map(([, v]) => v).filter(Boolean));
-  if (unique.size !== botEnv.map(([, v]) => v).filter(Boolean).length) {
-    push(states, 'BOT_IDENTITY_SET', false, 'mismatched_bot_identity', 'bot env IDs must be distinct');
+  const botNonEmpty = botEnv.filter(([, v]) => Boolean(v));
+  if (botNonEmpty.length === 0) {
+    push(
+      states,
+      'BOT_USER_IDS',
+      true,
+      'ok',
+      'optional — no BOT_USER_ID_* set (computer/bot routes need all three distinct UUIDs)'
+    );
+    push(states, 'BOT_IDENTITY_SET', true, 'ok', 'skipped (bots not configured)');
+  } else if (botNonEmpty.length !== 3) {
+    for (const [key, value] of botEnv) {
+      if (!value) {
+        push(states, key, false, 'missing_env', 'when any BOT_USER_ID_* is set, all three must be set to distinct UUIDs');
+      } else if (!UUID_RE.test(value)) {
+        push(states, key, false, 'invalid_env', 'must be UUID');
+      } else {
+        push(states, key, true, 'ok', 'present');
+      }
+    }
+    push(states, 'BOT_IDENTITY_SET', false, 'mismatched_bot_identity', 'partial bot env — set all three or none');
   } else {
-    push(states, 'BOT_IDENTITY_SET', true, 'ok', 'distinct bot IDs');
+    for (const [key, value] of botEnv) {
+      if (!UUID_RE.test(value)) push(states, key, false, 'invalid_env', 'must be UUID');
+      else push(states, key, true, 'ok', 'present');
+    }
+    const unique = new Set(botEnv.map(([, v]) => v).filter(Boolean));
+    if (unique.size !== 3) {
+      push(states, 'BOT_IDENTITY_SET', false, 'mismatched_bot_identity', 'bot env IDs must be distinct');
+    } else {
+      push(states, 'BOT_IDENTITY_SET', true, 'ok', 'distinct bot IDs');
+    }
   }
 
   return states;
@@ -139,6 +160,16 @@ export async function getRuntimeConfigValidationReport(force = false): Promise<R
   const states = syncStates();
   const syncBad = states.some((s) => !s.ok);
   if (syncBad) {
+    const report = buildReport(states);
+    asyncCache = { at: Date.now(), report };
+    return report;
+  }
+
+  const botsFullyConfigured =
+    Boolean(process.env.BOT_USER_ID_CARDI?.trim()) &&
+    Boolean(process.env.BOT_USER_ID_AGGRO?.trim()) &&
+    Boolean(process.env.BOT_USER_ID_ENDGAME?.trim());
+  if (!botsFullyConfigured) {
     const report = buildReport(states);
     asyncCache = { at: Date.now(), report };
     return report;

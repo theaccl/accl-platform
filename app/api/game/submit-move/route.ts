@@ -385,6 +385,18 @@ export async function POST(request: Request): Promise<Response> {
               move_duration_ms: 0,
             });
             finalRow = botUpdated;
+            const botMoverColor: 'white' | 'black' = isWhiteTurn ? 'white' : 'black';
+            const botTerminal = terminalStateFromBoard(board, botMoverColor);
+            if (botTerminal) {
+              const { data: finishedAfterBot, error: botFinishErr } = await supabase.rpc('finish_game_system', {
+                p_game_id: gameId,
+                p_result: botTerminal.result,
+                p_end_reason: botTerminal.endReason,
+              });
+              if (!botFinishErr && finishedAfterBot) {
+                finalRow = finishedAfterBot;
+              }
+            }
           }
         }
       }

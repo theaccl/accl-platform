@@ -12,12 +12,12 @@ import {
   mapWinnersToRecentRows,
   scoreAndSortTournamentRows,
 } from "@/lib/nexus/nexusHubMapping";
+import { acclRatingFromP1, formatRatingDisplay, parseP1FromSnapshotPayload } from "@/lib/p1PublicRatingRead";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import { createServiceRoleClient } from "@/lib/supabaseServiceRoleClient";
 import type {
   NexusHubPayload,
   NexusIdentitySummaryData,
-  NexusQuickNavItem,
   NexusStandingContextState,
   NexusSystemActivityState,
   NexusTournamentRow,
@@ -107,17 +107,6 @@ async function fetchHonestActiveTournaments(ecosystem: NexusEcosystem): Promise<
   return mapTournamentRows(mapped, TOURNAMENT_QUERY_LIMIT);
 }
 
-const QUICK_NAV: NexusQuickNavItem[] = [
-  { label: "Tester welcome", href: "/tester/welcome" },
-  { label: "Profile", href: "/profile" },
-  { label: "Free Play", href: "/free" },
-  { label: "Lobby chat", href: "/tester/lobby-chat" },
-  { label: "Messages", href: "/tester/messages" },
-  { label: "Tournaments", href: "/tournaments" },
-  { label: "Finished Games", href: "/finished" },
-  { label: "Players", href: "/players" },
-];
-
 function toIdentitySummary(user: User | null, prev: ReturnType<typeof identityPreviewFromUser>): NexusIdentitySummaryData {
   const hasSession = Boolean(user?.id);
   return {
@@ -148,14 +137,32 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
 
   const user = await getSupabaseUserFromCookies();
   let profileUsername: string | null = null;
+  let profileRating: number | null = null;
   if (user?.id) {
     const supabase = createServiceRoleClient();
-    const { data: prof } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("username,rating")
+      .eq("id", user.id)
+      .maybeSingle();
     const u = (prof as { username?: string | null } | null)?.username;
     profileUsername = typeof u === "string" && u.trim() ? u.trim() : null;
+    const r = (prof as { rating?: unknown } | null)?.rating;
+    profileRating = typeof r === "number" && Number.isFinite(r) ? r : null;
   }
   const prev = identityPreviewFromUser(user, { profileUsername });
-  const identity = toIdentitySummary(user, prev);
+  let identity = toIdentitySummary(user, prev);
+  if (user?.id) {
+    const supabaseSnap = createServiceRoleClient();
+    const { data: snap } = await supabaseSnap.rpc("get_public_profile_snapshot", {
+      p_profile_id: user.id,
+    });
+    const p1 = parseP1FromSnapshotPayload(snap);
+    const accl = acclRatingFromP1(p1, profileRating);
+    if (accl != null) {
+      identity = { ...identity, elo: formatRatingDisplay(accl) };
+    }
+  }
 
   const [recentWinners, activityFeed, liveGames, standings, tournamentRowsRaw] = await Promise.all([
     getRecentWinners(ecosystem),
@@ -256,7 +263,6 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
 
   return {
     identity,
-    quickNav: QUICK_NAV,
     activeTournaments,
     recentResults,
     standingContext,

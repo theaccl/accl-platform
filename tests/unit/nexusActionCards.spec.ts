@@ -27,23 +27,23 @@ function game(uid: string, gid: string, tid: string | null = null): NexusLiveGam
   };
 }
 
+const emptyParams = {
+  liveGames: [] as NexusLiveGame[],
+  userTournamentEntryIds: [] as string[],
+  hasRecentFinishedWins: false,
+};
+
 test.describe("NEXUS action cards prioritization", () => {
-  test("logged-out: login is first by urgency", () => {
+  test("logged-out: only login card", () => {
     const cards = buildNexusHubActionCards({
       userId: null,
-      liveGames: [],
-      userTournamentEntryIds: [],
-      hasRecentFinishedWins: false,
+      ...emptyParams,
     });
-    const sorted = [...cards].sort((a, b) => {
-      if (b.urgency !== a.urgency) return b.urgency - a.urgency;
-      return a.priority - b.priority;
-    });
-    expect(sorted[0]?.id).toBe("login");
-    expect(sorted[0]?.urgency).toBe(90);
+    expect(cards.map((c) => c.id)).toEqual(["login"]);
+    expect(cards[0]?.urgency).toBe(90);
   });
 
-  test("logged-in: continue game sorts before profile", () => {
+  test("logged-in: four hub handoff cards with resume list first", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const gid = "750e8400-e29b-41d4-a716-446655440002";
     const cards = buildNexusHubActionCards({
@@ -52,42 +52,38 @@ test.describe("NEXUS action cards prioritization", () => {
       userTournamentEntryIds: [],
       hasRecentFinishedWins: false,
     });
-    const sorted = [...cards].sort((a, b) => {
-      if (b.urgency !== a.urgency) return b.urgency - a.urgency;
-      return a.priority - b.priority;
-    });
-    expect(sorted[0]?.id).toBe("continue-game");
-    expect(sorted[0]?.urgency).toBe(100);
-    const pi = sorted.findIndex((c) => c.id === "profile");
-    const ci = sorted.findIndex((c) => c.id === "continue-game");
-    expect(ci).toBeLessThan(pi);
+    expect(cards.map((c) => c.id)).toEqual([
+      "current-games",
+      "trainer-review",
+      "tournaments-area",
+      "nexus-free-play",
+    ]);
+    expect(cards[0]?.href).toBe("/free/active");
+    expect(cards.find((c) => c.id === "trainer-review")?.href).toBe("/trainer/review");
+    expect(cards.find((c) => c.id === "tournaments-area")?.href).toBe("/tournaments");
+    expect(cards.find((c) => c.id === "nexus-free-play")?.href).toBe("/free");
   });
 
-  test("tournament entry adds status card with higher priority than profile when no continue", () => {
-    const uid = "650e8400-e29b-41d4-a716-446655440001";
-    const tid = "850e8400-e29b-41d4-a716-446655440003";
-    const cards = buildNexusHubActionCards({
-      userId: uid,
-      liveGames: [],
-      userTournamentEntryIds: [tid],
-      hasRecentFinishedWins: false,
-    });
-    expect(cards.some((c) => c.id === "tournament-status")).toBe(true);
-    const ts = cards.find((c) => c.id === "tournament-status");
-    expect(ts?.href).toBe(`/tournaments/${tid}`);
-    const pr = cards.find((c) => c.id === "profile");
-    expect((ts?.urgency ?? 0) > (pr?.urgency ?? 0)).toBe(true);
-  });
-
-  test("dedupes by href", () => {
+  test("logged-in: live games do not change resume card (always list href)", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const cards = buildNexusHubActionCards({
       userId: uid,
       liveGames: [],
-      userTournamentEntryIds: [],
+      userTournamentEntryIds: ["850e8400-e29b-41d4-a716-446655440003"],
       hasRecentFinishedWins: true,
     });
-    const finished = cards.filter((c) => c.href === "/finished");
-    expect(finished.length).toBe(1);
+    expect(cards.length).toBe(4);
+    expect(cards[0]?.id).toBe("current-games");
+    expect(cards[0]?.href).toBe("/free/active");
+  });
+
+  test("output has no duplicate hrefs", () => {
+    const uid = "650e8400-e29b-41d4-a716-446655440001";
+    const cards = buildNexusHubActionCards({
+      userId: uid,
+      ...emptyParams,
+    });
+    const hrefs = cards.map((c) => c.href);
+    expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 });

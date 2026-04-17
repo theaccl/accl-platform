@@ -58,7 +58,7 @@ export type AppShellNavProps =
   | FinishedHubVariantProps;
 
 const tournamentDetailDefaultHistory: TournamentHistory = {
-  href: '/finished?context=tournament',
+  href: '/trainer/review?context=tournament',
   label: 'Your tournament game history',
 };
 
@@ -75,14 +75,11 @@ export function AppShellNav(props: AppShellNavProps) {
         <Link href="/profile" style={shellNavLinkStyle}>
           Profile
         </Link>
-        <Link href="/tournaments" style={shellNavLinkStyle}>
-          Tournaments
+        <Link href="/nexus" style={shellNavLinkStyle}>
+          Nexus
         </Link>
-        <Link href="/finished" style={shellNavLinkStyle}>
-          Finished games
-        </Link>
-        <Link href="/free" style={shellNavLinkStyle}>
-          Free lobby
+        <Link href="/trainer/review" style={shellNavLinkStyle}>
+          Trainer review
         </Link>
         {props.children}
       </p>
@@ -100,8 +97,8 @@ export function AppShellNav(props: AppShellNavProps) {
         <Link href="/" style={shellNavLinkStyle}>
           Home
         </Link>
-        <Link href="/free" style={shellNavLinkStyle}>
-          Free lobby
+        <Link href="/nexus" style={shellNavLinkStyle}>
+          Nexus
         </Link>
         <Link href="/profile" style={shellNavLinkStyle}>
           Profile
@@ -118,10 +115,10 @@ export function AppShellNav(props: AppShellNavProps) {
     return (
       <p style={{ display: 'flex', gap, flexWrap: 'wrap', alignItems: 'center', marginTop: 0, ...props.style }}>
         <SwitchModeLink style={{ color: '#fde047' }} />
-        <Link href="/free" style={shellNavLinkStyle}>
-          Free lobby
+        <Link href="/nexus" style={shellNavLinkStyle}>
+          Nexus
         </Link>
-        <Link href="/tournaments" style={shellNavLinkStyle}>
+        <Link href="/nexus" style={shellNavLinkStyle}>
           Tournaments
         </Link>
         <Link href="/profile" style={shellNavLinkStyle}>
@@ -146,7 +143,7 @@ export function AppShellNav(props: AppShellNavProps) {
     omitFree,
     finishedGamesTestId,
     tournamentHistory,
-    tournamentsLink = { href: '/tournaments', label: 'Tournaments' },
+    tournamentsLink = { href: '/nexus', label: 'Tournaments' },
   } = props as StandardLikeProps;
 
   const showHome = variant !== 'home';
@@ -166,8 +163,8 @@ export function AppShellNav(props: AppShellNavProps) {
         </Link>
       ) : null}
       {!omitFree ? (
-        <Link href="/free" style={shellNavLinkStyle}>
-          Free lobby
+        <Link href="/nexus" style={shellNavLinkStyle}>
+          Nexus
         </Link>
       ) : null}
       {!omitTournaments ? (
@@ -180,8 +177,8 @@ export function AppShellNav(props: AppShellNavProps) {
           Profile
         </Link>
       ) : null}
-      <Link href="/finished" data-testid={finishedGamesTestId} style={shellNavLinkStyle}>
-        Finished games
+      <Link href="/trainer/review" data-testid={finishedGamesTestId} style={shellNavLinkStyle}>
+        Trainer review
       </Link>
       {tournamentHistory ? (
         <Link href={tournamentHistory.href} style={shellNavLinkStyle}>

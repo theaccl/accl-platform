@@ -25,6 +25,8 @@ export default function NexusTrustHint({ message }: NexusTrustHintProps) {
 /** Top card only; keyed by hub card id — no urgency numbers in UI. */
 export function trustMessageForTopActionCard(cardId: string): string | null {
   switch (cardId) {
+    case "current-games":
+      return "Lists every game where you still have a seat — not a single-game shortcut.";
     case "continue-game":
       return "You have an active game in progress.";
     case "tournament-status":

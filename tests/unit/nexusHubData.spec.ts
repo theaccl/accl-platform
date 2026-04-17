@@ -101,7 +101,7 @@ test.describe("NEXUS hub mapping", () => {
     expect(login?.href).toContain(encodeURIComponent("/nexus"));
   });
 
-  test("continue game omitted when game id is not UUID-safe", () => {
+  test("current-games card still appears when a live row has a non-UUID id (list view, not deep link)", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const badGame: NexusLiveGame = {
       id: "not-a-uuid",
@@ -130,10 +130,11 @@ test.describe("NEXUS hub mapping", () => {
       userTournamentEntryIds: [],
       hasRecentFinishedWins: false,
     });
-    expect(cards.some((c) => c.id === "continue-game")).toBe(false);
+    const cg = cards.find((c) => c.id === "current-games");
+    expect(cg?.href).toBe("/free/active");
   });
 
-  test("continue game present when id is valid UUID", () => {
+  test("current-games href is list view even when live game id is valid UUID", () => {
     const uid = "650e8400-e29b-41d4-a716-446655440001";
     const gid = "750e8400-e29b-41d4-a716-446655440002";
     const goodGame: NexusLiveGame = {
@@ -163,8 +164,8 @@ test.describe("NEXUS hub mapping", () => {
       userTournamentEntryIds: [],
       hasRecentFinishedWins: false,
     });
-    const cont = cards.find((c) => c.id === "continue-game");
-    expect(cont?.href).toBe(`/game/${gid}`);
+    const cg = cards.find((c) => c.id === "current-games");
+    expect(cg?.href).toBe("/free/active");
   });
 
   test("placeholder keys are documented when using empty winner list", () => {

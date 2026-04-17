@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-/** Liveness — no DB; safe for load balancers and k8s probes. */
+/**
+ * ACCL health stack — **liveness / app alive**
+ *
+ * Meaning: the Next.js app process responds. No database or Supabase calls.
+ * Use for load balancers and k8s probes. Release gate: HTTP 200.
+ *
+ * See also: `/api/health/system` (service-role + core tables), `/api/health/db` (chat migration tables).
+ */
 export async function GET() {
   return NextResponse.json(
     {

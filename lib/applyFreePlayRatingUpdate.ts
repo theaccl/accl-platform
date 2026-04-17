@@ -1,7 +1,7 @@
 /**
- * Client entrypoint for free-play rating application (server work is done in DB trigger + RPC).
- * Use this when you need an explicit RPC round-trip after `finish_game` returns a row that might omit `rating_last_update`,
- * or for tooling/tests. Normal finishes rely on `games_apply_free_rating_after_finish` trigger.
+ * Client entrypoint for immediate free-play rating application (server work is done in DB trigger + RPC).
+ * Tournament finishes are also applied in `apply_free_play_rating_update_core` (dual-write legacy + P1) via the same
+ * finish trigger; this helper still skips tournament because it targets client-initiated immediate free apply only.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';

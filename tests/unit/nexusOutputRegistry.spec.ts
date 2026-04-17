@@ -81,6 +81,7 @@ test.describe('NEXUS output registry service', () => {
       output: makeOutput({
         output_type: 'anomaly_flag',
         source_refs: [{ source_type: 'moderation_safe_operational_summary', source_id: 'ops-1' }],
+        generated_at: new Date(now - 120_000).toISOString(),
         expires_at: expiredAt,
       }),
       subject_id: 'system',

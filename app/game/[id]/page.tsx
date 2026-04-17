@@ -896,7 +896,9 @@ export default function GamePage() {
       const { data, error } = await supabase.from('profiles').select('id, username, email').in('id', ids);
       if (cancelled) return;
       if (error) {
-        console.log('Display names fetch:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[game] display_names_fetch', error.message);
+        }
         recordBatchedDisplayNameFetchFailure(
           displayNameFetchFailuresRef,
           setShowDisplayNameLoadNotice
@@ -1929,7 +1931,7 @@ export default function GamePage() {
             onClick={() => router.push('/')}
             style={{ padding: '8px 16px' }}
           >
-            Back to lobby
+            Back to home
           </button>
         </div>
       );
@@ -1977,7 +1979,7 @@ export default function GamePage() {
             onClick={() => router.push('/')}
             style={{ padding: '8px 16px', background: 'transparent', color: '#888', border: '1px solid #444' }}
           >
-            Back to lobby
+            Back to home
           </button>
         </div>
       );
@@ -2011,7 +2013,7 @@ export default function GamePage() {
             onClick={() => router.push('/')}
             style={{ padding: '8px 16px' }}
           >
-            Back to lobby
+            Back to home
           </button>
         </div>
       );
@@ -2036,7 +2038,7 @@ export default function GamePage() {
           onClick={() => router.push('/')}
           style={{ padding: '8px 16px' }}
         >
-          Back to lobby
+          Back to home
         </button>
       </div>
     );
@@ -2084,6 +2086,22 @@ export default function GamePage() {
     canPlayMoves(game) &&
     !isSpectator &&
     isMyTurn;
+
+  const boardInteractionMode = isPublicViewer
+    ? 'public_readonly'
+    : game.status === 'finished'
+      ? 'finished_readonly'
+      : isSpectator
+        ? 'spectator_readonly'
+        : !myColor
+          ? 'no_seat'
+          : !bothPlayersSeated(game)
+            ? 'waiting_opponent'
+            : !isMyTurn
+              ? 'opponent_turn'
+              : boardInputEnabled
+                ? 'your_turn'
+                : 'transition';
 
   const finishedPgnBlocked =
     !isPgnExportLimitBypassed() &&
@@ -2346,7 +2364,7 @@ export default function GamePage() {
               </p>
             ) : (
               <Link
-                href="/finished"
+                href="/trainer/review"
                 data-testid="game-finished-history-link"
                 style={{ color: '#93c5fd', fontSize: 14, fontWeight: 600 }}
               >
@@ -2604,7 +2622,7 @@ export default function GamePage() {
           onClick={() => router.push('/')}
           style={{ padding: '8px 12px' }}
         >
-          Back to lobby
+          Back to home
         </button>
         {!isPublicViewer ? (
         <button
@@ -3063,6 +3081,7 @@ export default function GamePage() {
 
       <div
         data-testid="game-board"
+        data-interaction-mode={boardInteractionMode}
         data-spectator-readonly={isPublicViewer ? '1' : '0'}
         style={{
           position: 'relative',
@@ -3215,6 +3234,7 @@ export default function GamePage() {
         <GameTesterChatPanels
           gameId={game.id}
           gameStatus={game.status}
+          gameTempo={game.tempo ?? null}
           userId={userId}
           isSpectator={isSpectator}
           viewerEcosystem={viewerEcosystem}

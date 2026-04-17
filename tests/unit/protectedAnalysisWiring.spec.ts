@@ -18,6 +18,7 @@ function createFakeServiceClient() {
     status: 'active',
     rated: true,
     tournament_id: null,
+    fen: START_FEN,
     white_player_id: '00000000-0000-0000-0000-00000000aa01',
     black_player_id: '00000000-0000-0000-0000-00000000aa02',
   };
@@ -60,6 +61,9 @@ function createFakeServiceClient() {
         return { data: null, error: null };
       },
       maybeSingle: async () => {
+        if (table === 'games') {
+          return { data: gameRow, error: null };
+        }
         if (table === 'anti_cheat_enforcement_states') {
           const uid = String((state.eq as Record<string, unknown>).user_id ?? '');
           return { data: enforcementRows.get(uid) ?? null, error: null };
@@ -83,14 +87,14 @@ test.describe('Protected analysis wiring', () => {
     const fake = createFakeServiceClient();
     await runProtectedAnalysisRequest({
       serviceClient: fake.client,
-      userId: '00000000-0000-0000-0000-000000000123',
+      userId: fake.gameRow.white_player_id,
       gameId: fake.gameRow.id,
       fen: START_FEN,
       mode: 'coach',
     });
     expect(fake.antiCheatEvents.length).toBeGreaterThan(0);
     const row = fake.antiCheatEvents[0] as { user_id: string; game_id: string | null; request_context: Record<string, unknown> };
-    expect(row.user_id).toBe('00000000-0000-0000-0000-000000000123');
+    expect(row.user_id).toBe(fake.gameRow.white_player_id);
     expect(row.game_id).toBe(fake.gameRow.id);
     expect(row.request_context.context_type).toBe('active-rated-game');
   });
@@ -99,7 +103,7 @@ test.describe('Protected analysis wiring', () => {
     const fake = createFakeServiceClient();
     await runProtectedAnalysisRequest({
       serviceClient: fake.client,
-      userId: '00000000-0000-0000-0000-000000000123',
+      userId: fake.gameRow.white_player_id,
       gameId: fake.gameRow.id,
       fen: START_FEN,
       mode: 'coach',

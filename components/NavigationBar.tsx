@@ -4,23 +4,22 @@ import Image from "next/image";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { TesterBugReportTrigger } from "@/components/TesterBugReportDialog";
 import { useProfileUsername } from "@/hooks/useProfileUsername";
+import { usePublicProfileAcclRating } from "@/hooks/usePublicProfileAcclRating";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import { supabase } from "@/lib/supabaseClient";
 
 const navBtn =
   "text-sm text-gray-300 hover:text-white hover:underline hover:underline-offset-4 hover:decoration-gray-500/60 transition-colors px-2 py-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40";
 
-const navBtnAuth =
-  `${navBtn} font-medium`;
+const navBtnAuth = `${navBtn} font-medium`;
 
 /** Site controls: subtle surface, no underline on hover */
 const navBtnSite =
-  "text-sm text-gray-300 hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-[#1a2231] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40";
+  "text-sm text-gray-300 hover:text-white transition-colors px-2 py-1 rounded-md hover:bg-[#1a2231] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-500";
 
-/** Option A: dark plate, brighter mark, strong ACCL ring — compact, aligned with nav text. */
 function AcclMark() {
   return (
     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0a0f16] ring-1 ring-red-500 shadow-[0_0_0_1px_rgba(17,23,35,0.95)]">
@@ -48,6 +47,7 @@ function ProfileIdentityAnchor({
 }) {
   const router = useRouter();
   const prev = identityPreviewFromUser(sessionUser, { profileUsername });
+  const eloDisplay = usePublicProfileAcclRating(sessionUser, prev.elo);
 
   return (
     <div className="group relative z-50">
@@ -74,8 +74,8 @@ function ProfileIdentityAnchor({
           </div>
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-500">ELO</span>
-              <span className="text-sm font-medium tabular-nums text-gray-100">{prev.elo}</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-gray-500">ACCL</span>
+              <span className="text-sm font-medium tabular-nums text-gray-100">{eloDisplay}</span>
             </div>
             <div>
               <span className="inline-flex rounded-full border border-red-500/45 bg-red-950/35 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100/95">
@@ -118,11 +118,20 @@ function ProfileIdentityAnchor({
   );
 }
 
-export default function NavigationBar() {
+export type NavigationBarVariant = "default" | "nexusShell";
+
+/** `nexusShell`: lighter header chrome on /nexus — same links as default (no duplicate NEXUS nav item). */
+const GAME_PATH_RE =
+  /^\/game\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+export default function NavigationBar({ variant = "default" }: { variant?: NavigationBarVariant }) {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const shell = variant === "nexusShell";
   const [checked, setChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [lockSiteNavForLiveGame, setLockSiteNavForLiveGame] = useState(false);
   const profileUsername = useProfileUsername(sessionUser);
 
   useEffect(() => {
@@ -155,11 +164,42 @@ export default function NavigationBar() {
     };
   }, [router]);
 
+  useEffect(() => {
+    const m = GAME_PATH_RE.exec(pathname);
+    if (!m) {
+      setLockSiteNavForLiveGame(false);
+      return;
+    }
+    const gameId = m[1];
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.from("games").select("status").eq("id", gameId).maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setLockSiteNavForLiveGame(false);
+        return;
+      }
+      const s = String((data as { status?: string }).status ?? "")
+        .trim()
+        .toLowerCase();
+      setLockSiteNavForLiveGame(s === "active" || s === "waiting");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
   return (
-    <header className="mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]">
+    <header
+      className={
+        shell
+          ? "mb-0 w-full border-b border-white/[0.06] bg-[#07080c]/90 pb-0 text-white shadow-none backdrop-blur-sm"
+          : "mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]"
+      }
+    >
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 pb-0">
         <div className="flex min-h-[52px] flex-wrap items-center justify-between gap-y-2 py-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
             <nav className="flex shrink-0 items-center gap-3" aria-label="Account">
               {checked ? (
                 isLoggedIn ? (
@@ -180,38 +220,56 @@ export default function NavigationBar() {
             </nav>
             {checked && isLoggedIn ? (
               <nav
-                className="flex max-w-full min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3"
-                aria-label="Tester and play areas"
+                className="flex max-w-full min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-2.5"
+                aria-label="Primary navigation"
               >
-                <Link href="/tester/welcome" className={navBtn}>
-                  Welcome
+                <Link href="/players" className={navBtn}>
+                  Player lookup
                 </Link>
-                <Link href="/nexus" className={navBtn}>
-                  NEXUS
-                </Link>
-                <Link href="/free" className={navBtn}>
-                  Play free
-                </Link>
-                <Link href="/tester/lobby-chat" className={navBtn}>
-                  Lobby chat
-                </Link>
-                <Link href="/tester/messages" className={navBtn}>
-                  Messages
-                </Link>
-                <TesterBugReportTrigger
-                  className={`${navBtn} text-amber-200/90`}
-                  label="Report"
-                />
+                <TesterBugReportTrigger className={`${navBtn} text-amber-200/90`} label="Report" />
               </nav>
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
-            <nav className="flex items-center gap-3" aria-label="Site">
-              <button type="button" onClick={() => router.back()} className={navBtnSite}>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+            {checked && isLoggedIn ? (
+              <Link href="/tester/messages" className={`${navBtnSite} whitespace-nowrap`}>
+                Mailbox
+              </Link>
+            ) : null}
+            <nav className="flex items-center gap-2 sm:gap-3" aria-label="Site">
+              <button
+                type="button"
+                data-testid="site-nav-back"
+                disabled={lockSiteNavForLiveGame}
+                title={
+                  lockSiteNavForLiveGame
+                    ? "Back is unavailable while this game is in progress."
+                    : undefined
+                }
+                onClick={() => {
+                  if (lockSiteNavForLiveGame) return;
+                  router.back();
+                }}
+                className={navBtnSite}
+              >
                 Back
               </button>
-              <button type="button" onClick={() => router.push("/")} className={navBtnSite}>
+              <button
+                type="button"
+                data-testid="site-nav-home"
+                disabled={lockSiteNavForLiveGame}
+                title={
+                  lockSiteNavForLiveGame
+                    ? "Home is unavailable while this game is in progress."
+                    : undefined
+                }
+                onClick={() => {
+                  if (lockSiteNavForLiveGame) return;
+                  router.push("/");
+                }}
+                className={navBtnSite}
+              >
                 Home
               </button>
             </nav>
