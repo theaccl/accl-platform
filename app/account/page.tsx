@@ -1,21 +1,39 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
+
+import AccountBillingPanel from '@/components/account/AccountBillingPanel';
+import AccountPrivateDetailsPanel from '@/components/account/AccountPrivateDetailsPanel';
 import NavigationBar from '@/components/NavigationBar';
+import EditProfileForm from '@/components/profile/EditProfileForm';
 import { supabase } from '@/lib/supabaseClient';
+
+type ProfileRow = {
+  username: string | null;
+  bio: string | null;
+  flag: string | null;
+  avatar_path: string | null;
+};
 
 export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     void supabase.auth.getSession().then(({ data }) => {
-      if (!cancelled) setUser(data.session?.user ?? null);
+      if (!cancelled) {
+        setUser(data.session?.user ?? null);
+        setReady(true);
+      }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null);
+      setReady(true);
     });
     return () => {
       cancelled = true;
@@ -23,29 +41,115 @@ export default function AccountPage() {
     };
   }, []);
 
+  const loadProfile = useCallback(async () => {
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id ?? null;
+    if (!uid) {
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+    setProfileLoading(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('username,bio,flag,avatar_path')
+      .eq('id', uid)
+      .maybeSingle();
+    if (error) {
+      setProfile(null);
+    } else {
+      setProfile(data as ProfileRow);
+    }
+    setProfileLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadProfile();
+  }, [user?.id, loadProfile]);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-[#0D1117] text-white">
+        <NavigationBar />
+        <main className="mx-auto max-w-5xl px-6 py-8">
+          <p className="text-sm text-gray-500">Loading…</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#0D1117] text-white">
+        <NavigationBar />
+        <main className="mx-auto max-w-5xl px-6 py-8">
+          <p className="text-slate-300">Sign in to manage your account.</p>
+          <Link href="/login" className="mt-4 inline-block text-sky-400 underline">
+            Log in
+          </Link>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0D1117] text-white">
       <NavigationBar />
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8">
-        <h1 className="text-2xl font-bold tracking-tight">Manage account</h1>
-        <p className="text-sm text-gray-400">
-          This screen is for account/login identity only. Public profile identity remains username-based on profile pages.
-        </p>
-
-        <section className="rounded-2xl border border-[#2a3442] bg-[#111723] p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-300">Account identity</h2>
-          <p className="mt-3 text-sm text-gray-400">Sign-in email</p>
-          <p className="font-mono text-base text-white">{user?.email ?? 'Not signed in'}</p>
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
+          <h1 className="text-3xl font-semibold text-white">Manage account</h1>
+          <p className="mt-4 text-slate-300">
+            This screen is for account/login identity and private profile management. Public profile identity stays
+            username-based on{' '}
+            <Link href={`/profile/${user.id}`} className="text-sky-400 underline">
+              your profile page
+            </Link>
+            .
+          </p>
         </section>
 
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <Link href="/profile" className="text-sky-300 underline underline-offset-2">
-            Back to profile
-          </Link>
-          <Link href="/onboarding/username" className="text-sky-300 underline underline-offset-2">
-            Update username
-          </Link>
-        </div>
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
+          <h2 className="text-xl font-semibold text-white">Account identity</h2>
+          <p className="mt-4 text-slate-300">Sign-in email (private — never shown on public profile)</p>
+          <p className="mt-1 font-mono text-lg text-white">{user.email ?? '—'}</p>
+          <div className="mt-4 flex flex-wrap gap-3 text-sm">
+            <Link href={`/profile/${user.id}`} className="text-sky-400 underline">
+              View public profile
+            </Link>
+            <Link href="/onboarding/username" className="text-sky-400 underline">
+              Username onboarding
+            </Link>
+          </div>
+        </section>
+
+        <section
+          className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6"
+          data-testid="account-profile-controls"
+        >
+          <h2 className="text-xl font-semibold text-white">Public profile controls</h2>
+          <p className="mt-2 text-slate-300">
+            Update your bio, profile image, and flag. These fields are visible on your public profile.
+          </p>
+
+          <div className="mt-6">
+            {profileLoading || !profile ? (
+              <p className="text-sm text-slate-500">Loading profile…</p>
+            ) : (
+              <EditProfileForm
+                userId={user.id}
+                initialUsername={profile.username}
+                initialBio={profile.bio}
+                initialFlag={profile.flag}
+                initialAvatarPath={profile.avatar_path}
+                onSaved={loadProfile}
+              />
+            )}
+          </div>
+        </section>
+
+        <AccountPrivateDetailsPanel />
+        <AccountBillingPanel />
       </main>
     </div>
   );

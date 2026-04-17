@@ -2,16 +2,16 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const profilePagePath = join(process.cwd(), 'app', 'profile', 'page.tsx');
+const editProfilePagePath = join(process.cwd(), 'app', 'profile', 'edit', 'page.tsx');
 const calloutPath = join(process.cwd(), 'components', 'profile', 'ProfileUsernameCallout.tsx');
 
 test.describe('/profile username callout (static)', () => {
-  test('profile page shows labeled copyable username from profiles.username', () => {
-    const pageSrc = readFileSync(profilePagePath, 'utf8');
+  test('edit profile page shows labeled copyable username from profiles.username', () => {
+    const pageSrc = readFileSync(editProfilePagePath, 'utf8');
     expect(pageSrc).toContain('ProfileUsernameCallout');
     expect(pageSrc).toContain('useProfileUsername');
     expect(pageSrc).toContain('username={profileUsername}');
-    expect(pageSrc).toContain('accountEmail={user?.email ?? null}');
+    expect(pageSrc).toContain('accountEmail={user.email ?? null}');
 
     const c = readFileSync(calloutPath, 'utf8');
     expect(c).toContain('profile-username-callout');

@@ -11,6 +11,7 @@ import { useProfileUsername } from "@/hooks/useProfileUsername";
 import { usePublicProfileAcclRating } from "@/hooks/usePublicProfileAcclRating";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import { supabase } from "@/lib/supabaseClient";
+import { touchProfileActivityThrottled } from "@/lib/touchProfileActivity";
 
 const navBtn =
   "text-sm text-gray-300 hover:text-white hover:underline hover:underline-offset-4 hover:decoration-gray-500/60 transition-colors px-2 py-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40";
@@ -54,7 +55,7 @@ function ProfileIdentityAnchor({
     <div className="group relative z-50">
       <button
         type="button"
-        onClick={() => router.push("/profile")}
+        onClick={() => router.push(sessionUser?.id ? `/profile/${sessionUser.id}` : "/profile")}
         className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-300 transition-colors hover:bg-[#151d2c] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
       >
         <AcclMark />
@@ -96,7 +97,7 @@ function ProfileIdentityAnchor({
           </div>
           <div className="mt-4 space-y-3 border-t border-[#243244]/80 pt-4">
             <Link
-              href="/profile"
+              href={sessionUser?.id ? `/profile/${sessionUser.id}` : "/profile"}
               className="block w-full rounded-lg border border-red-500/35 bg-red-950/20 px-3 py-2 text-left text-sm font-medium text-red-100/95 transition hover:border-red-500/50 hover:bg-red-950/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
             >
               View Profile
@@ -164,6 +165,11 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
       window.removeEventListener("pageshow", onPageShow);
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!sessionUser?.id) return;
+    touchProfileActivityThrottled(supabase);
+  }, [pathname, sessionUser?.id]);
 
   useEffect(() => {
     const m = GAME_PATH_RE.exec(pathname);
