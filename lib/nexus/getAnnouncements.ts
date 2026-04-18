@@ -22,15 +22,15 @@ export async function getAnnouncements(ecosystem: NexusEcosystem): Promise<Nexus
 
   const { data: tournaments } = await supabase
     .from('tournaments')
-    .select('id,name,status,updated_at')
+    .select('id,name,status,created_at')
     .eq('ecosystem_scope', ecosystem)
-    .order('updated_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(8);
   const items = (tournaments ?? []).map((t) => ({
     id: `ann-${String(t.id)}`,
     title: String(t.name ?? 'Tournament update'),
     body: `Status: ${String(t.status ?? 'active')}`,
-    utc: String(t.updated_at ?? new Date().toISOString()),
+    utc: String((t as { created_at?: string }).created_at ?? new Date().toISOString()),
   }));
   if (items.length > 0) return items;
   return [

@@ -84,9 +84,9 @@ async function fetchHonestActiveTournaments(ecosystem: NexusEcosystem): Promise<
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("tournaments")
-    .select("id,name,status,updated_at,sponsor_label")
+    .select("id,name,status,created_at,sponsor_label")
     .eq("ecosystem_scope", ecosystem)
-    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(TOURNAMENT_QUERY_LIMIT);
   if (error) return [];
   const active = (data ?? []).filter((r) =>
@@ -99,7 +99,7 @@ async function fetchHonestActiveTournaments(ecosystem: NexusEcosystem): Promise<
       id: String(r.id ?? "").trim(),
       name: String(r.name ?? "Tournament").trim() || "Tournament",
       status: String(r.status ?? "—").trim() || "—",
-      updatedAt: String(r.updated_at ?? ""),
+      updatedAt: String((r as { created_at?: string }).created_at ?? ""),
       href: "",
       ...(tierLabel ? { tierLabel } : {}),
     };

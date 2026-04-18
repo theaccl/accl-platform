@@ -17,9 +17,9 @@ export async function getActivityFeed(ecosystem: NexusEcosystem): Promise<NexusA
       .limit(20),
     supabase
       .from('tournaments')
-      .select('id,name,status,updated_at')
+      .select('id,name,status,created_at')
       .eq('ecosystem_scope', ecosystem)
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(20),
     supabase
       .from('nexus_announcements')
@@ -56,7 +56,7 @@ export async function getActivityFeed(ecosystem: NexusEcosystem): Promise<NexusA
     id: `t-${String(t.id)}`,
     kind: 'tournament',
     message: `${String(t.name ?? 'Tournament')} is ${String(t.status ?? 'updated')}`,
-    utc: String(t.updated_at ?? new Date().toISOString()),
+    utc: String((t as { created_at?: string }).created_at ?? new Date().toISOString()),
   }));
 
   const noticeItems: NexusActivityItem[] = (noticeRes.data ?? []).map((n) => ({

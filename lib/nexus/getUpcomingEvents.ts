@@ -16,9 +16,9 @@ export async function getUpcomingEvents(
   if (mode === 'active') {
     const { data } = await supabase
       .from('tournaments')
-      .select('id,name,status,created_at,updated_at,sponsor_tag,sponsor_label,entry_fee_cents,prize_pool_cents')
+      .select('id,name,status,created_at,sponsor_tag,sponsor_label,entry_fee_cents,prize_pool_cents')
       .eq('ecosystem_scope', ecosystem)
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(50);
     const active = (data ?? []).filter((r) => ['active', 'in_progress', 'live'].includes(String(r.status ?? '').toLowerCase()));
     return active.slice(0, 10).map((r) => {

@@ -10,7 +10,9 @@ import { TesterBugReportTrigger } from "@/components/TesterBugReportDialog";
 import { useProfileUsername } from "@/hooks/useProfileUsername";
 import { usePublicProfileAcclRating } from "@/hooks/usePublicProfileAcclRating";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
+import { publicProfileHref } from "@/lib/profileHref";
 import { supabase } from "@/lib/supabaseClient";
+import { logPhase1SupabaseFailure } from "@/lib/supabasePhase1Debug";
 import { touchProfileActivityThrottled } from "@/lib/touchProfileActivity";
 
 const navBtn =
@@ -50,12 +52,14 @@ function ProfileIdentityAnchor({
   const router = useRouter();
   const prev = identityPreviewFromUser(sessionUser, { profileUsername });
   const eloDisplay = usePublicProfileAcclRating(sessionUser, prev.elo);
+  const profileHref =
+    sessionUser?.id != null ? publicProfileHref(profileUsername, sessionUser.id) : "/profile";
 
   return (
     <div className="group relative z-50">
       <button
         type="button"
-        onClick={() => router.push(sessionUser?.id ? `/profile/${sessionUser.id}` : "/profile")}
+        onClick={() => router.push(profileHref)}
         className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-gray-300 transition-colors hover:bg-[#151d2c] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
       >
         <AcclMark />
@@ -97,7 +101,7 @@ function ProfileIdentityAnchor({
           </div>
           <div className="mt-4 space-y-3 border-t border-[#243244]/80 pt-4">
             <Link
-              href={sessionUser?.id ? `/profile/${sessionUser.id}` : "/profile"}
+              href={profileHref}
               className="block w-full rounded-lg border border-red-500/35 bg-red-950/20 px-3 py-2 text-left text-sm font-medium text-red-100/95 transition hover:border-red-500/50 hover:bg-red-950/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
             >
               View Profile
@@ -134,7 +138,7 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const [lockSiteNavForLiveGame, setLockSiteNavForLiveGame] = useState(false);
-  const profileUsername = useProfileUsername(sessionUser);
+  const { username: profileUsername } = useProfileUsername(sessionUser);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,7 +186,12 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
     void (async () => {
       const { data, error } = await supabase.from("games").select("status").eq("id", gameId).maybeSingle();
       if (cancelled) return;
-      if (error || !data) {
+      if (error) {
+        logPhase1SupabaseFailure("games", "NavigationBar (game nav lock)", error, "select");
+        setLockSiteNavForLiveGame(false);
+        return;
+      }
+      if (!data) {
         setLockSiteNavForLiveGame(false);
         return;
       }
