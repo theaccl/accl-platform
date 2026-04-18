@@ -300,37 +300,46 @@ export default function GameTesterChatPanels({
     setSpecMessages(j.messages ?? []);
   }, [accessToken, canUseChat, gameId, showSpectator, viewerEcosystem]);
 
-  const loadPlayer = useCallback(async () => {
-    if (!canUseChat || !showPlayer) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    setPlayBusy(true);
-    setPlayErr(null);
-    const res = await chatFetch(
-      `/api/chat/messages?channel=game_player&gameId=${encodeURIComponent(gameId)}&limit=50`,
-      accessToken!,
-      viewerEcosystem
-    );
-    setPlayBusy(false);
-    if (!res.ok) {
-      const j = (await res.json().catch(() => ({}))) as {
-        error?: unknown;
-        message?: unknown;
-        db_message?: unknown;
-        db_code?: unknown;
-      };
-      setPlayErr(
-        formatChatSendError({
-          error: j.error,
-          message: j.message,
-          db_message: j.db_message,
-          db_code: j.db_code,
-        })
+  const loadPlayer = useCallback(
+    async (opts?: { bypassVisibility?: boolean }) => {
+      if (!canUseChat || !showPlayer) return;
+      if (
+        !opts?.bypassVisibility &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
+      setPlayBusy(true);
+      setPlayErr(null);
+      const res = await chatFetch(
+        `/api/chat/messages?channel=game_player&gameId=${encodeURIComponent(gameId)}&limit=50`,
+        accessToken!,
+        viewerEcosystem
       );
-      return;
-    }
-    const j = (await res.json()) as { messages?: ChatMsg[] };
-    setPlayMessages(j.messages ?? []);
-  }, [accessToken, canUseChat, gameId, showPlayer, viewerEcosystem]);
+      setPlayBusy(false);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: unknown;
+          message?: unknown;
+          db_message?: unknown;
+          db_code?: unknown;
+        };
+        setPlayErr(
+          formatChatSendError({
+            error: j.error,
+            message: j.message,
+            db_message: j.db_message,
+            db_code: j.db_code,
+          })
+        );
+        return;
+      }
+      const j = (await res.json()) as { messages?: ChatMsg[] };
+      setPlayMessages(j.messages ?? []);
+    },
+    [accessToken, canUseChat, gameId, showPlayer, viewerEcosystem]
+  );
 
   useEffect(() => {
     void loadSpectator();
@@ -356,10 +365,24 @@ export default function GameTesterChatPanels({
           filter: `game_id=eq.${gameId}`,
         },
         (payload) => {
-          const row = payload.new as { channel?: string | null };
+          const row = payload.new as { channel?: string | null; id?: string };
           const ch = String(row.channel ?? '');
+          if (process.env.NODE_ENV === 'development') {
+            if (ch === 'game_spectator') {
+              console.warn('[game-chat-debug] realtime spectator insert', row.id);
+            }
+            if (ch === 'game_player') {
+              console.warn('[game-chat-debug] realtime player insert', row.id);
+            }
+          }
           if (ch === 'game_spectator' && showSpectator) void loadSpectator();
-          if (ch === 'game_player' && showPlayer) void loadPlayer();
+          // Always dispatch; loadPlayer() no-ops if post-game panel is not active (avoids stale showPlayer closure).
+          if (ch === 'game_player') {
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[game-chat-debug] loadPlayer triggered from realtime');
+            }
+            void loadPlayer({ bypassVisibility: true });
+          }
         }
       )
       .subscribe();
@@ -372,6 +395,9 @@ export default function GameTesterChatPanels({
   useEffect(() => {
     const tick = () => {
       void loadSpectator();
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[game-chat-debug] loadPlayer triggered from poll');
+      }
       void loadPlayer();
     };
     const id = window.setInterval(tick, 45000);
