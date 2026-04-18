@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
+import { supabase } from '@/lib/supabaseClient';
 
 const CHAT_BODY_MAX = 2000;
 
@@ -339,12 +340,41 @@ export default function GameTesterChatPanels({
     void loadPlayer();
   }, [loadPlayer]);
 
+  /** INSERT on tester_chat_messages for this game → refetch the matching channel list (API applies mutes). */
+  useEffect(() => {
+    if (!canUseChat || !gameId.trim()) return;
+    if (!showSpectator && !showPlayer) return;
+
+    const channel = supabase
+      .channel(`game-tester-chat-${gameId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'tester_chat_messages',
+          filter: `game_id=eq.${gameId}`,
+        },
+        (payload) => {
+          const row = payload.new as { channel?: string | null };
+          const ch = String(row.channel ?? '');
+          if (ch === 'game_spectator' && showSpectator) void loadSpectator();
+          if (ch === 'game_player' && showPlayer) void loadPlayer();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [canUseChat, gameId, showSpectator, showPlayer, loadSpectator, loadPlayer]);
+
   useEffect(() => {
     const tick = () => {
       void loadSpectator();
       void loadPlayer();
     };
-    const id = window.setInterval(tick, 15000);
+    const id = window.setInterval(tick, 45000);
     const onVis = () => {
       if (document.visibilityState === 'visible') tick();
     };
