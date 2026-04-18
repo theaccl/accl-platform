@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
 import { useRouter } from 'next/navigation';
 
+import CountryFlagCombobox from '@/components/profile/CountryFlagCombobox';
 import { assertBioWordCount, countWords, PROFILE_BIO_WORD_ERROR_MESSAGE } from '@/lib/profile';
 import { getCroppedPngBlob } from '@/lib/profileImageCrop';
 import { supabase } from '@/lib/supabaseClient';
@@ -370,16 +371,18 @@ export default function EditProfileForm({
 
         <div className="flex flex-col gap-2">
           <label htmlFor="flag" className="text-sm font-medium text-slate-200">
-            Flag
+            Country / flag
           </label>
-          <input
+          <CountryFlagCombobox
             id="flag"
             value={flag}
-            onChange={(e) => setFlag(e.target.value)}
-            className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 outline-none"
-            placeholder="ISO code (e.g. US) or label"
-            data-testid="edit-profile-flag-input"
+            onChange={(code) => {
+              setFlag(code);
+              setErrors((prev) => ({ ...prev, flag: undefined, form: undefined }));
+            }}
+            disabled={isSaving}
           />
+          <p className="text-xs text-slate-500">Stored as a two-letter ISO code (e.g. US).</p>
           {errors.flag ? (
             <p className="text-sm text-red-300" data-testid="edit-profile-flag-error">
               {errors.flag}

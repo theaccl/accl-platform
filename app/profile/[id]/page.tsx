@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { PublicP1Read } from '@/lib/p1PublicRatingRead';
-import { PROFILE_FLAG_OPTIONS } from '@/lib/flagOptions';
+import { formatFlagDisplay } from '@/lib/flagDisplay';
+import { publicProfileHref } from '@/lib/profileHref';
 import { publicIdentityFromProfileUsername } from '@/lib/profileIdentity';
 import { supabase } from '@/lib/supabaseClient';
-import { normalizeAcclUsername } from '@/lib/usernameRules';
+import { resolvePublicProfileIdFromRoute } from '@/lib/resolvePublicProfileRoute';
 import { touchProfileActivityThrottled } from '@/lib/touchProfileActivity';
 import NavigationBar from '@/components/NavigationBar';
 import ProfileActionSlot from '@/components/profile/ProfileActionSlot';
@@ -79,18 +80,6 @@ type PublicProfilePayload = {
 
 const PROFILE_AVATAR_BUCKET = 'profile-avatars';
 
-/** Route segment is a UUID string (Postgres id) — not a public username. */
-function isProfileParamUuid(id: string): boolean {
-  return /^[0-9a-fA-F-]{36}$/.test(id);
-}
-
-function flagLabel(code: string | null | undefined): string | null {
-  const c = code?.trim();
-  if (!c) return null;
-  const row = PROFILE_FLAG_OPTIONS.find((f) => f.code === c);
-  return row?.label ?? c;
-}
-
 /**
  * Public profile (v2): merged ProfileHeader + ProfileActionSlot.
  * Auth must be resolved before computing `isSelf` — otherwise viewerId=null briefly
@@ -98,17 +87,13 @@ function flagLabel(code: string | null | undefined): string | null {
  */
 export default function PublicProfilePage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const paramId = String(params?.id ?? '').trim();
-  const isUuid = isProfileParamUuid(paramId);
+  const paramId = decodeURIComponent(String(params?.id ?? '').trim());
   const [payload, setPayload] = useState<PublicProfilePayload | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
   /** False until first session resolution — do not render identity/actions until true. */
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  /** For username URLs: resolve to UUID (redirect) or show not found before snapshot fetch. */
-  const [usernameLookup, setUsernameLookup] = useState<'idle' | 'resolving' | 'done'>('idle');
 
   useEffect(() => {
     let cancelled = false;
@@ -135,70 +120,27 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     if (!paramId) {
-      setUsernameLookup('done');
-      return;
-    }
-    if (isUuid) {
-      setUsernameLookup('done');
-      return;
-    }
-    let cancelled = false;
-    setUsernameLookup('resolving');
-    void (async () => {
-      const normalized = normalizeAcclUsername(paramId);
-      if (normalized.length < 2) {
-        setPayload(null);
-        setMessage('User not found.');
-        setUsernameLookup('done');
+      queueMicrotask(() => {
         setLoading(false);
-        return;
-      }
-      const { data, error } = await supabase.rpc('search_public_profiles', {
-        p_query: normalized,
-        p_limit: 50,
+        setPayload(null);
+        setMessage('Invalid profile id.');
       });
-      if (cancelled) return;
-      if (error) {
-        setPayload(null);
-        setMessage(error.message);
-        setUsernameLookup('done');
-        setLoading(false);
-        return;
-      }
-      const rows = Array.isArray(data) ? data : [];
-      const hit = rows.find(
-        (r: { id?: unknown; username?: string | null }) =>
-          typeof r.id === 'string' && normalizeAcclUsername(r.username ?? '') === normalized,
-      );
-      if (hit && typeof hit.id === 'string') {
-        router.replace(`/profile/${hit.id}`);
-        return;
-      }
-      setPayload(null);
-      setMessage('User not found.');
-      setUsernameLookup('done');
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [paramId, isUuid, router]);
-
-  useEffect(() => {
-    if (!paramId) {
-      setLoading(false);
-      setMessage('Invalid profile id.');
-      return;
-    }
-    if (!isUuid) {
       return;
     }
     let cancelled = false;
     void (async () => {
       setLoading(true);
       setMessage('');
+      setPayload(null);
+      const resolved = await resolvePublicProfileIdFromRoute(supabase, paramId);
+      if (cancelled) return;
+      if (!resolved.ok) {
+        setMessage(resolved.message);
+        setLoading(false);
+        return;
+      }
       const { data, error } = await supabase.rpc('get_public_profile_snapshot', {
-        p_profile_id: paramId,
+        p_profile_id: resolved.profileId,
       });
       if (cancelled) return;
       if (error) {
@@ -219,11 +161,9 @@ export default function PublicProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [paramId, isUuid]);
+  }, [paramId]);
 
-  const waitingForUsernameResolution = Boolean(paramId && !isUuid && usernameLookup !== 'done');
-
-  if (loading || !authReady || waitingForUsernameResolution) {
+  if (loading || !authReady) {
     return (
       <div className="flex min-h-screen flex-col bg-[#0D1117] text-white">
         <NavigationBar />
@@ -315,7 +255,7 @@ export default function PublicProfilePage() {
           displayName={displayName}
           username={payload.profile.username}
           joinedAt={joinedAt}
-          flagDisplay={flagLabel(payload.profile.flag)}
+          flagDisplay={formatFlagDisplay(payload.profile.flag)}
           lastActiveAt={payload.profile.last_active_at ?? null}
           profileImageUrl={profileImageUrl}
         />
@@ -348,7 +288,10 @@ export default function PublicProfilePage() {
             Finished records observed: <strong>{payload.finished_games_count ?? 0}</strong>
           </p>
           <p className="mt-2">
-            <Link href={`/profile/${payload.profile.id}/history`} className="font-bold text-sky-300">
+            <Link
+              href={`${publicProfileHref(payload.profile.username, payload.profile.id)}/history`}
+              className="font-bold text-sky-300"
+            >
               Open public match timeline
             </Link>
           </p>

@@ -8,6 +8,7 @@ import NavigationBar from "@/components/NavigationBar";
 import { ProfileUsernameCallout } from "@/components/profile/ProfileUsernameCallout";
 import { useProfileUsername } from "@/hooks/useProfileUsername";
 import { identityPreviewFromUser, publicIdentityFromProfileUsername } from "@/lib/profileIdentity";
+import { publicProfileHref } from "@/lib/profileHref";
 import { supabase } from "@/lib/supabaseClient";
 
 /**
@@ -37,13 +38,13 @@ export default function ProfilePage() {
     };
   }, []);
 
-  const profileUsername = useProfileUsername(user);
+  const { username: profileUsername, ready: usernameReady } = useProfileUsername(user);
   const prev = identityPreviewFromUser(user, { profileUsername });
 
   useEffect(() => {
-    if (!ready || !user?.id) return;
-    router.replace(`/profile/${user.id}`);
-  }, [ready, user?.id, router]);
+    if (!ready || !user?.id || !usernameReady) return;
+    router.replace(publicProfileHref(profileUsername, user.id));
+  }, [ready, user?.id, router, profileUsername, usernameReady]);
 
   if (!ready) {
     return (

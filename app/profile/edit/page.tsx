@@ -8,6 +8,8 @@ import NavigationBar from '@/components/NavigationBar';
 import EditProfileForm from '@/components/profile/EditProfileForm';
 import { ProfileUsernameCallout } from '@/components/profile/ProfileUsernameCallout';
 import { useProfileUsername } from '@/hooks/useProfileUsername';
+import { loadOrCreateOwnProfile } from '@/lib/loadOwnProfileForAccount';
+import { publicProfileHref } from '@/lib/profileHref';
 import { supabase } from '@/lib/supabaseClient';
 
 type ProfileRow = {
@@ -22,28 +24,31 @@ export default function EditProfilePage() {
   const [ready, setReady] = useState(false);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const profileUsername = useProfileUsername(user);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const { username: profileUsername } = useProfileUsername(user);
 
   const loadProfile = useCallback(async () => {
     const { data: auth } = await supabase.auth.getUser();
-    const uid = auth.user?.id ?? null;
-    if (!uid) {
+    const u = auth.user;
+    if (!u?.id) {
       setProfile(null);
+      setProfileError(null);
       setProfileLoading(false);
       return;
     }
     setProfileLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('username,bio,flag,avatar_path')
-      .eq('id', uid)
-      .maybeSingle();
-    if (error) {
-      setProfile(null);
-    } else {
-      setProfile(data as ProfileRow);
+    setProfileError(null);
+    try {
+      const result = await loadOrCreateOwnProfile(supabase, u);
+      if (!result.ok) {
+        setProfile(null);
+        setProfileError(result.message);
+        return;
+      }
+      setProfile(result.profile);
+    } finally {
+      setProfileLoading(false);
     }
-    setProfileLoading(false);
   }, []);
 
   useEffect(() => {
@@ -100,7 +105,7 @@ export default function EditProfilePage() {
       <div className="mx-auto max-w-xl px-6 py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">Edit profile</h1>
-          <Link href={`/profile/${user.id}`} className="text-sm text-sky-300">
+          <Link href={publicProfileHref(profile?.username ?? null, user.id)} className="text-sm text-sky-300">
             View profile
           </Link>
         </div>
@@ -108,9 +113,13 @@ export default function EditProfilePage() {
         <ProfileUsernameCallout username={profileUsername} accountEmail={user.email ?? null} />
 
         <div className="mt-8">
-          {profileLoading || !profile ? (
+          {profileLoading ? (
             <p className="text-sm text-gray-500">Loading profile…</p>
-          ) : (
+          ) : profileError ? (
+            <p className="text-sm text-red-300" role="alert">
+              {profileError}
+            </p>
+          ) : profile ? (
             <EditProfileForm
               userId={user.id}
               initialUsername={profile.username}
@@ -119,6 +128,8 @@ export default function EditProfilePage() {
               initialAvatarPath={profile.avatar_path}
               onSaved={loadProfile}
             />
+          ) : (
+            <p className="text-sm text-gray-400">Failed to load profile.</p>
           )}
         </div>
       </div>

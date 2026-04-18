@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
 import { gameRatedListLabel } from '@/lib/gameRated';
+import { publicProfileHref } from '@/lib/profileHref';
+import { resolvePublicProfileIdFromRoute } from '@/lib/resolvePublicProfileRoute';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
 
@@ -42,7 +44,7 @@ function endReasonLabel(er: string | null): string {
 
 export default function PublicProfileHistoryPage() {
   const params = useParams<{ id: string }>();
-  const profileId = String(params?.id ?? '').trim();
+  const routeSegment = decodeURIComponent(String(params?.id ?? '').trim());
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [profile, setProfile] = useState<PublicProfileLite['profile'] | null>(null);
   const [rows, setRows] = useState<PublicHistoryRow[]>([]);
@@ -62,18 +64,31 @@ export default function PublicProfileHistoryPage() {
   }, []);
 
   useEffect(() => {
-    if (!profileId) {
-      setLoading(false);
-      setMessage('Invalid profile id.');
+    if (!routeSegment) {
+      queueMicrotask(() => {
+        setLoading(false);
+        setMessage('Invalid profile id.');
+      });
       return;
     }
     let cancelled = false;
     void (async () => {
       setLoading(true);
       setMessage('');
+      setProfile(null);
+      setRows([]);
+
+      const resolved = await resolvePublicProfileIdFromRoute(supabase, routeSegment);
+      if (cancelled) return;
+      if (!resolved.ok) {
+        setMessage(resolved.message);
+        setLoading(false);
+        return;
+      }
+      const canonicalId = resolved.profileId;
 
       const { data: pData, error: pErr } = await supabase.rpc('get_public_profile_snapshot', {
-        p_profile_id: profileId,
+        p_profile_id: canonicalId,
       });
       if (cancelled) return;
       if (pErr) {
@@ -90,7 +105,7 @@ export default function PublicProfileHistoryPage() {
       setProfile(lite.profile);
 
       const { data: hData, error: hErr } = await supabase.rpc('get_public_profile_history', {
-        p_profile_id: profileId,
+        p_profile_id: canonicalId,
         p_limit: 80,
       });
       if (hErr) {
@@ -105,9 +120,13 @@ export default function PublicProfileHistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [profileId]);
+  }, [routeSegment]);
 
-  const isSelf = useMemo(() => viewerId != null && viewerId === profileId, [viewerId, profileId]);
+  const isSelf = useMemo(
+    () => viewerId != null && profile != null && viewerId === profile.id,
+    [viewerId, profile],
+  );
+  const profileBackHref = profile ? publicProfileHref(profile.username, profile.id) : `/profile/${routeSegment}`;
   const titleName = profile?.username?.trim() || 'Player';
 
   if (loading) {
@@ -133,7 +152,7 @@ export default function PublicProfileHistoryPage() {
         {titleName} · finished timeline
       </p>
       <p style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 0 }}>
-        <Link href={`/profile/${profileId}`} style={{ color: '#93c5fd' }}>
+        <Link href={profileBackHref} style={{ color: '#93c5fd' }}>
           Public profile
         </Link>
         {isSelf ? (
@@ -184,7 +203,7 @@ export default function PublicProfileHistoryPage() {
               <p style={{ margin: '10px 0 0 0' }}>
                 {r.public_replay ? (
                   <Link
-                    href={`/game/${r.game_id}?public=1&back=${encodeURIComponent(`/profile/${profileId}/history`)}`}
+                    href={`/game/${r.game_id}?public=1&back=${encodeURIComponent(`${profileBackHref}/history`)}`}
                     style={{ color: '#93c5fd', fontWeight: 700, textDecoration: 'none' }}
                   >
                     Open replay (read-only) →

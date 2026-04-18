@@ -8,6 +8,9 @@ import AccountBillingPanel from '@/components/account/AccountBillingPanel';
 import AccountPrivateDetailsPanel from '@/components/account/AccountPrivateDetailsPanel';
 import NavigationBar from '@/components/NavigationBar';
 import EditProfileForm from '@/components/profile/EditProfileForm';
+import { useProfileUsername } from '@/hooks/useProfileUsername';
+import { loadOrCreateOwnProfile } from '@/lib/loadOwnProfileForAccount';
+import { publicProfileHref } from '@/lib/profileHref';
 import { supabase } from '@/lib/supabaseClient';
 
 type ProfileRow = {
@@ -21,7 +24,9 @@ export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const { username: usernameFromHook } = useProfileUsername(user);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,24 +48,26 @@ export default function AccountPage() {
 
   const loadProfile = useCallback(async () => {
     const { data: auth } = await supabase.auth.getUser();
-    const uid = auth.user?.id ?? null;
-    if (!uid) {
+    const u = auth.user;
+    if (!u?.id) {
       setProfile(null);
+      setProfileError(null);
       setProfileLoading(false);
       return;
     }
     setProfileLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('username,bio,flag,avatar_path')
-      .eq('id', uid)
-      .maybeSingle();
-    if (error) {
-      setProfile(null);
-    } else {
-      setProfile(data as ProfileRow);
+    setProfileError(null);
+    try {
+      const result = await loadOrCreateOwnProfile(supabase, u);
+      if (!result.ok) {
+        setProfile(null);
+        setProfileError(result.message);
+        return;
+      }
+      setProfile(result.profile);
+    } finally {
+      setProfileLoading(false);
     }
-    setProfileLoading(false);
   }, []);
 
   useEffect(() => {
@@ -93,6 +100,8 @@ export default function AccountPage() {
     );
   }
 
+  const publicProfileLink = publicProfileHref(profile?.username ?? usernameFromHook, user.id);
+
   return (
     <div className="min-h-screen bg-[#0D1117] text-white">
       <NavigationBar />
@@ -102,7 +111,7 @@ export default function AccountPage() {
           <p className="mt-4 text-slate-300">
             This screen is for account/login identity and private profile management. Public profile identity stays
             username-based on{' '}
-            <Link href={`/profile/${user.id}`} className="text-sky-400 underline">
+            <Link href={publicProfileLink} className="text-sky-400 underline">
               your profile page
             </Link>
             .
@@ -114,7 +123,7 @@ export default function AccountPage() {
           <p className="mt-4 text-slate-300">Sign-in email (private — never shown on public profile)</p>
           <p className="mt-1 font-mono text-lg text-white">{user.email ?? '—'}</p>
           <div className="mt-4 flex flex-wrap gap-3 text-sm">
-            <Link href={`/profile/${user.id}`} className="text-sky-400 underline">
+            <Link href={publicProfileLink} className="text-sky-400 underline">
               View public profile
             </Link>
             <Link href="/onboarding/username" className="text-sky-400 underline">
@@ -133,9 +142,13 @@ export default function AccountPage() {
           </p>
 
           <div className="mt-6">
-            {profileLoading || !profile ? (
+            {profileLoading ? (
               <p className="text-sm text-slate-500">Loading profile…</p>
-            ) : (
+            ) : profileError ? (
+              <p className="text-sm text-red-300" role="alert">
+                {profileError}
+              </p>
+            ) : profile ? (
               <EditProfileForm
                 userId={user.id}
                 initialUsername={profile.username}
@@ -144,6 +157,8 @@ export default function AccountPage() {
                 initialAvatarPath={profile.avatar_path}
                 onSaved={loadProfile}
               />
+            ) : (
+              <p className="text-sm text-slate-400">Failed to load profile.</p>
             )}
           </div>
         </section>
