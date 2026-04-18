@@ -239,8 +239,31 @@ export default function TesterDmClient() {
     void loadMessages();
   }, [loadMessages]);
 
+  /** Realtime INSERT → immediate refetch (API applies mutes / ordering). Fallback poll if Realtime misses a frame. */
   useEffect(() => {
-    const t = window.setInterval(() => void loadMessages(), 12000);
+    if (!threadId || !token || !userId) return;
+    const channel = supabase
+      .channel(`dm-thread-${threadId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "tester_chat_messages",
+          filter: `dm_thread_id=eq.${threadId}`,
+        },
+        () => {
+          void loadMessages();
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [threadId, token, userId, loadMessages]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => void loadMessages(), 45000);
     return () => window.clearInterval(t);
   }, [loadMessages]);
 
