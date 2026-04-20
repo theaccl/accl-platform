@@ -1,12 +1,12 @@
-import Link from 'next/link';
-
 export function ProfileVaultButton() {
   return (
-    <Link
-      href="/vault"
-      className="inline-flex w-full items-center justify-center rounded-xl border border-[#2a3442] bg-[#101722] py-3 text-center text-base font-semibold text-gray-100 transition hover:bg-[#192235]"
+    <div
+      className="inline-flex w-full cursor-not-allowed flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[#3d4a5c] bg-[#0c1018] py-3 text-center text-base font-semibold text-gray-500 opacity-90"
+      title="Vault is not available yet"
+      aria-disabled="true"
     >
-      Enter Vault
-    </Link>
+      <span>Enter Vault</span>
+      <span className="text-xs font-normal text-gray-600">Coming soon</span>
+    </div>
   );
 }

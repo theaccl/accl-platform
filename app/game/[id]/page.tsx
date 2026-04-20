@@ -43,6 +43,7 @@ import {
   ratingClassificationSummaryLine,
 } from '@/lib/ratingClassification';
 import { START_FEN } from '@/lib/startFen';
+import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { supabase } from '@/lib/supabaseClient';
 import {
   fetchLatestFinishedGameAnalysisArtifacts,
@@ -738,6 +739,7 @@ export default function GamePage() {
   const searchParams = useSearchParams();
   const publicSpectate =
     searchParams.get('public') === '1' || searchParams.get('spectate') === '1';
+  const joinOpenSeatIntent = searchParams.get('join') === '1';
   const viewerEcosystem = searchParams.get('eco') === 'k12' ? 'k12' : 'adult';
   const openIdentity = useOpenPublicIdentityCard();
 
@@ -794,6 +796,8 @@ export default function GamePage() {
   const [finishedAnalysisSummaryError, setFinishedAnalysisSummaryError] = useState<string | null>(null);
 
   const spectateGrowthTracked = useRef(false);
+  /** Prevents duplicate join RPC (e.g. React Strict Mode). */
+  const joinOpenSeatInFlightRef = useRef(false);
 
   useEffect(() => {
     liveTimeoutInFlightRef.current = false;
@@ -820,6 +824,13 @@ export default function GamePage() {
   useEffect(() => {
     setRematchSentBanner(false);
     setPendingRematchRequestId(null);
+  }, [gameId]);
+
+  useEffect(() => {
+    setShowAnalysisPanel(false);
+    setDevEngineAnalysisEnabled(false);
+    setEngineAnalysisRows(null);
+    setEngineAnalysisBusy(false);
   }, [gameId]);
 
   useEffect(() => {
@@ -1223,6 +1234,44 @@ export default function GamePage() {
 
     void loadGame();
   }, [gameId, loadGameSnapshot]);
+
+  /**
+   * Lobby "Join" links use `?join=1` so we seat the visitor as Black on a free open seat.
+   * Without this, logged-in users were treated as spectators (`myColor` null).
+   */
+  useEffect(() => {
+    if (!joinOpenSeatIntent || !game || !userId || publicSpectate || !gameId) return;
+    if (game.play_context !== 'free' || game.tournament_id) {
+      router.replace(`/game/${gameId}`);
+      return;
+    }
+    if (game.black_player_id) {
+      router.replace(`/game/${gameId}`);
+      return;
+    }
+    if (game.white_player_id === userId) {
+      router.replace(`/game/${gameId}`);
+      return;
+    }
+    if (game.status !== 'active' && game.status !== 'waiting') return;
+    if (joinOpenSeatInFlightRef.current) return;
+    joinOpenSeatInFlightRef.current = true;
+    void (async () => {
+      try {
+        const { error } = await createSeatedGameGuard(supabase, {
+          existingOpenSeatId: game.id,
+          row: { black_player_id: userId },
+        });
+        if (error) {
+          setMessage(`Could not join as Black: ${error.message ?? 'Unknown error.'}`);
+        }
+      } finally {
+        joinOpenSeatInFlightRef.current = false;
+        router.replace(`/game/${gameId}`);
+        await loadGameSnapshot();
+      }
+    })();
+  }, [joinOpenSeatIntent, game, userId, publicSpectate, gameId, router, loadGameSnapshot]);
 
   useEffect(() => {
     if (!userId) {
@@ -2819,6 +2868,12 @@ export default function GamePage() {
           }}
         >
           <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>Analysis</h3>
+          {!analysisUsedEngine ? (
+            <p style={{ margin: '0 0 10px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
+              Analysis engine not connected for this view — rows below are local/heuristic only, tied to this
+              game&apos;s moves.
+            </p>
+          ) : null}
           {analysisUsedEngine ? (
             <p
               style={{

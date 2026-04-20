@@ -445,20 +445,20 @@ export default function FinishedGameDetailPage() {
               )}
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <Link
-                  href={`/finished/${game.id}/analyze`}
-                  className="flex-1 rounded-xl bg-[#21262d] py-3 text-center text-base font-semibold transition hover:bg-[#2b3138]"
+                <span
+                  className="flex-1 cursor-not-allowed rounded-xl border border-dashed border-gray-600 bg-[#0d1117] py-3 text-center text-base font-semibold text-gray-500 opacity-90"
                   data-testid="finished-link-analyze"
+                  title="Coming soon"
                 >
-                  Analyze game
-                </Link>
-                <Link
-                  href={`/finished/${game.id}/train`}
-                  className="flex-1 rounded-xl bg-[#21262d] py-3 text-center text-base font-semibold transition hover:bg-[#2b3138]"
+                  Analyze game (coming soon)
+                </span>
+                <span
+                  className="flex-1 cursor-not-allowed rounded-xl border border-dashed border-gray-600 bg-[#0d1117] py-3 text-center text-base font-semibold text-gray-500 opacity-90"
                   data-testid="finished-link-train"
+                  title="Coming soon"
                 >
-                  Train from mistakes
-                </Link>
+                  Train from mistakes (coming soon)
+                </span>
               </div>
             </div>
           </div>

@@ -215,30 +215,6 @@ export default function PublicProfilePage() {
         data-profile-layout="v2"
         className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 pb-16"
       >
-        {isSelf ? (
-          <nav
-            className="flex flex-wrap gap-3 text-sm text-slate-400"
-            data-testid="public-profile-self-quicklinks"
-            aria-label="Signed-in profile shortcuts"
-          >
-            <Link href="/players" className="text-sky-300 hover:underline">
-              Player lookup
-            </Link>
-            <Link href="/free" className="text-sky-300 hover:underline">
-              Free play
-            </Link>
-            <Link href="/trainer/review" className="text-sky-300 hover:underline">
-              Trainer review
-            </Link>
-            <Link href="/profile" className="text-sky-300 hover:underline">
-              Your profile
-            </Link>
-            <Link href="/account" className="text-sky-300 hover:underline">
-              Account
-            </Link>
-          </nav>
-        ) : null}
-
         {message ? (
           <p role="alert" className="text-red-300">
             {message}
@@ -258,6 +234,8 @@ export default function PublicProfilePage() {
           flagDisplay={formatFlagDisplay(payload.profile.flag)}
           lastActiveAt={payload.profile.last_active_at ?? null}
           profileImageUrl={profileImageUrl}
+          isViewingOwnProfile={isSelf}
+          viewerLoggedIn={Boolean(viewerId)}
         />
 
         <ProfileActionSlot

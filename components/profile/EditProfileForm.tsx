@@ -305,13 +305,21 @@ export default function EditProfileForm({
             disabled={usernameLocked}
             className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
             aria-invalid={errors.username ? 'true' : 'false'}
-            aria-describedby={errors.username ? 'username-error' : undefined}
+            aria-describedby={
+              errors.username ? 'username-error username-policy' : 'username-policy'
+            }
             data-testid="edit-profile-username-input"
             autoComplete="off"
           />
           {usernameLocked ? (
-            <p className="text-xs text-slate-500">Username is set and cannot be changed here.</p>
-          ) : null}
+            <p className="text-xs text-slate-500" id="username-policy">
+              Usernames cannot be changed after they are first set.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500" id="username-policy">
+              Choose carefully — usernames cannot be changed after they are first set.
+            </p>
+          )}
           {errors.username ? (
             <p
               id="username-error"

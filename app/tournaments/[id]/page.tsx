@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AppShellNav } from '@/components/AppShellNav';
+import { UtcClock } from '@/components/UtcClock';
 import { PublicProfileLink } from '@/components/PublicProfileLink';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -256,6 +257,10 @@ export default function TournamentDetailPage() {
       style={{ padding: '24px 16px 48px', maxWidth: 960, margin: '0 auto' }}
     >
       <AppShellNav variant="tournamentDetail" />
+
+      <div style={{ marginTop: 12, marginBottom: 8 }}>
+        <UtcClock className="text-[11px] tabular-nums text-sky-300/90" />
+      </div>
 
       {!tournament ? (
         <>

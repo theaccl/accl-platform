@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Free-play only: transactional supersede of other seated actives + insert or open-seat join.
- * See migration `20260410120000_free_play_lifecycle_guard.sql` (`create_seated_game_guard`).
+ * Free-play only: server-side busy checks + stale open-seat cleanup + insert or open-seat join.
+ * See `20260522120000_create_seated_game_guard_postgrest_param_names.sql` (`create_seated_game_guard`).
  */
 export async function createSeatedGameGuard(
   supabase: SupabaseClient,
@@ -13,9 +13,10 @@ export async function createSeatedGameGuard(
     row: Record<string, unknown>;
   }
 ) {
+  // PostgREST binds JSON keys to PostgreSQL parameter names — must match `create_seated_game_guard` args.
   const res = await supabase.rpc('create_seated_game_guard', {
-    p_existing_open_seat_id: args.existingOpenSeatId ?? null,
-    p_row: args.row,
+    existing_open_seat_id: args.existingOpenSeatId ?? null,
+    payload: args.row,
   });
   if (res.error) return res;
   const raw = res.data as unknown;

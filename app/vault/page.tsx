@@ -9,8 +9,8 @@ export default function VaultPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6">
         <h1 className="text-3xl font-bold mb-4">VAULT</h1>
 
-        <HomeButton label="FREE VAULT" route="/vault/free" />
-        <HomeButton label="TOURNAMENT VAULT" route="/vault/tournament" />
+        <HomeButton label="FREE VAULT" route="/vault/free" comingSoon />
+        <HomeButton label="TOURNAMENT VAULT" route="/vault/tournament" comingSoon />
       </div>
     </div>
   );

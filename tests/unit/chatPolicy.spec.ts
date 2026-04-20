@@ -50,6 +50,7 @@ test.describe('chatPolicy (P2 separation)', () => {
   });
 
   test('lobby room allow list', () => {
+    expect(isAllowedLobbyRoom('free_lobby_general')).toBe(true);
     expect(isAllowedLobbyRoom('free_lobby_blitz')).toBe(true);
     expect(isAllowedLobbyRoom('global')).toBe(true);
     expect(isAllowedLobbyRoom('random_room')).toBe(false);

@@ -83,6 +83,9 @@ export default function RequestsPage() {
       .from('match_requests')
       .select('*')
       .eq('status', 'pending')
+      .or(
+        `from_user_id.eq.${authUserId},to_user_id.eq.${authUserId},and(visibility.eq.open,from_user_id.neq.${authUserId})`
+      )
       .order('created_at', { ascending: false });
     if (error) {
       setMessage(error.message);
@@ -411,12 +414,18 @@ export default function RequestsPage() {
                   Your seat: Black.
                 </p>
               ) : null}
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   data-testid={`challenge-accept-${r.id}`}
                   disabled={busyReqId === r.id}
-                  onClick={() => acceptRequest(r)}
+                  onClick={() => void acceptRequest(r)}
+                  style={{
+                    minHeight: 44,
+                    padding: '8px 14px',
+                    touchAction: 'manipulation',
+                    cursor: busyReqId === r.id ? 'wait' : 'pointer',
+                  }}
                 >
                   {busyReqId === r.id ? 'Working...' : 'Accept'}
                 </button>
@@ -424,7 +433,13 @@ export default function RequestsPage() {
                   type="button"
                   data-testid={`challenge-decline-${r.id}`}
                   disabled={busyReqId === r.id}
-                  onClick={() => declineRequest(r)}
+                  onClick={() => void declineRequest(r)}
+                  style={{
+                    minHeight: 44,
+                    padding: '8px 14px',
+                    touchAction: 'manipulation',
+                    cursor: busyReqId === r.id ? 'wait' : 'pointer',
+                  }}
                 >
                   {busyReqId === r.id ? 'Declining…' : 'Decline'}
                 </button>

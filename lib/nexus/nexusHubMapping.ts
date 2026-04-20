@@ -34,6 +34,8 @@ export function pickActiveGameForUser(games: NexusLiveGame[], userId: string): N
 const STATIC_ROUTES = new Set([
   "/profile",
   "/free",
+  "/free/lobby",
+  "/free/create",
   "/free/active",
   "/tournaments",
   "/finished",
@@ -57,10 +59,13 @@ function isAllowedStaticHref(href: string): boolean {
 }
 
 function isAllowedDynamicHref(href: string): boolean {
-  const mGame = /^\/game\/([^/?#]+)$/.exec(href);
+  const path = href.split("?")[0] ?? "";
+  const mGame = /^\/game\/([^/?#]+)$/.exec(path);
   if (mGame) return isSafeHubDocumentId(mGame[1]);
-  const mTour = /^\/tournaments\/([^/?#]+)$/.exec(href);
+  const mTour = /^\/tournaments\/([^/?#]+)$/.exec(path);
   if (mTour) return isSafeHubDocumentId(mTour[1]);
+  const mLobbyMode = /^\/free\/lobby\/(bullet|blitz|rapid|daily)\/?$/.exec(path);
+  if (mLobbyMode) return true;
   return false;
 }
 
@@ -379,9 +384,9 @@ export function buildNexusHubActionCards(params: HubActionCardsParams): NexusAct
     });
     push({
       id: "nexus-free-play",
-      title: "Free play",
-      description: "Live lobby, find match, open seats, and direct challenges on the free-play surface.",
-      href: "/free",
+      title: "Lobby Chat",
+      description: "Free-play hub — general lobby, mode rooms, mode-scoped chat, and queue filtered by time control.",
+      href: "/free/lobby",
       priority: 4,
       urgency: 65,
       emphasis: "secondary",

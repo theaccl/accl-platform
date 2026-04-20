@@ -105,15 +105,20 @@ function LoginPageInner() {
   }, [router, searchParams]);
 
   const signIn = async () => {
+    if (busy) return;
     setBusy(true);
     setMessage('');
-    const { error, data } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setBusy(false);
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-    if (data.session?.access_token) {
+    try {
+      const { error, data } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) {
+        setMessage(error.message);
+        setBusy(false);
+        return;
+      }
+      if (!data.session?.access_token) {
+        setBusy(false);
+        return;
+      }
       try {
         await fetch('/api/auth/audit-login', {
           method: 'POST',
@@ -126,10 +131,15 @@ function LoginPageInner() {
       }
       const dest = await resolvePostAuthRoute(data.session.access_token, searchParams.get('next'));
       router.replace(dest);
+      /* Keep busy until navigation replaces this view — avoids a dead-feeling gap after auth. */
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'Sign-in failed. Try again.');
+      setBusy(false);
     }
   };
 
   const signUp = async () => {
+    if (busy) return;
     setBusy(true);
     setMessage('');
     let signupData: { username: string } | undefined;
@@ -142,17 +152,22 @@ function LoginPageInner() {
       }
       signupData = { username: uv.username };
     }
-    const { error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      ...(signupData ? { options: { data: signupData } } : {}),
-    });
-    setBusy(false);
-    if (error) {
-      setMessage(error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        ...(signupData ? { options: { data: signupData } } : {}),
+      });
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      setMessage(
+        'Check your email to confirm signup, then sign in. After sign-in you will land on your chosen destination.'
+      );
+    } finally {
+      setBusy(false);
     }
-    setMessage('Check your email to confirm signup, then sign in. After sign-in you will land on your chosen destination.');
   };
 
   if (!checked) {
@@ -236,7 +251,7 @@ function LoginPageInner() {
               disabled={busy}
               className="inline-flex flex-1 items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
             >
-              {busy ? 'Please wait…' : 'Log in'}
+              {busy ? 'Signing in…' : 'Log in'}
             </button>
             <button
               type="button"
@@ -245,7 +260,7 @@ function LoginPageInner() {
               data-testid="signup-submit"
               className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
             >
-              Sign up
+              {busy ? (signupIntent ? 'Creating account…' : 'Please wait…') : 'Sign up'}
             </button>
           </div>
 

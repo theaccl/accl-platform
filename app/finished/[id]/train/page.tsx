@@ -6,12 +6,13 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function FinishedGameTrainPage() {
   const params = useParams<{ id: string }>();
-  const [detectedPattern, setDetectedPattern] = useState("Fork Awareness");
+  const [detectedPattern, setDetectedPattern] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const gameId = String(params?.id ?? "").trim();
+      setDetectedPattern(null);
       if (!gameId) return;
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth.user?.id;
@@ -42,16 +43,25 @@ export default function FinishedGameTrainPage() {
       <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-6">
         <h1 className="text-3xl font-bold">TRAIN FROM THIS GAME</h1>
 
+        <p className="text-sm text-amber-200/90">Trainer flow is not fully wired yet — preview only.</p>
+
         <div className="bg-[#161b22] rounded-2xl p-5 flex flex-col gap-4">
           <p className="text-sm text-gray-400">Detected Pattern</p>
-          <p className="text-lg font-semibold">{detectedPattern}</p>
+          <p className="text-lg font-semibold text-gray-200">
+            {detectedPattern ?? "No trainer pattern linked to this game yet."}
+          </p>
 
           <div className="rounded-xl bg-[#0D1117] border border-gray-700 p-6 min-h-[240px] flex items-center justify-center text-gray-500">
             Training Position Placeholder
           </div>
 
-          <button className="w-full py-4 bg-[#21262d] rounded-xl text-lg font-semibold hover:bg-[#2b3138] transition">
-            START TRAINING SESSION
+          <button
+            type="button"
+            disabled
+            title="Coming soon"
+            className="w-full cursor-not-allowed rounded-xl bg-[#161b22] py-4 text-lg font-semibold text-gray-500 opacity-80"
+          >
+            START TRAINING SESSION (coming soon)
           </button>
         </div>
       </div>

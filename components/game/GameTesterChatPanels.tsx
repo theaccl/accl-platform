@@ -8,6 +8,18 @@ import { supabase } from '@/lib/supabaseClient';
 
 const CHAT_BODY_MAX = 2000;
 
+/** Dev-only: detect duplicate realtime channel creation (Strict Mode / effect churn). */
+let gameChatChannelSeq = 0;
+
+const gameChatDebug = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.warn('[game-chat-debug]', ...args);
+  }
+};
+
+/** Dev-only: where a chat load was triggered from */
+type GameChatLoadSource = 'initial' | 'visibilitychange' | 'poll' | 'realtime' | 'after_send';
+
 type ChatMsg = {
   id: string;
   created_at: string;
@@ -250,6 +262,8 @@ export default function GameTesterChatPanels({
   /** Live games only: in-game chat uses spectator channel (players + viewers); not for daily/corr. */
   const showSpectator = isLive;
 
+  const devTraceRole = isSpectator ? 'spectator' : 'player';
+
   const [specMessages, setSpecMessages] = useState<ChatMsg[]>([]);
   const [playMessages, setPlayMessages] = useState<ChatMsg[]>([]);
   const [specErr, setSpecErr] = useState<string | null>(null);
@@ -268,46 +282,108 @@ export default function GameTesterChatPanels({
 
   const canUseChat = !!accessToken && !!userId;
 
-  const loadSpectator = useCallback(async () => {
-    if (!canUseChat || !showSpectator) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    setSpecBusy(true);
-    setSpecErr(null);
-    const res = await chatFetch(
-      `/api/chat/messages?channel=game_spectator&gameId=${encodeURIComponent(gameId)}&limit=50`,
-      accessToken!,
-      viewerEcosystem
-    );
-    setSpecBusy(false);
-    if (!res.ok) {
-      const j = (await res.json().catch(() => ({}))) as {
-        error?: unknown;
-        message?: unknown;
-        db_message?: unknown;
-        db_code?: unknown;
-      };
-      setSpecErr(
-        formatChatSendError({
-          error: j.error,
-          message: j.message,
-          db_message: j.db_message,
-          db_code: j.db_code,
-        })
-      );
-      return;
-    }
-    const j = (await res.json()) as { messages?: ChatMsg[] };
-    setSpecMessages(j.messages ?? []);
-  }, [accessToken, canUseChat, gameId, showSpectator, viewerEcosystem]);
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    console.log('[game-chat-devtrace] mount', {
+      gameId,
+      role: devTraceRole,
+      ts: Date.now(),
+    });
+    return () => {
+      console.log('[game-chat-devtrace] cleanup', {
+        gameId,
+        role: devTraceRole,
+        ts: Date.now(),
+      });
+    };
+  }, [gameId, devTraceRole]);
 
-  const loadPlayer = useCallback(
-    async (opts?: { bypassVisibility?: boolean }) => {
-      if (!canUseChat || !showPlayer) return;
+  const loadSpectator = useCallback(
+    async (opts?: { source?: GameChatLoadSource; bypassVisibility?: boolean }) => {
+      const source: GameChatLoadSource = opts?.source ?? 'initial';
+      gameChatDebug('loadSpectator:trigger', { source, gameId, showSpectator });
+      if (!canUseChat || !showSpectator) {
+        gameChatDebug('loadSpectator:skip', { source, reason: !canUseChat ? 'no_auth' : 'panel_off' });
+        return;
+      }
       if (
         !opts?.bypassVisibility &&
         typeof document !== 'undefined' &&
         document.visibilityState === 'hidden'
       ) {
+        gameChatDebug('loadSpectator:skip', { source, reason: 'hidden_tab' });
+        return;
+      }
+      setSpecBusy(true);
+      setSpecErr(null);
+      const res = await chatFetch(
+        `/api/chat/messages?channel=game_spectator&gameId=${encodeURIComponent(gameId)}&limit=50`,
+        accessToken!,
+        viewerEcosystem
+      );
+      setSpecBusy(false);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: unknown;
+          message?: unknown;
+          db_message?: unknown;
+          db_code?: unknown;
+        };
+        setSpecErr(
+          formatChatSendError({
+            error: j.error,
+            message: j.message,
+            db_message: j.db_message,
+            db_code: j.db_code,
+          })
+        );
+        gameChatDebug('loadSpectator:result', { source, ok: false, gameId });
+        return;
+      }
+      const j = (await res.json()) as { messages?: ChatMsg[] };
+      const list = j.messages ?? [];
+      setSpecMessages(list);
+      gameChatDebug('loadSpectator:result', {
+        source,
+        ok: true,
+        count: list.length,
+        firstId: list[0]?.id,
+        lastId: list[list.length - 1]?.id,
+        gameId,
+      });
+      if (process.env.NODE_ENV === 'development') {
+        const src =
+          source === 'poll' ? 'poll' : source === 'realtime' ? 'realtime' : source;
+        console.log('[game-chat-devtrace] ui:update', {
+          gameId,
+          role: devTraceRole,
+          source: src,
+          ts: Date.now(),
+        });
+      }
+    },
+    [accessToken, canUseChat, devTraceRole, gameId, showSpectator, viewerEcosystem]
+  );
+
+  const loadPlayer = useCallback(
+    async (opts?: { bypassVisibility?: boolean; source?: GameChatLoadSource }) => {
+      const source: GameChatLoadSource = opts?.source ?? 'initial';
+      gameChatDebug('loadPlayer:trigger', {
+        source,
+        gameId,
+        showPlayer,
+        bypassVisibility: opts?.bypassVisibility === true,
+      });
+      if (!canUseChat || !showPlayer) {
+        gameChatDebug('loadPlayer:skip', { source, reason: !canUseChat ? 'no_auth' : 'panel_off' });
+        return;
+      }
+      if (
+        !opts?.bypassVisibility &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        gameChatDebug('loadPlayer:skip', { source, reason: 'hidden_tab' });
         return;
       }
       setPlayBusy(true);
@@ -333,20 +409,40 @@ export default function GameTesterChatPanels({
             db_code: j.db_code,
           })
         );
+        gameChatDebug('loadPlayer:result', { source, ok: false, gameId });
         return;
       }
       const j = (await res.json()) as { messages?: ChatMsg[] };
-      setPlayMessages(j.messages ?? []);
+      const list = j.messages ?? [];
+      setPlayMessages(list);
+      gameChatDebug('loadPlayer:result', {
+        source,
+        ok: true,
+        count: list.length,
+        firstId: list[0]?.id,
+        lastId: list[list.length - 1]?.id,
+        gameId,
+      });
+      if (process.env.NODE_ENV === 'development') {
+        const src =
+          source === 'poll' ? 'poll' : source === 'realtime' ? 'realtime' : source;
+        console.log('[game-chat-devtrace] ui:update', {
+          gameId,
+          role: devTraceRole,
+          source: src,
+          ts: Date.now(),
+        });
+      }
     },
-    [accessToken, canUseChat, gameId, showPlayer, viewerEcosystem]
+    [accessToken, canUseChat, devTraceRole, gameId, showPlayer, viewerEcosystem]
   );
 
   useEffect(() => {
-    void loadSpectator();
+    void loadSpectator({ source: 'initial' });
   }, [loadSpectator]);
 
   useEffect(() => {
-    void loadPlayer();
+    void loadPlayer({ source: 'initial' });
   }, [loadPlayer]);
 
   /** INSERT on tester_chat_messages for this game → refetch the matching channel list (API applies mutes). */
@@ -354,62 +450,169 @@ export default function GameTesterChatPanels({
     if (!canUseChat || !gameId.trim()) return;
     if (!showSpectator && !showPlayer) return;
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[game-chat-devtrace] effect:start', {
+        gameId,
+        role: devTraceRole,
+        showPlayer,
+        bypassVisibility: false,
+        visible: typeof document !== 'undefined' ? document.visibilityState : 'unknown',
+        ts: Date.now(),
+      });
+    }
+
+    const filter = `game_id=eq.${gameId}`;
+    gameChatDebug('subscribe:start', {
+      gameId,
+      showSpectator,
+      showPlayer,
+      filter,
+    });
+
+    const seq = ++gameChatChannelSeq;
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[game-chat-devtrace] subscribe:create', {
+        seq,
+        gameId,
+        role: devTraceRole,
+        ts: Date.now(),
+      });
+    }
+
+    const channelName = `game-tester-chat-${gameId}`;
     const channel = supabase
-      .channel(`game-tester-chat-${gameId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'tester_chat_messages',
-          filter: `game_id=eq.${gameId}`,
+          filter,
         },
         (payload) => {
-          const row = payload.new as { channel?: string | null; id?: string };
+          const row = payload.new as {
+            channel?: string | null;
+            id?: string;
+            game_id?: string | null;
+            sender_id?: string | null;
+          };
           const ch = String(row.channel ?? '');
+          const rowGameId = row.game_id != null ? String(row.game_id) : '';
+          const gameIdMatch = rowGameId === gameId;
+
+          gameChatDebug('realtime:insert', {
+            id: row.id,
+            channel: row.channel,
+            game_id: row.game_id,
+            sender_id: row.sender_id,
+            gameIdMatch,
+            currentGameId: gameId,
+          });
+
           if (process.env.NODE_ENV === 'development') {
-            if (ch === 'game_spectator') {
-              console.warn('[game-chat-debug] realtime spectator insert', row.id);
-            }
-            if (ch === 'game_player') {
-              console.warn('[game-chat-debug] realtime player insert', row.id);
-            }
+            console.log('[game-chat-devtrace] realtime:insert', {
+              seq,
+              gameId,
+              role: devTraceRole,
+              payload,
+              ts: Date.now(),
+            });
+            console.log('[game-chat-devtrace] realtime:route-check', {
+              seq,
+              gameId,
+              role: devTraceRole,
+              isPlayer: ch === 'game_player',
+              isSpectator: ch === 'game_spectator',
+              bypassVisibility: ch === 'game_player',
+              ts: Date.now(),
+            });
           }
-          if (ch === 'game_spectator' && showSpectator) void loadSpectator();
-          // Always dispatch; loadPlayer() no-ops if post-game panel is not active (avoids stale showPlayer closure).
+
+          if (ch === 'game_spectator' && showSpectator) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[game-chat-devtrace] realtime:route:spectator', {
+                seq,
+                gameId,
+                role: devTraceRole,
+                ts: Date.now(),
+              });
+            }
+            gameChatDebug('realtime:route:spectator', { id: row.id });
+            void loadSpectator({ source: 'realtime' });
+          }
+          // Always dispatch player lane; loadPlayer() no-ops if post-game panel is not active.
           if (ch === 'game_player') {
             if (process.env.NODE_ENV === 'development') {
-              console.warn('[game-chat-debug] loadPlayer triggered from realtime');
+              console.log('[game-chat-devtrace] realtime:route:player', {
+                seq,
+                gameId,
+                role: devTraceRole,
+                ts: Date.now(),
+              });
             }
-            void loadPlayer({ bypassVisibility: true });
+            gameChatDebug('realtime:route:player', { id: row.id });
+            void loadPlayer({ bypassVisibility: true, source: 'realtime' });
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        gameChatDebug('subscribe:status', {
+          status,
+          err: err instanceof Error ? err.message : err ?? null,
+          gameId,
+        });
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[game-chat-devtrace] subscribe:status', {
+            seq,
+            gameId,
+            role: devTraceRole,
+            status,
+            err: err instanceof Error ? err.message : err ?? null,
+            channelName,
+            ts: Date.now(),
+          });
+        }
+      });
 
     return () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[game-chat-devtrace] subscribe:cleanup', {
+          seq,
+          gameId,
+          role: devTraceRole,
+          channelName,
+          ts: Date.now(),
+        });
+      }
+      gameChatDebug('subscribe:cleanup', { gameId });
       void supabase.removeChannel(channel);
     };
-  }, [canUseChat, gameId, showSpectator, showPlayer, loadSpectator, loadPlayer]);
+  }, [canUseChat, devTraceRole, gameId, showSpectator, showPlayer, loadSpectator, loadPlayer]);
 
   useEffect(() => {
-    const tick = () => {
-      void loadSpectator();
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[game-chat-debug] loadPlayer triggered from poll');
-      }
-      void loadPlayer();
+    const runPollTick = () => {
+      gameChatDebug('poll:tick', { gameId, showSpectator, showPlayer });
+      void loadSpectator({ source: 'poll' });
+      void loadPlayer({ source: 'poll' });
     };
-    const id = window.setInterval(tick, 45000);
+    const id = window.setInterval(runPollTick, 45000);
     const onVis = () => {
-      if (document.visibilityState === 'visible') tick();
+      gameChatDebug('visibilitychange', {
+        visibilityState: document.visibilityState,
+        gameId,
+      });
+      if (document.visibilityState === 'visible') {
+        void loadSpectator({ source: 'visibilitychange' });
+        void loadPlayer({ source: 'visibilitychange' });
+      }
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [loadSpectator, loadPlayer]);
+  }, [gameId, showSpectator, showPlayer, loadSpectator, loadPlayer]);
 
   const sendSpectator = async () => {
     const body = specDraft.trim();
@@ -432,7 +635,7 @@ export default function GameTesterChatPanels({
         return;
       }
       setSpecDraft('');
-      void loadSpectator();
+      void loadSpectator({ source: 'after_send' });
     } finally {
       specSendLock.current = false;
       setSpecSending(false);
@@ -460,7 +663,7 @@ export default function GameTesterChatPanels({
         return;
       }
       setPlayDraft('');
-      void loadPlayer();
+      void loadPlayer({ source: 'after_send' });
     } finally {
       playSendLock.current = false;
       setPlaySending(false);
@@ -509,6 +712,28 @@ export default function GameTesterChatPanels({
         </Link>
         .
       </p>
+      {!showPlayer && !showSpectator ? (
+        <p
+          style={{
+            margin: '0 0 12px 0',
+            padding: '10px 12px',
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: '#a8b8cf',
+            borderRadius: 8,
+            border: '1px solid #334155',
+            background: '#0f172a',
+          }}
+          role="status"
+        >
+          <strong style={{ color: '#e2e8f0' }}>No in-game chat panel for this game right now.</strong>{' '}
+          {isLive
+            ? 'This should not happen for an active live game — refresh if the board looks wrong.'
+            : gameStatus === 'finished'
+              ? 'Post-game player chat appears above when available; daily/correspondence games do not use live spectator chat on the board.'
+              : 'Daily and correspondence games do not use live spectator chat here — that is by design, not a missing feature. Use tester lobby chat if you need a side channel.'}
+        </p>
+      ) : null}
       {reportErr ? (
         <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#f87171' }} role="alert">
           {reportErr}

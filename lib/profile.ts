@@ -35,6 +35,20 @@ export function isUserOnline(lastActiveAt: string | null) {
   return diff < 5 * 60 * 1000;
 }
 
+/** Short relative time for "Last seen …" on profiles (UTC-neutral phrasing). */
+export function formatLastSeenAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  if (sec < 86400 * 7) return `${Math.floor(sec / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
 export function countWords(value: string | null | undefined): number {
   const text = (value ?? '').trim();
   if (!text) return 0;

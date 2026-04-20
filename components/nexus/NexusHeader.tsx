@@ -1,4 +1,5 @@
 import type { NexusHubPayload } from "@/lib/nexus/types";
+import { UtcClock } from "@/components/UtcClock";
 import { formatRelativeTimeUtc } from "@/lib/nexus/nexusHubMapping";
 
 /** Shared with module titles — scan-aligned label style */
@@ -43,12 +44,13 @@ export default function NexusHeader({ meta, className = "" }: Props) {
           <p className="mt-0.5 text-sm text-gray-500">Live command center</p>
         </div>
         <div className="text-right">
-          <p className="text-[11px] text-gray-500" title={`${meta.generatedAt} (UTC)`}>
-            <span className="font-semibold uppercase tracking-wide text-gray-400">UTC</span>{" "}
+          <UtcClock variant="stacked" className="min-w-[140px]" />
+          <p className="mt-1 text-[11px] text-gray-500" title={`${meta.generatedAt} (UTC)`}>
+            <span className="font-semibold uppercase tracking-wide text-gray-400">Snapshot</span>{" "}
             <span className="tabular-nums text-gray-300">{utcDisplay}</span>
           </p>
           <p className="mt-0.5 text-[10px] leading-snug text-gray-600" title={meta.generatedAt}>
-            Snapshot generated {generatedRelative}
+            Hub data {generatedRelative}
           </p>
         </div>
       </div>

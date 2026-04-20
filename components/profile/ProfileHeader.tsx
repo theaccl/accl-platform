@@ -16,6 +16,8 @@ export type ProfileHeaderProps = {
   flagDisplay: string | null;
   lastActiveAt: string | null;
   profileImageUrl: string | null;
+  isViewingOwnProfile: boolean;
+  viewerLoggedIn: boolean;
 };
 
 export default function ProfileHeader({
@@ -25,6 +27,8 @@ export default function ProfileHeader({
   flagDisplay,
   lastActiveAt,
   profileImageUrl,
+  isViewingOwnProfile,
+  viewerLoggedIn,
 }: ProfileHeaderProps) {
   const [copied, setCopied] = useState(false);
 
@@ -84,7 +88,11 @@ export default function ProfileHeader({
             >
               {flagDisplay ?? '—'}
             </div>
-            <ProfileActivityLight lastActiveAt={lastActiveAt} />
+            <ProfileActivityLight
+              lastActiveAt={lastActiveAt}
+              isViewingOwnProfile={isViewingOwnProfile}
+              viewerLoggedIn={viewerLoggedIn}
+            />
           </div>
         </div>
 

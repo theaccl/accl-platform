@@ -13,9 +13,8 @@ test.describe('public profile [id] layout (static)', () => {
     expect(src).toContain('authReady');
     expect(src).toContain('ProfileHeader');
     expect(src).toContain('ProfileActionSlot');
-    expect(src).toContain('public-profile-self-quicklinks');
     expect(src).toContain('isSelf ?');
-    expect(src).toContain('search_public_profiles');
-    expect(src).toContain('normalizeAcclUsername');
+    expect(src).toContain('resolvePublicProfileIdFromRoute');
+    expect(src).toContain('get_public_profile_snapshot');
   });
 });

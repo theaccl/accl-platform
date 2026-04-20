@@ -1,6 +1,19 @@
 import { normalizeGameTempo } from './gameTempo';
 
-export type LiveClockValue = '1m' | '3m' | '5m' | '10m' | '30m' | '60m';
+/** Live (per-side) clocks including Fischer-style `main+inc` tokens used in free play / ratings. */
+export type LiveClockValue =
+  | '1m'
+  | '1+1'
+  | '2+1'
+  | '3m'
+  | '3+2'
+  | '5m'
+  | '5+5'
+  | '10m'
+  | '15m'
+  | '20m'
+  | '30m'
+  | '60m';
 export type DailyClockValue = '30m' | '60m';
 export type CorrespondencePaceValue = '1d' | '2d' | '3d';
 export type GameTimeControlToken = LiveClockValue | DailyClockValue | CorrespondencePaceValue;
@@ -19,9 +32,26 @@ export function clockBudgetMsForGame(
   liveTimeControl: string | null | undefined
 ): number {
   const t = normalizeGameTempo(tempo);
-  const token = String(liveTimeControl ?? '').toLowerCase();
+  const token = String(liveTimeControl ?? '')
+    .toLowerCase()
+    .trim();
+
+  const dayMatch = /^(\d+)d$/.exec(token);
+  if (dayMatch) {
+    return Math.max(1, Number(dayMatch[1])) * 24 * 60 * 60 * 1000;
+  }
+
+  const inc = /^(\d+)\+(\d+)$/.exec(token);
+  if (inc) {
+    return Math.max(1, Number(inc[1])) * 60 * 1000;
+  }
+
   const minutesFromToken = /^(\d+)m$/.exec(token)?.[1];
-  const m = minutesFromToken ? Number(minutesFromToken) : t === 'daily' ? 30 : 5;
+  if (minutesFromToken) {
+    return Math.max(1, Number(minutesFromToken)) * 60 * 1000;
+  }
+
+  const m = t === 'daily' ? 30 : 5;
   return Math.max(1, m) * 60 * 1000;
 }
 

@@ -11,8 +11,9 @@ export const CHAT_CHANNELS = {
 
 export type ChatChannel = (typeof CHAT_CHANNELS)[keyof typeof CHAT_CHANNELS];
 
-/** Mode-specific free-play lobby buckets (P2). */
+/** Mode-specific free-play lobby buckets (P2). General hub chat (not time-scoped). */
 export const FREE_LOBBY_ROOMS = [
+  'free_lobby_general',
   'free_lobby_bullet',
   'free_lobby_blitz',
   'free_lobby_rapid',

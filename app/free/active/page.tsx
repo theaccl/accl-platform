@@ -21,8 +21,8 @@ export default async function FreeActiveGamesPage() {
         </p>
         <FreeActiveGamesList />
         <p className="mt-8 text-center text-sm text-gray-500">
-          <Link href="/free" className="text-gray-400 underline-offset-2 hover:text-white hover:underline">
-            Back to Free play
+          <Link href="/free/lobby" className="text-gray-400 underline-offset-2 hover:text-white hover:underline">
+            Back to Lobby Chat
           </Link>
         </p>
       </div>

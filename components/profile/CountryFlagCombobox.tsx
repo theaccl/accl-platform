@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { flagEmojiFromIso2, formatFlagDisplay } from '@/lib/flagDisplay';
+import { countryLabelFromIso2, flagEmojiFromIso2 } from '@/lib/flagDisplay';
 import countries from 'i18n-iso-countries';
 
 export type CountryFlagComboboxProps = {
@@ -41,12 +41,14 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
     );
   }, [q]);
 
-  const summary = useMemo(() => {
+  /** Trigger: flag + label without duplicating the emoji in the text. */
+  const triggerDisplay = useMemo(() => {
     const v = value.trim();
-    if (!v) {
-      return 'Select country…';
-    }
-    return formatFlagDisplay(v) ?? v;
+    if (!v) return { emoji: null as string | null, text: 'Select country…' as string };
+    const emoji = flagEmojiFromIso2(v);
+    if (v === 'OTHER') return { emoji: null, text: 'Other / prefer not to say' };
+    const name = countryLabelFromIso2(v);
+    return { emoji, text: name ?? v };
   }, [value]);
 
   useEffect(() => {
@@ -74,7 +76,14 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
         className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-left text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
         data-testid="edit-profile-flag-trigger"
       >
-        <span className="min-w-0 truncate">{summary}</span>
+        <span className="flex min-w-0 items-center gap-2 truncate">
+          {triggerDisplay.emoji ? (
+            <span className="shrink-0 text-lg leading-none" aria-hidden>
+              {triggerDisplay.emoji}
+            </span>
+          ) : null}
+          <span className="min-w-0 truncate">{triggerDisplay.text}</span>
+        </span>
         <span className="shrink-0 text-slate-500" aria-hidden>
           ▾
         </span>

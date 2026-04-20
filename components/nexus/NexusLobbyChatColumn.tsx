@@ -1,198 +1,85 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { publicDisplayNameFromProfileUsername } from "@/lib/profileIdentity";
-import { useOpenPublicIdentityCard } from "@/components/identity/PublicIdentityCardContext";
-import { supabase } from "@/lib/supabaseClient";
+import { LobbyChatPanel } from "@/components/free/LobbyChatPanel";
+import { FREE_PLAY_LOBBY_ROOM_BY_MODE, lobbyModeLabel } from "@/lib/lobbyChatRooms";
 import { nexusPrestigeCard } from "@/components/nexus/nexusShellTheme";
 import { nexusModuleHeadingClass } from "@/components/nexus/NexusHeader";
 
 export type LobbyPlatMode = "bullet" | "blitz" | "rapid" | "daily";
 
-const ROOM: Record<LobbyPlatMode, string> = {
-  bullet: "free_lobby_bullet",
-  blitz: "free_lobby_blitz",
-  rapid: "free_lobby_rapid",
-  daily: "free_lobby_daily",
+type Props = {
+  mode: LobbyPlatMode;
+  onModeChange: (m: LobbyPlatMode) => void;
+  openSeatActivity?: Record<LobbyPlatMode, boolean>;
+  /** When false, mode chips are hidden (mode is fixed by route). */
+  showModeSwitcher?: boolean;
 };
 
-const ROOM_LABEL: Record<LobbyPlatMode, string> = {
-  bullet: "Bullet",
-  blitz: "Blitz",
-  rapid: "Rapid",
-  daily: "Daily",
-};
-
-type ChatMsg = {
-  id: string;
-  created_at: string;
-  sender_id: string;
-  body: string;
-  sender_username: string | null;
-};
+const modes: LobbyPlatMode[] = ["bullet", "blitz", "rapid", "daily"];
 
 /**
- * Mode-specific lobby chat — uses existing /api/chat routes only (no policy changes).
+ * Legacy column: mode switcher + mode-scoped chat. Prefer `/free/lobby` hub + `/free/lobby/[mode]` for new UX.
  */
 export default function NexusLobbyChatColumn({
   mode,
   onModeChange,
-}: {
-  mode: LobbyPlatMode;
-  onModeChange: (m: LobbyPlatMode) => void;
-}) {
-  const [token, setToken] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [draft, setDraft] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const openIdentity = useOpenPublicIdentityCard();
-
-  const lobbyRoom = ROOM[mode];
-
-  useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setToken(data.session?.access_token ?? null);
-    });
-    void supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
-    });
-  }, []);
-
-  const load = useCallback(async () => {
-    if (!token) return;
-    setBusy(true);
-    setErr(null);
-    const res = await fetch(
-      `/api/chat/messages?channel=lobby&lobbyRoom=${encodeURIComponent(lobbyRoom)}&limit=40`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "x-accl-viewer-ecosystem": "adult",
-        },
-      }
-    );
-    setBusy(false);
-    if (!res.ok) {
-      setErr("Could not load chat.");
-      return;
-    }
-    const j = (await res.json()) as { messages?: ChatMsg[] };
-    setMessages(j.messages ?? []);
-  }, [token, lobbyRoom]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const send = async () => {
-    if (!token || !draft.trim()) return;
-    setErr(null);
-    const res = await fetch("/api/chat/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "x-accl-viewer-ecosystem": "adult",
-      },
-      body: JSON.stringify({
-        channel: "lobby",
-        lobbyRoom,
-        body: draft.trim(),
-      }),
-    });
-    if (!res.ok) {
-      setErr("Send failed.");
-      return;
-    }
-    setDraft("");
-    void load();
-  };
-
-  const modes: LobbyPlatMode[] = ["bullet", "blitz", "rapid", "daily"];
+  openSeatActivity,
+  showModeSwitcher = true,
+}: Props) {
+  const lobbyRoom = FREE_PLAY_LOBBY_ROOM_BY_MODE[mode];
+  const roomLabel = lobbyModeLabel(mode);
 
   return (
-    <section
-      className={`${nexusPrestigeCard} flex h-full min-h-[280px] min-w-0 flex-col overflow-hidden p-4 sm:min-h-0 sm:p-5`}
-      data-testid="nexus-lobby-chat-column"
-      aria-label="Free play mode chat"
-    >
-      <h2 className={nexusModuleHeadingClass}>Mode chat</h2>
-      <p
-        className="mt-2 text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:text-xs"
-        aria-live="polite"
-      >
-        Room:{" "}
-        <span className="font-semibold text-amber-100/50">{ROOM_LABEL[mode]}</span>
-        <span className="text-gray-600"> · </span>
-        <span className="font-mono text-[10px] text-gray-500 sm:text-xs">{lobbyRoom}</span>
-      </p>
-      <div className="mb-4 mt-4 flex flex-wrap gap-2">
-        {modes.map((m) => (
-          <button
-            key={m}
-            type="button"
-            data-testid={`free-lobby-mode-${m}`}
-            className={`min-h-[44px] rounded-lg border px-3 py-2 text-xs font-semibold capitalize transition-[transform,background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0e12] motion-safe:active:scale-[0.98] motion-reduce:active:scale-100 ${
-              mode === m
-                ? "border-transparent bg-gradient-to-b from-red-900/50 to-red-950/80 text-white shadow-md shadow-red-950/40 ring-1 ring-red-500/60"
-                : "border-white/12 bg-[#0c0e12] text-gray-400 hover:border-white/25 hover:bg-white/[0.04] hover:text-gray-100 active:bg-white/[0.06]"
-            }`}
-            onClick={() => onModeChange(m)}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-      <div
-        key={lobbyRoom}
-        className="min-h-[120px] flex-1 overflow-y-auto rounded-lg border border-white/[0.06] bg-[#0a0c10] p-3 text-sm leading-relaxed"
-      >
-        {busy ? <p className="text-gray-500">Loading…</p> : null}
-        {err ? <p className="text-red-400">{err}</p> : null}
-        {!userId ? <p className="text-gray-500">Sign in to chat.</p> : null}
-        {messages.map((m) => (
-          <div key={m.id} className="mb-2">
-            {openIdentity ? (
-              <button
-                type="button"
-                data-testid={`nexus-lobby-chat-sender-${m.sender_id}`}
-                onClick={() => openIdentity(m.sender_id)}
-                className="border-0 bg-transparent p-0 text-left text-gray-500 underline decoration-dotted decoration-gray-600 underline-offset-2 hover:text-gray-300 hover:decoration-solid"
-              >
-                {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
-              </button>
-            ) : (
-              <span className="text-gray-500">
-                {publicDisplayNameFromProfileUsername(m.sender_username, m.sender_id)}
-              </span>
-            )}
-            <span className="text-gray-600"> · </span>
-            <span className="text-gray-200">{m.body}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 flex gap-2">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={2}
-          disabled={!userId}
-          className="min-h-[44px] flex-1 resize-none rounded-lg border border-white/10 bg-[#0c0e12] px-2 py-2 text-sm text-white transition-colors placeholder:text-gray-600 focus-visible:border-red-500/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
-          placeholder="Message…"
-          data-testid="free-lobby-chat-draft"
-        />
-        <button
-          type="button"
-          className="min-h-[44px] shrink-0 rounded-lg border border-red-700/70 bg-gradient-to-b from-red-950/55 to-red-950/75 px-3.5 text-sm font-semibold text-red-50 shadow-md shadow-red-950/30 transition-[transform,opacity,box-shadow] duration-150 hover:from-red-900/60 hover:to-red-950/85 hover:border-red-500/45 hover:shadow-red-950/45 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0e12] motion-reduce:active:scale-100"
-          disabled={!userId || !draft.trim()}
-          onClick={() => void send()}
-          data-testid="free-lobby-chat-send"
+    <div className="flex min-w-0 flex-col gap-0" data-testid="nexus-lobby-chat-column">
+      {showModeSwitcher ? (
+        <section
+          className={`${nexusPrestigeCard} mb-3 flex flex-col overflow-hidden p-4 sm:p-5`}
+          aria-label="Lobby mode"
         >
-          Send
-        </button>
-      </div>
-    </section>
+          <h2 className={nexusModuleHeadingClass}>Mode</h2>
+          <p className="mt-2 text-xs leading-snug text-gray-500">
+            Pick a mode to switch chat rooms. For the hub layout, use{" "}
+            <span className="text-gray-400">Lobby Chat</span> and enter a mode room.
+          </p>
+          <div className="mb-0 mt-4 flex flex-wrap gap-2">
+            {modes.map((m) => (
+              <button
+                key={m}
+                type="button"
+                data-testid={`free-lobby-mode-${m}`}
+                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold capitalize transition-[transform,background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0e12] motion-safe:active:scale-[0.98] motion-reduce:active:scale-100 ${
+                  mode === m
+                    ? "border-transparent bg-gradient-to-b from-red-900/50 to-red-950/80 text-white shadow-md shadow-red-950/40 ring-1 ring-red-500/60"
+                    : "border-white/12 bg-[#0c0e12] text-gray-400 hover:border-white/25 hover:bg-white/[0.04] hover:text-gray-100 active:bg-white/[0.06]"
+                }`}
+                onClick={() => onModeChange(m)}
+                title={
+                  openSeatActivity?.[m]
+                    ? `${lobbyModeLabel(m)}: open public seat available`
+                    : `${lobbyModeLabel(m)}: no open seat in this mode`
+                }
+              >
+                {openSeatActivity?.[m] ? (
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
+                    aria-hidden
+                  />
+                ) : null}
+                {m}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <LobbyChatPanel
+        lobbyRoom={lobbyRoom}
+        roomLabel={roomLabel}
+        heading="Mode chat"
+        data-testid="nexus-lobby-chat-column-inner"
+        draftTestId="free-lobby-chat-draft"
+        sendButtonTestId="free-lobby-chat-send"
+      />
+    </div>
   );
 }

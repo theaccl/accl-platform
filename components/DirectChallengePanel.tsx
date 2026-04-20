@@ -1,23 +1,19 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  DEFAULT_GAME_TEMPO,
-  GAME_TEMPOS,
-  type GameTempo,
-  gameTempoDescription,
-  gameTempoLabel,
-} from '@/lib/gameTempo';
-import {
-  type CorrespondencePaceValue,
-  canonicalLiveTimeControlForInsert,
-  type DailyClockValue,
-  type GameTimeControlToken,
-  type LiveClockValue,
-} from '@/lib/gameTimeControl';
+  PLAT_MODE_LABELS,
+  PLAT_MODE_ORDER,
+  type PlatMode,
+  coercePlatTimeForMode,
+  defaultPlatTimeControl,
+  platModeLabel,
+  platSelectionToStoredGameFields,
+  platTimeOptionsForMode,
+} from '@/lib/freePlayModeTimeControl';
 import {
   type ChallengeColorPreference,
   resolveChallengeSeatIds,
@@ -56,11 +52,13 @@ function tcChipStyle(active: boolean, disabled: boolean): CSSProperties {
     background: active ? '#1e3a8a' : '#0f0f0f',
     color: active ? '#fff' : '#e5e5e5',
     borderRadius: 6,
-    padding: '7px 10px',
+    padding: '10px 12px',
+    minHeight: 44,
     fontSize: 13,
     fontWeight: 600,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.7 : 1,
+    touchAction: 'manipulation',
   };
 }
 
@@ -167,19 +165,23 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
   const [challengeSentBanner, setChallengeSentBanner] = useState(false);
   const [challengeSentDetail, setChallengeSentDetail] = useState<string | null>(null);
   const [challengeBusy, setChallengeBusy] = useState(false);
-  const [challengeTempo, setChallengeTempo] = useState<GameTempo>(DEFAULT_GAME_TEMPO);
+  const [platMode, setPlatMode] = useState<PlatMode>('blitz');
+  const [platClock, setPlatClock] = useState<string>(() => defaultPlatTimeControl('blitz'));
   const [challengeColorPreference, setChallengeColorPreference] =
     useState<ChallengeColorPreference>('white');
-  const [challengeLiveTc, setChallengeLiveTc] = useState<LiveClockValue>('5m');
-  const [challengeDailyTc, setChallengeDailyTc] = useState<DailyClockValue>('30m');
-  const [challengeCorrPace, setChallengeCorrPace] = useState<CorrespondencePaceValue>('1d');
   const [challengeRated, setChallengeRated] = useState(true);
+
+  const handlePlatModeChange = (m: PlatMode) => {
+    setPlatMode(m);
+    setPlatClock((prev) => coercePlatTimeForMode(m, prev));
+  };
   const [message, setMessage] = useState('');
   const [findBusy, setFindBusy] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   /** When set, subscribe to this row so the challenger auto-navigates when it is accepted. */
   const [pendingChallengeRequestId, setPendingChallengeRequestId] = useState<string | null>(null);
   const urlOpponentSeeded = useRef(false);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +192,21 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const raw = searchParams.get('mode')?.toLowerCase().trim();
+    if (!raw) return;
+    if (!(PLAT_MODE_ORDER as readonly string[]).includes(raw)) return;
+    const m = raw as PlatMode;
+    setPlatMode(m);
+    setPlatClock((prev) => coercePlatTimeForMode(m, prev));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const rawRated = searchParams.get('rated')?.toLowerCase().trim();
+    if (rawRated === 'true') setChallengeRated(true);
+    else if (rawRated === 'false') setChallengeRated(false);
+  }, [searchParams]);
 
   /** Prefill opponent from `/free/create?opponent=<username>` (no new routes). */
   useEffect(() => {
@@ -324,14 +341,16 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
       trimmedOpponent
     );
 
-    const rawChallengeToken: GameTimeControlToken =
-      challengeTempo === 'live'
-        ? challengeLiveTc
-        : challengeTempo === 'daily'
-          ? challengeDailyTc
-          : challengeCorrPace;
-    const challengeLtc =
-      canonicalLiveTimeControlForInsert(challengeTempo, rawChallengeToken) ?? rawChallengeToken;
+    let challengeTempo: string;
+    let challengeLtc: string;
+    try {
+      const stored = platSelectionToStoredGameFields(platMode, platClock);
+      challengeTempo = stored.tempo;
+      challengeLtc = stored.live_time_control;
+    } catch {
+      setMessage('Invalid mode and time control. Pick a valid combination.');
+      return;
+    }
 
     const { data: pendingDup, error: dupErr } = await supabase
       .from('match_requests')
@@ -352,7 +371,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
       logSupabaseWriteError('Challenge opponent → match_requests duplicate check (select)', {
         table: 'match_requests',
         operation: 'select',
-        payload: { tempo: challengeTempo, live_time_control: challengeLtc },
+        payload: { tempo: challengeTempo, live_time_control: challengeLtc, platMode, platClock },
         error: dupErr,
       });
       if (process.env.NODE_ENV === 'development') {
@@ -378,7 +397,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
         table: 'match_requests',
         operation: 'insert',
         tempo: challengeTempo,
-        rawFromUiOrRow: rawChallengeToken,
+        rawFromUiOrRow: coercePlatTimeForMode(platMode, platClock),
         finalForSupabase: challengeLtc,
       });
       const { data: inserted, error } = await supabase
@@ -406,7 +425,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
           payload: {
             tempo: challengeTempo,
             live_time_control: challengeLtc,
-            raw_from_ui: rawChallengeToken,
+            raw_from_ui: coercePlatTimeForMode(platMode, platClock),
             request_type: 'challenge',
           },
           error,
@@ -505,20 +524,19 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
     authUserId && opponentUserId && opponentUserId === authUserId
   );
 
-  const challengeRawTokenForRating: GameTimeControlToken =
-    challengeTempo === 'live'
-      ? challengeLiveTc
-      : challengeTempo === 'daily'
-        ? challengeDailyTc
-        : challengeCorrPace;
-  const challengeLtcForRating =
-    canonicalLiveTimeControlForInsert(challengeTempo, challengeRawTokenForRating) ??
-    challengeRawTokenForRating;
+  const { ratingTempo, ratingLtc } = useMemo(() => {
+    try {
+      const r = platSelectionToStoredGameFields(platMode, platClock);
+      return { ratingTempo: r.tempo, ratingLtc: r.live_time_control };
+    } catch {
+      return { ratingTempo: 'live', ratingLtc: '5m' };
+    }
+  }, [platMode, platClock]);
   const opponentRatingForSelectedMode = modeRatingFromP1Context(
     opponentP1,
     'free',
-    challengeTempo,
-    challengeLtcForRating,
+    ratingTempo,
+    ratingLtc,
     opponentLegacyRating,
   );
 
@@ -615,9 +633,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
           ).
         </p>
         <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 14px 0', lineHeight: 1.45 }}>
-          Options here are <strong>tempo</strong> (live / daily / correspondence and clock), <strong>your color
-          preference</strong>, and opponent identity — standard casual games only, not a separate “rules pack”
-          selector.
+          Mode and time controls match <strong>Find Match</strong> on Free play (bullet / blitz / rapid / daily).
+          Same rules as open pairing — plus <strong>your color preference</strong> and opponent identity.
         </p>
 
         {!singleStep && message ? (
@@ -626,117 +643,63 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
 
         {singleStep ? opponentLookupBlock({ showMessageBelow: true }) : null}
 
-        <label
-          htmlFor={`${anchorId}-tempo`}
-          style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#d1d5db', marginBottom: 6 }}
-        >
-          Time control (mode)
-        </label>
-        <select
-          id={`${anchorId}-tempo`}
-          value={challengeTempo}
-          onChange={(e) => setChallengeTempo(e.target.value as GameTempo)}
-          disabled={controlsDisabled}
-          title={gameTempoDescription(challengeTempo)}
+        <div
           style={{
-            display: 'block',
-            width: '100%',
-            maxWidth: 360,
             marginBottom: 12,
             padding: '10px 12px',
-            boxSizing: 'border-box',
-            background: controlsDisabled ? '#0c0c0c' : '#0f0f0f',
-            color: '#f5f5f5',
-            border: '1px solid #4a4a4a',
-            borderRadius: 6,
-            fontSize: 14,
+            borderRadius: 8,
+            border: '1px solid #4c1d95',
+            background: '#0f172a',
+            fontSize: 13,
+            color: '#e9d5ff',
           }}
+          data-testid="direct-challenge-selection-summary"
         >
-          {GAME_TEMPOS.map((t) => (
-            <option key={t} value={t} title={gameTempoDescription(t)}>
-              {gameTempoLabel(t)}
-            </option>
-          ))}
-        </select>
+          <span style={{ color: '#94a3b8' }}>Selected: </span>
+          <strong>
+            {platModeLabel(platMode)} ·{' '}
+            {platTimeOptionsForMode(platMode).find((o) => o.id === platClock)?.label ?? platClock} ·{' '}
+            {challengeRated ? 'Rated' : 'Unrated'}
+          </strong>
+        </div>
 
-        {challengeTempo === 'live' ? (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>
-              Live clock (per side)
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(
-                [
-                  { v: '1m' as const, label: '1 min' },
-                  { v: '3m' as const, label: '3 min' },
-                  { v: '5m' as const, label: '5 min' },
-                  { v: '10m' as const, label: '10 min' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setChallengeLiveTc(opt.v)}
-                  disabled={controlsDisabled}
-                  style={tcChipStyle(challengeLiveTc === opt.v, controlsDisabled)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {challengeTempo === 'daily' ? (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>
-              Daily clock (per side)
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#d1d5db', marginBottom: 6 }}>Mode</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {PLAT_MODE_ORDER.map((m) => (
               <button
+                key={m}
                 type="button"
-                onClick={() => setChallengeDailyTc('30m')}
+                data-testid={`direct-challenge-mode-${m}`}
                 disabled={controlsDisabled}
-                style={tcChipStyle(challengeDailyTc === '30m', controlsDisabled)}
+                aria-pressed={platMode === m}
+                onClick={() => handlePlatModeChange(m)}
+                style={tcChipStyle(platMode === m, controlsDisabled)}
               >
-                30 min
+                {PLAT_MODE_LABELS[m]}
               </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>Time control</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {platTimeOptionsForMode(platMode).map((opt) => (
               <button
+                key={opt.id}
                 type="button"
-                onClick={() => setChallengeDailyTc('60m')}
+                data-testid={`direct-challenge-clock-${opt.id.replace(/\+/g, 'plus')}`}
                 disabled={controlsDisabled}
-                style={tcChipStyle(challengeDailyTc === '60m', controlsDisabled)}
+                aria-pressed={platClock === opt.id}
+                onClick={() => setPlatClock(opt.id)}
+                style={tcChipStyle(platClock === opt.id, controlsDisabled)}
               >
-                60 min
+                {opt.label}
               </button>
-            </div>
+            ))}
           </div>
-        ) : null}
-        {challengeTempo === 'correspondence' ? (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#bdbdbd', marginBottom: 6 }}>
-              Correspondence pace
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(
-                [
-                  { v: '1d' as const, label: '1 day / move' },
-                  { v: '2d' as const, label: '2 days / move' },
-                  { v: '3d' as const, label: '3 days / move' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setChallengeCorrPace(opt.v)}
-                  disabled={controlsDisabled}
-                  style={tcChipStyle(challengeCorrPace === opt.v, controlsDisabled)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        </div>
 
         <RatedUnratedToggle
           value={challengeRated}
@@ -838,7 +801,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
               onClick={() => void findOpponent()}
               disabled={controlsDisabled}
               style={{
-                padding: '8px 14px',
+                padding: '10px 16px',
+                minHeight: 44,
                 marginBottom: 8,
                 background: controlsDisabled ? '#1e3a5f' : '#2563eb',
                 color: '#ffffff',
@@ -847,6 +811,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
                 fontWeight: 600,
                 fontSize: 14,
                 cursor: controlsDisabled ? 'not-allowed' : 'pointer',
+                touchAction: 'manipulation',
               }}
             >
               {findBusy ? 'Finding…' : 'Find opponent'}
@@ -919,7 +884,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
               onClick={() => void sendManualChallengeRequest()}
               disabled={controlsDisabled || challengeOpponentIsSelf || !opponentUserId}
               style={{
-                padding: '10px 16px',
+                padding: '12px 16px',
+                minHeight: 48,
                 marginTop: 4,
                 background:
                   controlsDisabled || challengeOpponentIsSelf || !opponentUserId ? '#3f3f46' : '#7c3aed',
@@ -932,6 +898,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
                   controlsDisabled || challengeOpponentIsSelf || !opponentUserId
                     ? 'not-allowed'
                     : 'pointer',
+                touchAction: 'manipulation',
               }}
             >
               {challengeBusy ? 'Sending…' : 'Send direct challenge'}
@@ -945,6 +912,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
             disabled={controlsDisabled}
             style={{
               padding: '12px 18px',
+              minHeight: 48,
               marginTop: 4,
               width: '100%',
               maxWidth: 360,
@@ -956,6 +924,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
               fontWeight: 700,
               fontSize: 16,
               cursor: controlsDisabled ? 'not-allowed' : 'pointer',
+              touchAction: 'manipulation',
             }}
           >
             {findBusy ? 'Looking up…' : challengeBusy ? 'Sending…' : 'Send challenge'}
