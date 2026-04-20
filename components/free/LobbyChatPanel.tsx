@@ -84,6 +84,34 @@ export function LobbyChatPanel({
     void load();
   }, [load]);
 
+  /** Supabase Realtime (RLS-scoped) + light polling if a delivery is missed. */
+  useEffect(() => {
+    if (!userId || !token || !lobbyRoom.trim()) return;
+
+    const pollMs = 12_000;
+    const pollId = window.setInterval(() => void load(), pollMs);
+
+    const filterRoom = lobbyRoom.replace(/"/g, '');
+    const channel = supabase
+      .channel(`lobby-chat:${filterRoom}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'tester_chat_messages',
+          filter: `lobby_room=eq.${filterRoom}`,
+        },
+        () => void load(),
+      )
+      .subscribe();
+
+    return () => {
+      window.clearInterval(pollId);
+      void supabase.removeChannel(channel);
+    };
+  }, [userId, token, lobbyRoom, load]);
+
   const send = async () => {
     if (!token || !draft.trim()) return;
     setErr(null);

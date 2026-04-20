@@ -573,6 +573,11 @@ export default function GameTesterChatPanels({
             ts: Date.now(),
           });
         }
+        // After websocket + Realtime auth, sync once so early messages are not missed during warmup.
+        if (status === 'SUBSCRIBED') {
+          void loadSpectator({ bypassVisibility: true, source: 'initial' });
+          void loadPlayer({ bypassVisibility: true, source: 'initial' });
+        }
       });
 
     return () => {
@@ -596,7 +601,7 @@ export default function GameTesterChatPanels({
       void loadSpectator({ source: 'poll' });
       void loadPlayer({ source: 'poll' });
     };
-    const id = window.setInterval(runPollTick, 45000);
+    const id = window.setInterval(runPollTick, 6000);
     const onVis = () => {
       gameChatDebug('visibilitychange', {
         visibilityState: document.visibilityState,
