@@ -1,11 +1,27 @@
 'use client';
 
+/**
+ * `/requests` accept flow (App Router): this module is the page for URL `/requests`.
+ *
+ * Execution trace (incoming direct challenge):
+ * 1) UI: Incoming card → `onClick={() => void acceptRequest(r)}` (`data-testid="challenge-accept-<id>"`).
+ * 2) `acceptRequest` → `POST /api/match-requests/accept` (Bearer session) — server performs `games.insert` + `match_requests` update.
+ * 3) Open/public “Join” still uses `createGameFromRequest` (client `games.insert` only — no `create_seated_game_guard`).
+ *
+ * Production parity check (DevTools Network):
+ * - Expected on **direct** Accept: `POST /api/match-requests/accept` — not `/rest/v1/rpc/create_seated_game_guard`.
+ * - If you still see the Supabase RPC on direct Accept, the deployment does not include this route/handler revision.
+ *
+ * Temporary runtime logging (opt-in, no rebuild required on web):
+ * - In the browser console: `localStorage.setItem('accl_debug_requests_accept','1')` then reload and Accept.
+ * - Optional env (requires rebuild): `NEXT_PUBLIC_ACCL_DEBUG_REQUESTS_ACCEPT=1`.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
 import { gameRatedListLabel } from '@/lib/gameRated';
-import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
@@ -46,6 +62,15 @@ function supabaseErrText(err: unknown, fallback: string): string {
     if (m) return m;
   }
   return fallback;
+}
+
+function debugRequestsAcceptEnabled(): boolean {
+  if (process.env.NODE_ENV === 'development') return true;
+  if (process.env.NEXT_PUBLIC_ACCL_DEBUG_REQUESTS_ACCEPT === '1') return true;
+  if (typeof window !== 'undefined' && window.localStorage?.getItem('accl_debug_requests_accept') === '1') {
+    return true;
+  }
+  return false;
 }
 
 export default function RequestsPage() {
@@ -147,11 +172,25 @@ export default function RequestsPage() {
 
   const createGameFromRequest = useCallback(
     async (r: MatchRequestRow) => {
-      const { data: newGame, error: gErr } = await createSeatedGameGuard(supabase, {
-        row: { ...gameInsertFromAcceptedChallenge(r) },
-      });
+      if (debugRequestsAcceptEnabled()) {
+        console.warn('[accl-debug] /requests createGameFromRequest → games.insert path', {
+          requestId: r.id,
+          request_type: r.request_type,
+          visibility: r.visibility ?? null,
+          tempo: r.tempo ?? null,
+          live_time_control: r.live_time_control ?? null,
+          rated: r.rated ?? null,
+        });
+      }
+      const challengeRow = { ...gameInsertFromAcceptedChallenge(r) };
+      /** Match request accept: two seated players — never use free-play open-seat RPC here. */
+      const gameCreateRes = await supabase.from('games').insert(challengeRow).select('id').single();
+      const newGame = gameCreateRes.data;
+      const gErr = gameCreateRes.error;
       if (gErr) {
-        return { error: new Error(supabaseErrText(gErr, 'Could not create the game from this request.')) };
+        return {
+          error: new Error(supabaseErrText(gErr, 'Could not create the game from this request.')),
+        };
       }
       const rawId =
         newGame && typeof newGame === 'object' && 'id' in newGame
@@ -206,19 +245,51 @@ export default function RequestsPage() {
       setBusyReqId(r.id);
       setMessage('');
       try {
-        const res = await createGameFromRequest(r);
-        if (res.error) {
-          setMessage(res.error.message);
+        if (debugRequestsAcceptEnabled()) {
+          console.warn('[accl-debug] /requests acceptRequest → POST /api/match-requests/accept', {
+            requestId: r.id,
+            request_type: r.request_type,
+            visibility: r.visibility ?? null,
+            tempo: r.tempo ?? null,
+            live_time_control: r.live_time_control ?? null,
+          });
+        }
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token?.trim();
+        if (!token) {
+          setMessage('Sign in to accept a match request.');
+          return;
+        }
+        const httpRes = await fetch('/api/match-requests/accept', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requestId: r.id }),
+        });
+        const payload = (await httpRes.json().catch(() => ({}))) as { error?: unknown; gameId?: unknown };
+        if (!httpRes.ok) {
+          const err =
+            typeof payload.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : `Accept failed (${httpRes.status})`;
+          setMessage(err);
+          return;
+        }
+        const gid = typeof payload.gameId === 'string' ? payload.gameId.trim() : '';
+        if (!gid) {
+          setMessage('Accept succeeded but no game id was returned. Refresh match requests.');
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
-        if (res.gameId) router.push(`/game/${res.gameId}`);
+        router.push(`/game/${gid}`);
       } finally {
         actionInFlightRef.current = false;
         setBusyReqId(null);
       }
     },
-    [authUserId, createGameFromRequest, router]
+    [authUserId, router]
   );
 
   const joinOpenListing = useCallback(
