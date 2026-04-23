@@ -47,8 +47,8 @@ test.describe('API stabilization (static source checks)', () => {
   test('GameTesterChatPanels guards against double send', () => {
     const p = join(process.cwd(), 'components', 'game', 'GameTesterChatPanels.tsx');
     const src = readFileSync(p, 'utf8');
-    expect(src).toContain('specSending');
-    expect(src).toContain('playSending');
+    expect(src).toContain('setSending');
+    expect(src).toContain('sendLock.current');
     expect(src).toContain('formatChatSendError');
   });
 });

@@ -10,6 +10,7 @@ test.describe('game page tester chat surface', () => {
     expect(src).toContain('GameTesterChatPanels');
     expect(src).toContain('!isPublicViewer && game');
     expect(src).toContain('chatAccessToken');
+    expect(src).toContain('isBoardSpectator={isSpectator}');
   });
 
   test('signed-in users see bug report trigger before tester chat', () => {

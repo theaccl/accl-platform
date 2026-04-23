@@ -45,8 +45,8 @@ test.describe('production hardening audit (static)', () => {
   test('tester chat uses send locks and max body length', () => {
     const s = src('components/game/GameTesterChatPanels.tsx');
     expect(s).toContain('CHAT_BODY_MAX');
-    expect(s).toContain('specSendLock');
-    expect(s).toContain('playSendLock');
+    expect(s).toContain('sendLock');
+    expect(s).toContain('sendLock.current');
     expect(s).toContain('PGRST205');
     expect(s).toContain('game-chat-send-');
   });

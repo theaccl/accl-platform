@@ -1015,6 +1015,26 @@ export default function GamePage() {
   const isSpectator = myColor === null;
   const isPublicViewer = !userId && !!game;
 
+  /**
+   * Explicit chat lane for tester panels — must not rely on copy alone.
+   * `table` / `postgame_player` → `game_player` only; `spectator` → `game_spectator` only.
+   */
+  const chatViewerRole = useMemo((): 'table' | 'spectator' | 'postgame_player' | 'none' => {
+    if (!game || !userId) return 'none';
+    const live = normalizeGameTempo(game.tempo) === 'live';
+    const seated = myColor !== null;
+    const st = String(game.status ?? '').trim().toLowerCase();
+    /** Watch URL: always spectator lane during live play (avoids rare seat/row desync showing table to viewers). */
+    if (live && publicSpectate && (st === 'active' || st === 'waiting')) return 'spectator';
+    if (live) {
+      if (st === 'active' || st === 'waiting') return seated ? 'table' : 'spectator';
+      if (st === 'finished') return seated ? 'postgame_player' : 'spectator';
+      return seated ? 'none' : 'spectator';
+    }
+    if (st === 'finished' && seated) return 'postgame_player';
+    return 'none';
+  }, [game, userId, myColor, publicSpectate]);
+
   useEffect(() => {
     if (!isPublicViewer) return;
     setShowAnalysisPanel(false);
@@ -1144,8 +1164,7 @@ export default function GamePage() {
 
   const loadMoveLogs = useCallback(async () => {
     if (!gameId) return;
-    const readOnlyPublic = publicSpectate || !userId;
-    if (readOnlyPublic && (!game || !isGameRecordFinished(game))) return;
+    if ((publicSpectate || !userId) && !game) return;
     const { data } = await supabase
       .from('game_move_logs')
       .select('san, fen_before, fen_after, created_at, from_sq, to_sq')
@@ -1346,13 +1365,13 @@ export default function GamePage() {
   }, [userId]);
 
   useEffect(() => {
-    if (publicSpectate || !userId) return;
+    if (!userId && !publicSpectate) return;
     void loadMoveLogs();
-  }, [loadMoveLogs, publicSpectate, userId]);
+  }, [loadMoveLogs, userId, publicSpectate]);
 
   useEffect(() => {
     if (!gameId) return;
-    if (publicSpectate || !userId) return;
+    if (!userId && !publicSpectate) return;
 
     const channel = supabase
       .channel(`game-${gameId}`)
@@ -1382,7 +1401,7 @@ export default function GamePage() {
   /** Tab focus / visibility: reconcile if realtime missed a frame or user was backgrounded. */
   useEffect(() => {
     if (!gameId) return;
-    if (publicSpectate || !userId) return;
+    if (!userId && !publicSpectate) return;
     const refresh = () => {
       void loadGameSnapshot();
       void loadMoveLogs();
@@ -1407,7 +1426,6 @@ export default function GamePage() {
   useEffect(() => {
     if (!gameId || loading || replayStep !== null) return;
     if (!game) return;
-    if (publicSpectate || !userId) return;
     if (game.status !== 'active' && game.status !== 'waiting') return;
     const tempo = normalizeGameTempo(game.tempo);
     if (tempo !== 'live' && tempo !== 'daily') return;
@@ -1426,8 +1444,6 @@ export default function GamePage() {
     game?.tempo,
     loadGameSnapshot,
     loadMoveLogs,
-    publicSpectate,
-    userId,
   ]);
 
   useEffect(() => {
@@ -2446,8 +2462,9 @@ export default function GamePage() {
           }}
         >
           <strong style={{ color: '#e2e8f0' }}>Guest viewer</strong> — you are not White or Black on this game. You can
-          follow the live board and use <strong style={{ color: '#e2e8f0' }}>table chat</strong> below with the
-          players; piece moves are for the two seated players only. If you expected to play here, return to{' '}
+          follow the live board and use <strong style={{ color: '#e2e8f0' }}>Spectator chat</strong> below (other
+          viewers only). Player table chat is private to the two players — you cannot read or post there. Piece moves are
+          for the seated players only. If you expected to play here, return to{' '}
           <Link href="/free/lobby" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
             Lobby Chat
           </Link>
@@ -3486,14 +3503,13 @@ export default function GamePage() {
       ) : null}
       {!isPublicViewer && game ? (
         <GameTesterChatPanels
-          key={`chat-${game.id}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
+          key={`chat-${game.id}-${chatViewerRole}-${isSpectator ? 'spec' : 'seat'}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
           gameId={game.id}
           gameStatus={game.status}
           gameTempo={game.tempo ?? null}
           userId={userId}
-          whitePlayerId={game.white_player_id}
-          blackPlayerId={game.black_player_id}
-          isSpectator={isSpectator}
+          viewerChatRole={chatViewerRole}
+          isBoardSpectator={isSpectator}
           viewerEcosystem={viewerEcosystem}
           accessToken={chatAccessToken}
         />

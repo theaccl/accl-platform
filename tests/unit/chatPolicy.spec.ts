@@ -30,18 +30,18 @@ test.describe('chatPolicy (P2 separation)', () => {
     expect(isLiveTempoGame({ ...baseGame, tempo: null })).toBe(false);
   });
 
-  test('player chat: participants only after finish', () => {
-    expect(canAccessPlayerChat(baseGame, 'w1')).toBe(false);
-    expect(canPostPlayerChat(baseGame, 'w1')).toBe(false);
+  test('player chat: participants during live play and after finish', () => {
+    expect(canAccessPlayerChat(baseGame, 'w1')).toBe(true);
+    expect(canPostPlayerChat(baseGame, 'w1')).toBe(true);
     expect(canAccessPlayerChat({ ...baseGame, status: 'finished' }, 'w1')).toBe(true);
     expect(canPostPlayerChat({ ...baseGame, status: 'finished' }, 'w1')).toBe(true);
     expect(canAccessPlayerChat(baseGame, 'x')).toBe(false);
     expect(canPostPlayerChat(baseGame, 'x')).toBe(false);
   });
 
-  test('spectator chat: live games only', () => {
-    expect(canReadSpectatorChat(baseGame, 'w1')).toBe(true);
-    expect(canPostSpectatorChat(baseGame, 'w1')).toBe(true);
+  test('spectator chat: live games only, not seated players', () => {
+    expect(canReadSpectatorChat(baseGame, 'w1')).toBe(false);
+    expect(canPostSpectatorChat(baseGame, 'w1')).toBe(false);
     expect(canReadSpectatorChat(baseGame, 'x')).toBe(true);
     expect(canPostSpectatorChat(baseGame, 'x')).toBe(true);
     const daily = { ...baseGame, tempo: 'daily' as string | null };

@@ -25,34 +25,41 @@ export function isLiveTempoGame(game: Pick<GamePolicyInput, 'tempo'>): boolean {
   return String(game.tempo ?? '').trim().toLowerCase() === 'live';
 }
 
+/** Live game still on the board (includes waiting for Black). */
+export function isLiveGameInPlay(game: Pick<GamePolicyInput, 'status' | 'tempo'>): boolean {
+  if (!isLiveTempoGame(game)) return false;
+  const st = String(game.status ?? '').trim().toLowerCase();
+  return st === 'active' || st === 'waiting';
+}
+
 /**
- * Player chat read: participants only, and only after the game has finished (no side channel during play).
+ * Player chat read: participants only — during live play (`game_player`) or post-game (`game_player` archive).
  */
 export function canAccessPlayerChat(game: GamePolicyInput, userId: string): boolean {
-  return isGameParticipant(game, userId) && isGameFinished(game);
+  if (!isGameParticipant(game, userId)) return false;
+  return isGameFinished(game) || isLiveGameInPlay(game);
 }
 
 /**
- * Spectator chat read: only for live-tempo games (API still enforces ecosystem / spectate for non-participants).
+ * Spectator chat read: live games only, and **not** seated players (they use `game_player` during play).
  */
 export function canReadSpectatorChat(game: GamePolicyInput, userId: string): boolean {
-  void userId;
-  return isLiveTempoGame(game);
+  if (!isLiveTempoGame(game)) return false;
+  return !isGameParticipant(game, userId);
 }
 
 /**
- * Spectator chat write: same as read — live games only; during play, this is the only in-game chat channel.
+ * Spectator chat write: live games only; never seated players (table chat is `game_player`).
  */
 export function canPostSpectatorChat(game: GamePolicyInput, userId: string): boolean {
-  void userId;
-  return isLiveTempoGame(game);
+  return canReadSpectatorChat(game, userId);
 }
 
 /**
- * Player chat write: participants only, after finish (post-game thread).
+ * Player chat write: same gates as read for game-scoped channels.
  */
 export function canPostPlayerChat(game: GamePolicyInput, userId: string): boolean {
-  return isGameParticipant(game, userId) && isGameFinished(game);
+  return canAccessPlayerChat(game, userId);
 }
 
 export function assertChannelPayload(

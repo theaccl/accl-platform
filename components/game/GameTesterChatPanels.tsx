@@ -4,18 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
+import {
+  resolveTesterChatLane,
+  type GameTesterChatViewerRole,
+} from '@/lib/chat/resolveTesterChatLane';
 import { supabase } from '@/lib/supabaseClient';
 
 const CHAT_BODY_MAX = 2000;
 
 /** Dev-only: detect duplicate realtime channel creation (Strict Mode / effect churn). */
 let gameChatChannelSeq = 0;
-
-const gameChatDebug = (...args: unknown[]) => {
-  if (process.env.NODE_ENV === 'development') {
-    console.warn('[game-chat-debug]', ...args);
-  }
-};
 
 /** Dev-only: where a chat load was triggered from */
 type GameChatLoadSource = 'initial' | 'visibilitychange' | 'poll' | 'realtime' | 'after_send';
@@ -96,6 +94,7 @@ function ChatStrip({
   reportingId,
   maxLen,
   onSenderClick,
+  sendTestId,
 }: {
   title: string;
   subtitle: string;
@@ -112,6 +111,7 @@ function ChatStrip({
   maxLen: number;
   /** When set, clicking the sender display name opens the public identity card. */
   onSenderClick?: (senderId: string) => void;
+  sendTestId: 'player' | 'spectator';
 }) {
   const remaining = maxLen - draft.length;
   return (
@@ -222,7 +222,7 @@ function ChatStrip({
         </div>
         <button
           type="button"
-          data-testid={`game-chat-send-${title.includes('Player') ? 'player' : 'spectator'}`}
+          data-testid={`game-chat-send-${sendTestId}`}
           onClick={() => void onSend()}
           disabled={sending || !draft.trim()}
           style={{ padding: '8px 12px', alignSelf: 'stretch' }}
@@ -234,26 +234,350 @@ function ChatStrip({
   );
 }
 
+export type { GameTesterChatViewerRole } from '@/lib/chat/resolveTesterChatLane';
+
+type LaneSharedProps = {
+  gameId: string;
+  accessToken: string;
+  viewerEcosystem: 'adult' | 'k12';
+};
+
+/** Spectator-only: `game_spectator` fetch, send, realtime, and state — no player channel. */
+function TesterSpectatorChatLane({ gameId, accessToken, viewerEcosystem }: LaneSharedProps) {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [reportingId, setReportingId] = useState<string | null>(null);
+  const sendLock = useRef(false);
+  const openIdentity = useOpenPublicIdentityCard();
+
+  const load = useCallback(
+    async (opts?: { source?: GameChatLoadSource; bypassVisibility?: boolean }) => {
+      if (
+        !opts?.bypassVisibility &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
+      setBusy(true);
+      setErr(null);
+      const res = await chatFetch(
+        `/api/chat/messages?channel=game_spectator&gameId=${encodeURIComponent(gameId)}&limit=50`,
+        accessToken,
+        viewerEcosystem
+      );
+      setBusy(false);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: unknown;
+          message?: unknown;
+          db_message?: unknown;
+          db_code?: unknown;
+        };
+        setErr(
+          formatChatSendError({
+            error: j.error,
+            message: j.message,
+            db_message: j.db_message,
+            db_code: j.db_code,
+          })
+        );
+        return;
+      }
+      const j = (await res.json()) as { messages?: ChatMsg[] };
+      setMessages(j.messages ?? []);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[game-chat-devtrace] spectator-lane:load', {
+          source: opts?.source ?? 'initial',
+          gameId,
+          ts: Date.now(),
+        });
+      }
+    },
+    [accessToken, gameId, viewerEcosystem]
+  );
+
+  useEffect(() => {
+    void load({ source: 'initial' });
+  }, [load]);
+
+  useEffect(() => {
+    const filter = `game_id=eq.${gameId}`;
+    ++gameChatChannelSeq;
+    const channelName = `game-tester-chat-${gameId}-spectator-only`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'tester_chat_messages', filter },
+        (payload) => {
+          const row = payload.new as { channel?: string | null };
+          if (String(row.channel ?? '') !== 'game_spectator') return;
+          void load({ bypassVisibility: true, source: 'realtime' });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') void load({ bypassVisibility: true, source: 'initial' });
+      });
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [gameId, load]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => void load({ source: 'poll' }), 6000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load({ source: 'visibilitychange' });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [load]);
+
+  const send = async () => {
+    const body = draft.trim();
+    if (!body || sending || sendLock.current) return;
+    sendLock.current = true;
+    setSending(true);
+    setErr(null);
+    try {
+      const res = await chatFetch('/api/chat/send', accessToken, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({ channel: 'game_spectator', gameId, body }),
+      });
+      if (!res.ok) {
+        setErr(formatChatSendError(await res.json().catch(() => ({}))));
+        return;
+      }
+      setDraft('');
+      void load({ source: 'after_send' });
+    } finally {
+      sendLock.current = false;
+      setSending(false);
+    }
+  };
+
+  const report = async (messageId: string) => {
+    setReportingId(messageId);
+    try {
+      await chatFetch('/api/chat/report', accessToken, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({ messageId }),
+      });
+    } finally {
+      setReportingId(null);
+    }
+  };
+
+  return (
+    <ChatStrip
+      title="Spectator chat (viewers only)"
+      subtitle="Spectator channel only. Player table chat is not loaded in this component."
+      accent="#a855f7"
+      messages={messages}
+      busy={busy}
+      error={err}
+      draft={draft}
+      onDraft={setDraft}
+      onSend={() => void send()}
+      sending={sending}
+      onReport={report}
+      reportingId={reportingId}
+      maxLen={CHAT_BODY_MAX}
+      onSenderClick={openIdentity ?? undefined}
+      sendTestId="spectator"
+    />
+  );
+}
+
+/** Seated players only: `game_player` fetch, send, realtime — never `game_spectator`. */
+function TesterPlayerGameChatLane({
+  gameId,
+  accessToken,
+  viewerEcosystem,
+  variant,
+}: LaneSharedProps & { variant: 'live' | 'postgame' }) {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [reportingId, setReportingId] = useState<string | null>(null);
+  const sendLock = useRef(false);
+  const openIdentity = useOpenPublicIdentityCard();
+
+  const load = useCallback(
+    async (opts?: { source?: GameChatLoadSource; bypassVisibility?: boolean }) => {
+      if (
+        !opts?.bypassVisibility &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
+      setBusy(true);
+      setErr(null);
+      const res = await chatFetch(
+        `/api/chat/messages?channel=game_player&gameId=${encodeURIComponent(gameId)}&limit=50`,
+        accessToken,
+        viewerEcosystem
+      );
+      setBusy(false);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: unknown;
+          message?: unknown;
+          db_message?: unknown;
+          db_code?: unknown;
+        };
+        setErr(
+          formatChatSendError({
+            error: j.error,
+            message: j.message,
+            db_message: j.db_message,
+            db_code: j.db_code,
+          })
+        );
+        return;
+      }
+      const j = (await res.json()) as { messages?: ChatMsg[] };
+      setMessages(j.messages ?? []);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[game-chat-devtrace] player-lane:load', {
+          source: opts?.source ?? 'initial',
+          gameId,
+          variant,
+          ts: Date.now(),
+        });
+      }
+    },
+    [accessToken, gameId, variant, viewerEcosystem]
+  );
+
+  useEffect(() => {
+    void load({ source: 'initial' });
+  }, [load]);
+
+  useEffect(() => {
+    const filter = `game_id=eq.${gameId}`;
+    ++gameChatChannelSeq;
+    const channelName = `game-tester-chat-${gameId}-player-only-${variant}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'tester_chat_messages', filter },
+        (payload) => {
+          const row = payload.new as { channel?: string | null };
+          if (String(row.channel ?? '') !== 'game_player') return;
+          void load({ bypassVisibility: true, source: 'realtime' });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') void load({ bypassVisibility: true, source: 'initial' });
+      });
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [gameId, load, variant]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => void load({ source: 'poll' }), 6000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load({ source: 'visibilitychange' });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [load]);
+
+  const send = async () => {
+    const body = draft.trim();
+    if (!body || sending || sendLock.current) return;
+    sendLock.current = true;
+    setSending(true);
+    setErr(null);
+    try {
+      const res = await chatFetch('/api/chat/send', accessToken, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({ channel: 'game_player', gameId, body }),
+      });
+      if (!res.ok) {
+        setErr(formatChatSendError(await res.json().catch(() => ({}))));
+        return;
+      }
+      setDraft('');
+      void load({ source: 'after_send' });
+    } finally {
+      sendLock.current = false;
+      setSending(false);
+    }
+  };
+
+  const report = async (messageId: string) => {
+    setReportingId(messageId);
+    try {
+      await chatFetch('/api/chat/report', accessToken, viewerEcosystem, {
+        method: 'POST',
+        body: JSON.stringify({ messageId }),
+      });
+    } finally {
+      setReportingId(null);
+    }
+  };
+
+  const isLive = variant === 'live';
+  return (
+    <div style={{ marginBottom: isLive ? 16 : 0 }}>
+      <ChatStrip
+        title={isLive ? 'Table chat (players only)' : 'Player chat (post-game, players only)'}
+        subtitle={
+          isLive
+            ? 'Player channel only — the two seated players. Spectators use a separate spectator channel.'
+            : 'Player channel archive after the game — only the two seated players.'
+        }
+        accent="#3b82f6"
+        messages={messages}
+        busy={busy}
+        error={err}
+        draft={draft}
+        onDraft={setDraft}
+        onSend={() => void send()}
+        sending={sending}
+        onReport={report}
+        reportingId={reportingId}
+        maxLen={CHAT_BODY_MAX}
+        onSenderClick={openIdentity ?? undefined}
+        sendTestId="player"
+      />
+    </div>
+  );
+}
+
 export default function GameTesterChatPanels({
   gameId,
   gameStatus,
   gameTempo,
   userId,
-  whitePlayerId,
-  blackPlayerId,
-  isSpectator,
+  viewerChatRole,
+  isBoardSpectator,
   viewerEcosystem,
   accessToken,
 }: {
   gameId: string;
   gameStatus: string;
-  /** `live` enables spectator chat; daily/correspondence have no in-game spectator channel (P2). */
   gameTempo: string | null;
   userId: string;
-  /** Seat ids for label logic (case-normalized); avoids mismatches vs board `isSpectator` when UUID casing differs. */
-  whitePlayerId: string;
-  blackPlayerId: string | null;
-  isSpectator: boolean;
+  viewerChatRole: GameTesterChatViewerRole;
+  /** From the game board: true when the viewer is not White or Black on this `games` row. */
+  isBoardSpectator: boolean;
   viewerEcosystem: 'adult' | 'k12';
   accessToken: string | null;
 }) {
@@ -261,461 +585,30 @@ export default function GameTesterChatPanels({
     console.warn('Game missing tempo:', gameId);
   }
 
+  const effectiveLane = useMemo(
+    () => resolveTesterChatLane(viewerChatRole, isBoardSpectator, gameTempo, gameStatus),
+    [viewerChatRole, isBoardSpectator, gameTempo, gameStatus]
+  );
+
   const isLive = String(gameTempo ?? '').trim().toLowerCase() === 'live';
-  /** Post-game player thread only — no player channel during active games. */
-  const showPlayer = !isSpectator && gameStatus === 'finished';
-  /** Live games only: in-game chat uses spectator channel (players + viewers); not for daily/corr. */
-  const showSpectator = isLive;
-
-  const viewerIsTableParticipant =
-    !isSpectator ||
-    (!!userId &&
-      (() => {
-        const u = userId.trim().toLowerCase();
-        const w = String(whitePlayerId ?? '').trim().toLowerCase();
-        const b = String(blackPlayerId ?? '').trim().toLowerCase();
-        return (w.length > 0 && u === w) || (b.length > 0 && u === b);
-      })());
-
-  /** Labels: DB channel is `game_spectator`; seated players must not see “Spectator chat” as the panel title. */
-  const liveTableChatTitle = viewerIsTableParticipant ? 'Table chat (live)' : 'Spectator chat (live games)';
-  const liveTableChatSubtitle = viewerIsTableParticipant
-    ? 'You, your opponent, and viewers share this thread — the in-game channel during live play.'
-    : 'Viewers and players use this channel during the game — separate from post-game player chat.';
-
-  const devTraceRole = viewerIsTableParticipant ? 'player' : 'spectator';
-
-  const [specMessages, setSpecMessages] = useState<ChatMsg[]>([]);
-  const [playMessages, setPlayMessages] = useState<ChatMsg[]>([]);
-  const [specErr, setSpecErr] = useState<string | null>(null);
-  const [playErr, setPlayErr] = useState<string | null>(null);
-  const [specBusy, setSpecBusy] = useState(false);
-  const [playBusy, setPlayBusy] = useState(false);
-  const [specDraft, setSpecDraft] = useState('');
-  const [playDraft, setPlayDraft] = useState('');
-  const [specSending, setSpecSending] = useState(false);
-  const [playSending, setPlaySending] = useState(false);
-  const [reportingId, setReportingId] = useState<string | null>(null);
-  const [reportErr, setReportErr] = useState<string | null>(null);
-
-  const specSendLock = useRef(false);
-  const playSendLock = useRef(false);
+  const inPlay = gameStatus === 'active' || gameStatus === 'waiting';
 
   const canUseChat = !!accessToken && !!userId;
+  const lobbyHref = useMemo(() => '/tester/lobby-chat', []);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
     console.log('[game-chat-devtrace] mount', {
       gameId,
-      role: devTraceRole,
+      requested: viewerChatRole,
+      effectiveLane,
+      isBoardSpectator,
       ts: Date.now(),
     });
     return () => {
-      console.log('[game-chat-devtrace] cleanup', {
-        gameId,
-        role: devTraceRole,
-        ts: Date.now(),
-      });
+      console.log('[game-chat-devtrace] cleanup', { gameId, ts: Date.now() });
     };
-  }, [gameId, devTraceRole]);
-
-  const loadSpectator = useCallback(
-    async (opts?: { source?: GameChatLoadSource; bypassVisibility?: boolean }) => {
-      const source: GameChatLoadSource = opts?.source ?? 'initial';
-      gameChatDebug('loadSpectator:trigger', { source, gameId, showSpectator });
-      if (!canUseChat || !showSpectator) {
-        gameChatDebug('loadSpectator:skip', { source, reason: !canUseChat ? 'no_auth' : 'panel_off' });
-        return;
-      }
-      if (
-        !opts?.bypassVisibility &&
-        typeof document !== 'undefined' &&
-        document.visibilityState === 'hidden'
-      ) {
-        gameChatDebug('loadSpectator:skip', { source, reason: 'hidden_tab' });
-        return;
-      }
-      setSpecBusy(true);
-      setSpecErr(null);
-      const res = await chatFetch(
-        `/api/chat/messages?channel=game_spectator&gameId=${encodeURIComponent(gameId)}&limit=50`,
-        accessToken!,
-        viewerEcosystem
-      );
-      setSpecBusy(false);
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as {
-          error?: unknown;
-          message?: unknown;
-          db_message?: unknown;
-          db_code?: unknown;
-        };
-        setSpecErr(
-          formatChatSendError({
-            error: j.error,
-            message: j.message,
-            db_message: j.db_message,
-            db_code: j.db_code,
-          })
-        );
-        gameChatDebug('loadSpectator:result', { source, ok: false, gameId });
-        return;
-      }
-      const j = (await res.json()) as { messages?: ChatMsg[] };
-      const list = j.messages ?? [];
-      setSpecMessages(list);
-      gameChatDebug('loadSpectator:result', {
-        source,
-        ok: true,
-        count: list.length,
-        firstId: list[0]?.id,
-        lastId: list[list.length - 1]?.id,
-        gameId,
-      });
-      if (process.env.NODE_ENV === 'development') {
-        const src =
-          source === 'poll' ? 'poll' : source === 'realtime' ? 'realtime' : source;
-        console.log('[game-chat-devtrace] ui:update', {
-          gameId,
-          role: devTraceRole,
-          source: src,
-          ts: Date.now(),
-        });
-      }
-    },
-    [accessToken, canUseChat, devTraceRole, gameId, showSpectator, viewerEcosystem]
-  );
-
-  const loadPlayer = useCallback(
-    async (opts?: { bypassVisibility?: boolean; source?: GameChatLoadSource }) => {
-      const source: GameChatLoadSource = opts?.source ?? 'initial';
-      gameChatDebug('loadPlayer:trigger', {
-        source,
-        gameId,
-        showPlayer,
-        bypassVisibility: opts?.bypassVisibility === true,
-      });
-      if (!canUseChat || !showPlayer) {
-        gameChatDebug('loadPlayer:skip', { source, reason: !canUseChat ? 'no_auth' : 'panel_off' });
-        return;
-      }
-      if (
-        !opts?.bypassVisibility &&
-        typeof document !== 'undefined' &&
-        document.visibilityState === 'hidden'
-      ) {
-        gameChatDebug('loadPlayer:skip', { source, reason: 'hidden_tab' });
-        return;
-      }
-      setPlayBusy(true);
-      setPlayErr(null);
-      const res = await chatFetch(
-        `/api/chat/messages?channel=game_player&gameId=${encodeURIComponent(gameId)}&limit=50`,
-        accessToken!,
-        viewerEcosystem
-      );
-      setPlayBusy(false);
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as {
-          error?: unknown;
-          message?: unknown;
-          db_message?: unknown;
-          db_code?: unknown;
-        };
-        setPlayErr(
-          formatChatSendError({
-            error: j.error,
-            message: j.message,
-            db_message: j.db_message,
-            db_code: j.db_code,
-          })
-        );
-        gameChatDebug('loadPlayer:result', { source, ok: false, gameId });
-        return;
-      }
-      const j = (await res.json()) as { messages?: ChatMsg[] };
-      const list = j.messages ?? [];
-      setPlayMessages(list);
-      gameChatDebug('loadPlayer:result', {
-        source,
-        ok: true,
-        count: list.length,
-        firstId: list[0]?.id,
-        lastId: list[list.length - 1]?.id,
-        gameId,
-      });
-      if (process.env.NODE_ENV === 'development') {
-        const src =
-          source === 'poll' ? 'poll' : source === 'realtime' ? 'realtime' : source;
-        console.log('[game-chat-devtrace] ui:update', {
-          gameId,
-          role: devTraceRole,
-          source: src,
-          ts: Date.now(),
-        });
-      }
-    },
-    [accessToken, canUseChat, devTraceRole, gameId, showPlayer, viewerEcosystem]
-  );
-
-  useEffect(() => {
-    void loadSpectator({ source: 'initial' });
-  }, [loadSpectator]);
-
-  useEffect(() => {
-    void loadPlayer({ source: 'initial' });
-  }, [loadPlayer]);
-
-  /** INSERT on tester_chat_messages for this game → refetch the matching channel list (API applies mutes). */
-  useEffect(() => {
-    if (!canUseChat || !gameId.trim()) return;
-    if (!showSpectator && !showPlayer) return;
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[game-chat-devtrace] effect:start', {
-        gameId,
-        role: devTraceRole,
-        showPlayer,
-        bypassVisibility: false,
-        visible: typeof document !== 'undefined' ? document.visibilityState : 'unknown',
-        ts: Date.now(),
-      });
-    }
-
-    const filter = `game_id=eq.${gameId}`;
-    gameChatDebug('subscribe:start', {
-      gameId,
-      showSpectator,
-      showPlayer,
-      filter,
-    });
-
-    const seq = ++gameChatChannelSeq;
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[game-chat-devtrace] subscribe:create', {
-        seq,
-        gameId,
-        role: devTraceRole,
-        ts: Date.now(),
-      });
-    }
-
-    const channelName = `game-tester-chat-${gameId}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'tester_chat_messages',
-          filter,
-        },
-        (payload) => {
-          const row = payload.new as {
-            channel?: string | null;
-            id?: string;
-            game_id?: string | null;
-            sender_id?: string | null;
-          };
-          const ch = String(row.channel ?? '');
-          const rowGameId = row.game_id != null ? String(row.game_id) : '';
-          const gameIdMatch = rowGameId === gameId;
-
-          gameChatDebug('realtime:insert', {
-            id: row.id,
-            channel: row.channel,
-            game_id: row.game_id,
-            sender_id: row.sender_id,
-            gameIdMatch,
-            currentGameId: gameId,
-          });
-
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[game-chat-devtrace] realtime:insert', {
-              seq,
-              gameId,
-              role: devTraceRole,
-              payload,
-              ts: Date.now(),
-            });
-            console.log('[game-chat-devtrace] realtime:route-check', {
-              seq,
-              gameId,
-              role: devTraceRole,
-              isPlayer: ch === 'game_player',
-              isSpectator: ch === 'game_spectator',
-              bypassVisibility: ch === 'game_player',
-              ts: Date.now(),
-            });
-          }
-
-          if (ch === 'game_spectator' && showSpectator) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('[game-chat-devtrace] realtime:route:spectator', {
-                seq,
-                gameId,
-                role: devTraceRole,
-                ts: Date.now(),
-              });
-            }
-            gameChatDebug('realtime:route:spectator', { id: row.id });
-            void loadSpectator({ source: 'realtime' });
-          }
-          // Always dispatch player lane; loadPlayer() no-ops if post-game panel is not active.
-          if (ch === 'game_player') {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('[game-chat-devtrace] realtime:route:player', {
-                seq,
-                gameId,
-                role: devTraceRole,
-                ts: Date.now(),
-              });
-            }
-            gameChatDebug('realtime:route:player', { id: row.id });
-            void loadPlayer({ bypassVisibility: true, source: 'realtime' });
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        gameChatDebug('subscribe:status', {
-          status,
-          err: err instanceof Error ? err.message : err ?? null,
-          gameId,
-        });
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[game-chat-devtrace] subscribe:status', {
-            seq,
-            gameId,
-            role: devTraceRole,
-            status,
-            err: err instanceof Error ? err.message : err ?? null,
-            channelName,
-            ts: Date.now(),
-          });
-        }
-        // After websocket + Realtime auth, sync once so early messages are not missed during warmup.
-        if (status === 'SUBSCRIBED') {
-          void loadSpectator({ bypassVisibility: true, source: 'initial' });
-          void loadPlayer({ bypassVisibility: true, source: 'initial' });
-        }
-      });
-
-    return () => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[game-chat-devtrace] subscribe:cleanup', {
-          seq,
-          gameId,
-          role: devTraceRole,
-          channelName,
-          ts: Date.now(),
-        });
-      }
-      gameChatDebug('subscribe:cleanup', { gameId });
-      void supabase.removeChannel(channel);
-    };
-  }, [canUseChat, devTraceRole, gameId, showSpectator, showPlayer, loadSpectator, loadPlayer]);
-
-  useEffect(() => {
-    const runPollTick = () => {
-      gameChatDebug('poll:tick', { gameId, showSpectator, showPlayer });
-      void loadSpectator({ source: 'poll' });
-      void loadPlayer({ source: 'poll' });
-    };
-    const id = window.setInterval(runPollTick, 6000);
-    const onVis = () => {
-      gameChatDebug('visibilitychange', {
-        visibilityState: document.visibilityState,
-        gameId,
-      });
-      if (document.visibilityState === 'visible') {
-        void loadSpectator({ source: 'visibilitychange' });
-        void loadPlayer({ source: 'visibilitychange' });
-      }
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  }, [gameId, showSpectator, showPlayer, loadSpectator, loadPlayer]);
-
-  const sendSpectator = async () => {
-    const body = specDraft.trim();
-    if (!canUseChat || !body || specSending || specSendLock.current) return;
-    specSendLock.current = true;
-    setSpecSending(true);
-    setSpecErr(null);
-    try {
-      const res = await chatFetch('/api/chat/send', accessToken!, viewerEcosystem, {
-        method: 'POST',
-        body: JSON.stringify({
-          channel: 'game_spectator',
-          gameId,
-          body,
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setSpecErr(formatChatSendError(j));
-        return;
-      }
-      setSpecDraft('');
-      void loadSpectator({ source: 'after_send' });
-    } finally {
-      specSendLock.current = false;
-      setSpecSending(false);
-    }
-  };
-
-  const sendPlayer = async () => {
-    const body = playDraft.trim();
-    if (!canUseChat || !body || playSending || playSendLock.current) return;
-    playSendLock.current = true;
-    setPlaySending(true);
-    setPlayErr(null);
-    try {
-      const res = await chatFetch('/api/chat/send', accessToken!, viewerEcosystem, {
-        method: 'POST',
-        body: JSON.stringify({
-          channel: 'game_player',
-          gameId,
-          body,
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setPlayErr(formatChatSendError(j));
-        return;
-      }
-      setPlayDraft('');
-      void loadPlayer({ source: 'after_send' });
-    } finally {
-      playSendLock.current = false;
-      setPlaySending(false);
-    }
-  };
-
-  const report = async (messageId: string) => {
-    if (!canUseChat) return;
-    setReportingId(messageId);
-    setReportErr(null);
-    try {
-      const res = await chatFetch('/api/chat/report', accessToken!, viewerEcosystem, {
-        method: 'POST',
-        body: JSON.stringify({ messageId }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-        setReportErr(j.message || j.error || 'Report could not be submitted.');
-      }
-    } finally {
-      setReportingId(null);
-    }
-  };
-
-  const lobbyHref = useMemo(() => '/tester/lobby-chat', []);
-  const openIdentity = useOpenPublicIdentityCard();
+  }, [effectiveLane, gameId, isBoardSpectator, viewerChatRole]);
 
   if (!userId) return null;
 
@@ -727,19 +620,47 @@ export default function GameTesterChatPanels({
     );
   }
 
+  const laneProps = { gameId, accessToken: accessToken!, viewerEcosystem };
+
   return (
     <div data-testid="game-tester-chat-panels" style={{ marginTop: 20, maxWidth: 520 }}>
-      <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
-        <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — authenticated only; channels are separated.
-        During live games, the table uses one shared channel (labeled “Table chat” for players, “Spectator chat” for
-        viewers); post-game player-only chat unlocks after the game ends. Daily/correspondence boards do not use this
-        live channel.{' '}
-        <Link href={lobbyHref} style={{ color: '#93c5fd' }}>
-          Tester mode chat
-        </Link>
-        .
-      </p>
-      {!showPlayer && !showSpectator ? (
+      {effectiveLane === 'spectator' ? (
+        <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
+          <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — you are on{' '}
+          <code style={{ color: '#cbd5e1' }}>game_spectator</code> only. Player table chat uses{' '}
+          <code style={{ color: '#cbd5e1' }}>game_player</code> and is not shown here.{' '}
+          <Link href={lobbyHref} style={{ color: '#93c5fd' }}>
+            Tester lobby chat
+          </Link>
+        </p>
+      ) : effectiveLane === 'table' || effectiveLane === 'postgame_player' ? (
+        <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
+          <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — you are on{' '}
+          <code style={{ color: '#cbd5e1' }}>game_player</code> only. Spectators use{' '}
+          <code style={{ color: '#cbd5e1' }}>game_spectator</code> elsewhere.{' '}
+          <Link href={lobbyHref} style={{ color: '#93c5fd' }}>
+            Tester lobby chat
+          </Link>
+        </p>
+      ) : (
+        <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
+          <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — no game chat panel for this view.{' '}
+          <Link href={lobbyHref} style={{ color: '#93c5fd' }}>
+            Tester lobby chat
+          </Link>
+        </p>
+      )}
+
+      {effectiveLane === 'spectator' ? (
+        <TesterSpectatorChatLane key={`spectator-only-${gameId}`} {...laneProps} />
+      ) : null}
+      {effectiveLane === 'table' ? (
+        <TesterPlayerGameChatLane key={`player-live-${gameId}`} {...laneProps} variant="live" />
+      ) : null}
+      {effectiveLane === 'postgame_player' ? (
+        <TesterPlayerGameChatLane key={`player-post-${gameId}`} {...laneProps} variant="postgame" />
+      ) : null}
+      {effectiveLane === 'none' ? (
         <p
           style={{
             margin: '0 0 12px 0',
@@ -754,53 +675,12 @@ export default function GameTesterChatPanels({
           role="status"
         >
           <strong style={{ color: '#e2e8f0' }}>No in-game chat panel for this game right now.</strong>{' '}
-          {isLive
+          {isLive && inPlay
             ? 'This should not happen for an active live game — refresh if the board looks wrong.'
             : gameStatus === 'finished'
-              ? 'Post-game player chat appears above when available; daily/correspondence games do not use live spectator chat on the board.'
-              : 'Daily and correspondence games do not use live spectator chat here — that is by design, not a missing feature. Use tester lobby chat if you need a side channel.'}
+              ? 'Post-game player chat appears when you are a seated participant; spectators use spectator chat on live boards.'
+              : 'Daily and correspondence games do not use these live channels here — by design. Use tester lobby chat if you need a side channel.'}
         </p>
-      ) : null}
-      {reportErr ? (
-        <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#f87171' }} role="alert">
-          {reportErr}
-        </p>
-      ) : null}
-      {showPlayer ? (
-        <ChatStrip
-          title="Player chat (post-game)"
-          subtitle="Only the two players — opens after the game finishes; not used during play."
-          accent="#3b82f6"
-          messages={playMessages}
-          busy={playBusy}
-          error={playErr}
-          draft={playDraft}
-          onDraft={setPlayDraft}
-          onSend={sendPlayer}
-          sending={playSending}
-          onReport={report}
-          reportingId={reportingId}
-          maxLen={CHAT_BODY_MAX}
-          onSenderClick={openIdentity ?? undefined}
-        />
-      ) : null}
-      {showSpectator ? (
-        <ChatStrip
-          title={liveTableChatTitle}
-          subtitle={liveTableChatSubtitle}
-          accent="#a855f7"
-          messages={specMessages}
-          busy={specBusy}
-          error={specErr}
-          draft={specDraft}
-          onDraft={setSpecDraft}
-          onSend={sendSpectator}
-          sending={specSending}
-          onReport={report}
-          reportingId={reportingId}
-          maxLen={CHAT_BODY_MAX}
-          onSenderClick={openIdentity ?? undefined}
-        />
       ) : null}
     </div>
   );
