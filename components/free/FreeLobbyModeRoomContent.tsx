@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useState } from 'react';
 
 import { FreeLobbyOpenGamesList } from '@/components/free/FreeLobbyOpenGamesList';
+import { FreePlayWatchSpectatorForMode } from '@/components/free/FreePlayWatchSpectatorForMode';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayMatchPanel } from '@/components/FreePlayMatchPanel';
 import NexusLobbyActionsBar from '@/components/nexus/NexusLobbyActionsBar';
@@ -25,7 +26,7 @@ const noopMode = (_m: PlatMode) => {
 };
 
 /**
- * Single mode room: mode title, match controls (time = queue filter), open games, mode chat (not time-scoped).
+ * Mode room hierarchy: (1) Open Games + Watch live row → (2) Create/Find → (3) chat.
  */
 export function FreeLobbyModeRoomContent({ mode }: Props) {
   const [clock, setClock] = useState<string>(() => defaultPlatTimeControl(mode));
@@ -38,7 +39,7 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-5 sm:py-6">
-        <nav className="mb-4 text-sm">
+        <nav className="mb-3 text-sm">
           <Link
             href="/free/lobby"
             className="font-medium text-sky-400 underline-offset-2 hover:text-sky-300 hover:underline"
@@ -48,53 +49,62 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
           </Link>
         </nav>
 
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {PLAT_MODE_LABELS[mode]} <span className="text-gray-500">room</span>
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">
-            One shared <strong className="text-gray-300">{label}</strong> conversation. Time control and rated settings
-            filter the open games list and Find Match — they do not change chat rooms.
+        <h1 className="mb-4 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          {PLAT_MODE_LABELS[mode]} <span className="text-gray-500">room</span>
+        </h1>
+
+        {/* Primary: Open Games should be the first visible priority panel. */}
+        <div data-accl-layout="mode-room-open-games-primary" className="min-w-0">
+          <FreeLobbyOpenGamesList mode={mode} selectedClock={clock} selectedRated={rated} />
+        </div>
+
+        {/* Secondary but still top-of-page: live spectate discovery for this mode. */}
+        <div className="mt-4 min-w-0" data-accl-layout="mode-room-watch-secondary">
+          <FreePlayWatchSpectatorForMode mode={mode} />
+        </div>
+
+        {/* Secondary: post a seat / auto-match — below the two primary panels */}
+        <section
+          id="free-lobby-create-find"
+          className="mt-6 rounded-xl border border-white/[0.08] bg-[#0c1018]/85 p-3 sm:p-4"
+          aria-label="Create or find a game"
+          data-accl-layout="mode-room-create-find-secondary"
+        >
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+            Create or find a game
+          </h2>
+          <p className="mt-1 max-w-2xl text-[11px] leading-snug text-gray-500">
+            Actions below use the same time control and rated setting as <span className="text-gray-400">Open Games</span>{' '}
+            and <span className="text-gray-400">Watch live</span>. <span className="text-gray-400">Create game</span> posts
+            your seat; <span className="text-gray-400">Find match</span> pairs you automatically when possible.
           </p>
-        </header>
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
-          <div className="flex min-w-0 flex-col gap-6">
-            <section className="rounded-2xl border border-white/[0.06] bg-[#0c1018]/80 p-4 sm:p-5" aria-label="Queue: create, find match, or use Open Games">
-              <h2 className="text-lg font-semibold tracking-tight text-white">Queue</h2>
-              <p className="mt-1 text-xs text-gray-500">
-                Same filters for <strong className="text-gray-400">Create game</strong>,{' '}
-                <strong className="text-gray-400">Find match</strong>, and the Open Games list. Not a private invite.
-              </p>
-              <div className="mt-4">
-                <FreePlayMatchPanel
-                  mode={mode}
-                  onModeChange={onModeChange}
-                  clock={clock}
-                  onClockChange={(c) => setClock(coercePlatTimeForMode(mode, c))}
-                  rated={rated}
-                  onRatedChange={setRated}
-                  modeLocked
-                  compact
-                />
-              </div>
-            </section>
-
-            <FreeLobbyOpenGamesList mode={mode} selectedClock={clock} selectedRated={rated} />
-
-            <p className="text-sm text-gray-500">
-              <strong className="text-gray-400">Direct challenge</strong> —{' '}
-              <Link
-                href={`/free/create?mode=${encodeURIComponent(mode)}&rated=${rated ? 'true' : 'false'}`}
-                className="text-sky-400 underline hover:text-sky-300"
-                data-testid="free-lobby-direct-challenge-link"
-              >
-                invite a specific player by username
-              </Link>{' '}
-              (private; does not use the public list).
-            </p>
+          <div className="mt-3 max-w-2xl">
+            <FreePlayMatchPanel
+              mode={mode}
+              onModeChange={onModeChange}
+              clock={clock}
+              onClockChange={(c) => setClock(coercePlatTimeForMode(mode, c))}
+              rated={rated}
+              onRatedChange={setRated}
+              modeLocked
+              compact
+              embedded
+            />
           </div>
+          <p className="mt-3 text-xs leading-relaxed text-gray-500 sm:text-sm">
+            <strong className="text-gray-400">Direct challenge</strong> —{' '}
+            <Link
+              href={`/free/create?mode=${encodeURIComponent(mode)}&rated=${rated ? 'true' : 'false'}`}
+              className="text-sky-400 underline hover:text-sky-300"
+              data-testid="free-lobby-direct-challenge-link"
+            >
+              invite a specific player by username
+            </Link>{' '}
+            (private; not the public open list).
+          </p>
+        </section>
 
+        <div className="mt-6 border-t border-white/[0.06] pt-6">
           <LobbyChatPanel
             lobbyRoom={lobbyRoom}
             roomLabel={label}
@@ -105,7 +115,10 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
       </div>
 
       <NexusLobbyActionsBar
-        publicGameHref="#free-find-match-anchor"
+        watchSpectatorHref="#watch-as-spectator-anchor"
+        watchSpectatorLabel="Watch live"
+        publicGameHref="#free-lobby-open-games-anchor"
+        publicGameScrollLabel="Open games"
         directChallengeHref={`/free/create?mode=${encodeURIComponent(mode)}&rated=${rated ? 'true' : 'false'}`}
       />
     </div>

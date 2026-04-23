@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -7,11 +8,14 @@ import { nexusModuleHeadingClass } from '@/components/nexus/NexusHeader';
 import { nexusPrestigeCard } from '@/components/nexus/nexusShellTheme';
 import { type FreeLobbyOpenSeatRow, useFreeLobbyOpenSeats } from '@/hooks/useFreeLobbyOpenSeats';
 import { formatWaitingDuration } from '@/lib/formatWaitingDuration';
+import { checkUserFreePlayQueueEligible } from '@/lib/freePlayFindMatch';
+import { supabase } from '@/lib/supabaseClient';
 import {
   PLAT_MODE_LABELS,
   type PlatMode,
   platTimeOptionsForMode,
 } from '@/lib/freePlayModeTimeControl';
+import { normalizeGameTempo } from '@/lib/gameTempo';
 import { formatGameTimeControlLabel } from '@/lib/gameTimeControl';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 
@@ -29,12 +33,14 @@ function rowModeLabel(row: FreeLobbyOpenSeatRow): string {
 }
 
 /**
- * Public queue: open seats with explicit select → confirm join (no navigation on row click alone).
+ * Open Games: open seats waiting for an opponent — select row → Accept (manual pick-up).
  */
 export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: Props) {
   const router = useRouter();
   const { rows, loading, error } = useFreeLobbyOpenSeats(mode, selectedClock, selectedRated);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [preJoinError, setPreJoinError] = useState<string | null>(null);
+  const [preJoinResumeId, setPreJoinResumeId] = useState<string | null>(null);
 
   const tcLabel =
     platTimeOptionsForMode(mode).find((o) => o.id === selectedClock)?.label ?? selectedClock;
@@ -49,27 +55,54 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
   const selected = selectedId ? rows.find((r) => r.id === selectedId) ?? null : null;
 
   const onRowActivate = useCallback((r: FreeLobbyOpenSeatRow) => {
+    setPreJoinError(null);
+    setPreJoinResumeId(null);
     setSelectedId((cur) => (cur === r.id ? null : r.id));
   }, []);
 
-  const onConfirmJoin = useCallback(() => {
+  const onConfirmJoin = useCallback(async () => {
     if (!selected) return;
+    setPreJoinError(null);
+    setPreJoinResumeId(null);
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !auth.user) {
+      setPreJoinError('Sign in to accept a game.');
+      return;
+    }
+    const gate = await checkUserFreePlayQueueEligible(
+      supabase,
+      auth.user.id,
+      normalizeGameTempo(selected.tempo)
+    );
+    if ('error' in gate) {
+      setPreJoinError(gate.error);
+      setPreJoinResumeId(gate.resumeGameId ?? null);
+      return;
+    }
     router.push(`/game/${selected.id}?join=1`);
   }, [router, selected]);
 
   return (
     <section
-      className={`${nexusPrestigeCard} flex flex-col border border-sky-500/20 p-4 sm:p-5`}
+      id="free-lobby-open-games-anchor"
+      className={`${nexusPrestigeCard} scroll-mt-24 flex flex-col border border-sky-500/35 bg-[#0a1018]/90 p-4 shadow-lg shadow-sky-950/20 sm:scroll-mt-28 sm:p-5`}
       data-testid="free-lobby-open-games"
       aria-label={`Players waiting for opponent — ${PLAT_MODE_LABELS[mode]} ${tcLabel} ${ratedLabel}`}
     >
-      <h2 className={nexusModuleHeadingClass}>Open Games</h2>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className={nexusModuleHeadingClass}>Open seats</p>
+          <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Open Games</h2>
+        </div>
+        <span className="shrink-0 rounded-md border border-sky-500/30 bg-sky-950/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-sky-200/90">
+          Waiting for opponents
+        </span>
+      </div>
       <p className="mt-2 text-xs leading-snug text-gray-500">
-        Manual queue: open public seats in this room match{' '}
+        <strong className="text-gray-300">Manual pick-up:</strong> seats here match{' '}
         <strong className="text-gray-400">{PLAT_MODE_LABELS[mode]}</strong>,{' '}
         <strong className="text-gray-400">{tcLabel}</strong>, and{' '}
-        <strong className="text-gray-400">{ratedLabel}</strong>. Select a row to preview, then confirm to join as
-        Black.
+        <strong className="text-gray-400">{ratedLabel}</strong>. Tap a row, then <strong className="text-gray-400">Accept game</strong> to join as Black (not the same as Find match, which auto-joins).
       </p>
       <p className="mt-1 text-[10px] text-gray-600" role="status">
         List refreshes about every {Math.round(15_000 / 1000)}s while you stay on this page.
@@ -82,7 +115,8 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
       ) : null}
       {!loading && !error && rows.length === 0 ? (
         <p className="mt-3 text-sm text-gray-500">
-          No one is waiting in this queue slice right now. Use Create game above to post your own seat.
+          No one is waiting in this slice right now. Use <strong className="text-gray-400">Create game</strong> in{' '}
+          <strong className="text-gray-400">Create or find a game</strong> below to post your seat.
         </p>
       ) : null}
       {!loading && rows.length > 0 ? (
@@ -133,6 +167,22 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
             {rowModeLabel(selected)}, {formatGameTimeControlLabel(selected.tempo, selected.live_time_control)},{' '}
             {selected.rated === true ? 'rated' : 'unrated'}).
           </p>
+          {preJoinError ? (
+            <div
+              className="mt-3 rounded-lg border border-amber-600/45 bg-amber-950/35 px-3 py-2 text-sm text-amber-100/95"
+              role="alert"
+            >
+              <p>{preJoinError}</p>
+              {preJoinResumeId ? (
+                <p className="mt-2 text-xs text-amber-200/80">
+                  <Link href={`/game/${preJoinResumeId}`} className="font-semibold text-sky-300 underline hover:text-sky-200">
+                    Go to your game
+                  </Link>{' '}
+                  to resume or leave your waiting seat first.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -145,7 +195,11 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
             <button
               type="button"
               data-testid="free-lobby-join-cancel"
-              onClick={() => setSelectedId(null)}
+              onClick={() => {
+                setSelectedId(null);
+                setPreJoinError(null);
+                setPreJoinResumeId(null);
+              }}
               className="inline-flex min-h-[44px] min-w-[100px] touch-manipulation items-center justify-center rounded-lg border border-white/15 bg-transparent px-4 text-sm font-medium text-gray-300 hover:bg-white/5"
             >
               Cancel

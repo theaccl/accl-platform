@@ -15,6 +15,8 @@ import {
   type PlatMode,
 } from "@/lib/freePlayModeTimeControl";
 import { useFreeOpenSeatActivity } from "@/hooks/useFreeOpenSeatActivity";
+import { useFreePlayWatchList } from "@/hooks/useFreePlayWatchList";
+import { FreePlayWatchSpectatorByMode } from "@/components/free/FreePlayWatchSpectatorByMode";
 import { nexusPrestigeRoot } from "@/components/nexus/nexusShellTheme";
 
 /**
@@ -32,11 +34,21 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
   }, []);
 
   const { activity: openSeatActivity, loading: openSeatLoading } = useFreeOpenSeatActivity();
+  const watchList = useFreePlayWatchList("adult");
 
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
       <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-5 sm:pt-6">
-        <FreePlayOpenPairingByMode activity={openSeatActivity} loading={openSeatLoading} />
+        <FreePlayWatchSpectatorByMode
+          loading={watchList.loading}
+          error={watchList.error}
+          data={watchList.data}
+        />
+        <FreePlayOpenPairingByMode
+          activity={openSeatActivity}
+          loading={openSeatLoading}
+          watchActivity={watchList.data?.watchActivity}
+        />
       </div>
       <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-1 items-start gap-5 px-4 py-5 sm:gap-6 sm:px-5 sm:py-6 lg:grid-cols-2 lg:gap-8 lg:py-6">
         <div className="min-w-0 w-full lg:max-h-[min(70vh,560px)] lg:overflow-y-auto">
@@ -56,7 +68,12 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
         <HomePlaySection mode={mode} clock={clock} rated={rated} />
       </div>
 
-      <NexusLobbyActionsBar publicGameHref="#free-find-match-anchor" />
+      <NexusLobbyActionsBar
+        watchSpectatorHref="#watch-as-spectator-anchor"
+        watchSpectatorLabel="Watch live"
+        publicGameHref="#free-lobby-open-games-anchor"
+        publicGameScrollLabel="Open games"
+      />
 
       <div className="w-full min-w-0">
         <FreePlayMatchPanel

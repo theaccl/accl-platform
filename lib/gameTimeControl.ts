@@ -55,6 +55,20 @@ export function clockBudgetMsForGame(
   return Math.max(1, m) * 60 * 1000;
 }
 
+/**
+ * Fischer-style `main+increment` tokens (e.g. `5+5` → 5 seconds in ms). Returns 0 when not an increment control.
+ */
+export function liveFischerIncrementMsFromToken(liveTimeControl: string | null | undefined): number {
+  const token = String(liveTimeControl ?? '')
+    .toLowerCase()
+    .trim();
+  const inc = /^(\d+)\+(\d+)$/.exec(token);
+  if (!inc) return 0;
+  const sec = Number(inc[2]);
+  if (!Number.isFinite(sec) || sec < 0) return 0;
+  return Math.max(0, sec) * 1000;
+}
+
 export function correspondenceMoveDeadlineMs(liveTimeControl: string | null | undefined): number {
   const token = String(liveTimeControl ?? '').toLowerCase();
   if (token === '2d') return 2 * 24 * 60 * 60 * 1000;

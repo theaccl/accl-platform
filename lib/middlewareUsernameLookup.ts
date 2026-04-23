@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { profileRowNeedsUsername } from "@/lib/usernameRules";
 
 /** For tests and diagnostics — does not perform network I/O. */
 export function getUsernameGateConfigState(): "ready" | "missing_supabase_url" | "missing_service_role" {
@@ -43,7 +44,7 @@ export async function fetchProfileUsernameGateStatus(userId: string): Promise<Pr
   }
 
   const u = (data as { username?: string | null } | null)?.username;
-  const needsUsernameClaim = !String(u ?? "").trim();
+  const needsUsernameClaim = profileRowNeedsUsername(u);
   return { status: "ok", needsUsernameClaim };
 }
 

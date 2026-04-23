@@ -4,10 +4,12 @@ import Link from 'next/link';
 
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayOpenPairingByMode } from '@/components/free/FreePlayOpenPairingByMode';
+import { FreePlayWatchSpectatorByMode } from '@/components/free/FreePlayWatchSpectatorByMode';
 import NexusLobbyActionsBar from '@/components/nexus/NexusLobbyActionsBar';
 import { nexusPrestigeRoot } from '@/components/nexus/nexusShellTheme';
 import { nexusModuleHeadingClass } from '@/components/nexus/NexusHeader';
 import { useFreeOpenSeatActivity } from '@/hooks/useFreeOpenSeatActivity';
+import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
 import { PLAT_MODE_LABELS, PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
 import { FREE_PLAY_LOBBY_GENERAL_ROOM } from '@/lib/lobbyChatRooms';
 
@@ -19,6 +21,7 @@ const focusRing =
  */
 export function FreeLobbyHubContent() {
   const { activity, loading } = useFreeOpenSeatActivity();
+  const watchList = useFreePlayWatchList('adult');
 
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
@@ -31,7 +34,24 @@ export function FreeLobbyHubContent() {
           </p>
         </header>
 
-        <FreePlayOpenPairingByMode activity={activity} loading={loading} />
+        <FreePlayWatchSpectatorByMode
+          loading={watchList.loading}
+          error={watchList.error}
+          data={watchList.data}
+        />
+
+        <FreePlayOpenPairingByMode
+          activity={activity}
+          loading={loading}
+          watchActivity={watchList.data?.watchActivity}
+        />
+
+        <p className="mt-3 text-xs text-gray-500">
+          <span className="font-medium text-violet-400/90">Violet</span> = live game to watch (tiles or bottom{' '}
+          <strong className="text-gray-400">Watch live</strong>).{' '}
+          <span className="font-medium text-emerald-400/90">Green</span> = open seat in Open Public Pairing — tap a tile
+          for that mode room.
+        </p>
 
         <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2 lg:gap-8">
           <LobbyChatPanel
@@ -69,7 +89,10 @@ export function FreeLobbyHubContent() {
       </div>
 
       <NexusLobbyActionsBar
-        publicGameHref="/free/lobby/blitz#free-find-match-anchor"
+        watchSpectatorHref="#watch-as-spectator-anchor"
+        watchSpectatorLabel="Watch live"
+        publicGameHref="#mode-rooms"
+        publicGameScrollLabel="Mode rooms"
         directChallengeHref="/free/create"
       />
     </div>

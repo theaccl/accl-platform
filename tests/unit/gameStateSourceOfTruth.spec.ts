@@ -27,6 +27,23 @@ test.describe('gameStateSourceOfTruth', () => {
     expect(typeof patch.last_move_at).toBe('string');
   });
 
+  test('Fischer increment is applied to the mover clock on live main+inc controls', () => {
+    const patch = buildAuthoritativeMovePatch({
+      nextFen: 'fen-after',
+      nextTurn: 'black',
+      statusBefore: 'active',
+      tempo: 'live',
+      liveTimeControl: '5+5',
+      currentTurn: 'white',
+      whiteClockMs: 300_000,
+      blackClockMs: 300_000,
+      lastMoveAt: null,
+      movedAt: new Date('2026-04-09T00:00:00.000Z'),
+    });
+    expect(patch.white_clock_ms).toBe(300_000 + 5_000);
+    expect(patch.black_clock_ms).toBe(300_000);
+  });
+
   test('finished status is the only trainer-eligible truth state', () => {
     expect(isAuthoritativelyFinished('finished')).toBe(true);
     expect(trainerEligibleFromStatus('finished')).toBe(true);

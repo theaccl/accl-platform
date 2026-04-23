@@ -1,13 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
-import { userHasActiveWaitingLiveFreeGame } from '@/lib/hasActiveWaitingLiveFreeGame';
-import {
-  isDirectOrPrivateLivePacedMatchRequest,
-  LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE,
-} from '@/lib/liveChallengeAcceptGuard';
+import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
+import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 import { invalidateLiveQueueAvailabilityForUsers } from '@/lib/server/invalidateLiveQueueAvailability';
-import { userHasActiveWaitingLiveFreeGameAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
+import { userInLiveFreeSeatedGameAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
 import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
@@ -56,13 +53,14 @@ function userScopedSupabase(accessToken: string) {
 }
 
 /**
- * Accept an **incoming direct (non-open) match request** as the addressee (`to_user_id`).
- * Creates the `games` row with the same shape as the client previously built via `gameInsertFromAcceptedChallenge`,
- * then marks `match_requests` accepted — without calling `create_seated_game_guard` (free-play open-seat RPC).
+ * Secured join for **open / public** match listings from `/requests`.
+ * After the game row exists and the listing is marked accepted, voids both players' other live queue
+ * state (same timing as direct accept) so stale listings cannot be joined afterward.
+ * Blocks live joins when the user is already in a **seated** live free game (not their own solo open seats).
  */
 export async function POST(request: Request): Promise<Response> {
   const ip = getClientIp(request);
-  const limited = checkRateLimit(`match-requests:accept:${ip}`, 30, 60_000);
+  const limited = checkRateLimit(`match-requests:join-open:${ip}`, 30, 60_000);
   if (!limited.allowed) return tooManyRequests(limited.retryAfterSec);
 
   const userId = await resolveAuthenticatedUserId(request);
@@ -88,12 +86,7 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse({ error: e instanceof Error ? e.message : 'Server misconfigured' }, 500);
   }
 
-  const { data: row, error: fetchErr } = await supabase
-    .from('match_requests')
-    .select('*')
-    .eq('id', requestId)
-    .maybeSingle();
-
+  const { data: row, error: fetchErr } = await supabase.from('match_requests').select('*').eq('id', requestId).maybeSingle();
   if (fetchErr) return jsonResponse({ error: fetchErr.message }, 503);
   if (!row) return jsonResponse({ error: 'Match request not found' }, 404);
 
@@ -101,34 +94,47 @@ export async function POST(request: Request): Promise<Response> {
   if (String(r.status ?? '') !== 'pending') {
     return jsonResponse({ error: 'This request is no longer pending.' }, 409);
   }
-  if (String(r.to_user_id ?? '') !== userId) {
-    return jsonResponse({ error: 'Forbidden' }, 403);
+  if (String(r.visibility ?? '') !== 'open') {
+    return jsonResponse({ error: 'Not an open listing.' }, 400);
   }
-  if (String(r.visibility ?? '') === 'open') {
-    return jsonResponse({ error: 'Open listings use the join flow, not direct accept.' }, 400);
+  if (String(r.from_user_id ?? '') === userId) {
+    return jsonResponse({ error: 'You cannot join your own listing.' }, 400);
   }
 
-  if (isDirectOrPrivateLivePacedMatchRequest(r)) {
-    const busy =
-      (await userHasActiveWaitingLiveFreeGameAdmin(userId)) ||
-      (await userHasActiveWaitingLiveFreeGame(supabase, userId));
-    if (busy) {
+  if (rowIndicatesLiveFreePlayPacing(r)) {
+    const seatedBusy = await userInLiveFreeSeatedGameAdmin(userId);
+    if (seatedBusy) {
       return jsonResponse({ error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE }, 409);
     }
   }
 
-  const challengeRow = { ...gameInsertFromAcceptedChallenge(r) };
-  const { data: newGame, error: insErr } = await supabase.from('games').insert(challengeRow).select('id').single();
+  const { data: claimed, error: claimError } = await supabase
+    .from('match_requests')
+    .update({ to_user_id: userId })
+    .eq('id', requestId)
+    .eq('status', 'pending')
+    .eq('visibility', 'open')
+    .or(`to_user_id.is.null,to_user_id.eq.${userId}`)
+    .select('*')
+    .single();
 
-  if (insErr) {
-    return jsonResponse({ error: insErr.message }, 400);
+  if (claimError) {
+    return jsonResponse({ error: claimError.message }, 400);
   }
 
-  const gid =
+  const claimedRow = claimed as MatchRequestRow;
+  const challengeRow = { ...gameInsertFromAcceptedChallenge(claimedRow) };
+  const gameCreateRes = await supabase.from('games').insert(challengeRow).select('id').single();
+  const newGame = gameCreateRes.data;
+  const gErr = gameCreateRes.error;
+  if (gErr) {
+    return jsonResponse({ error: gErr.message }, 400);
+  }
+  const rawId =
     newGame && typeof newGame === 'object' && 'id' in newGame
       ? String((newGame as { id?: string }).id ?? '').trim()
       : '';
-  if (!gid) {
+  if (!rawId) {
     return jsonResponse({ error: 'Game was not created (empty response).' }, 500);
   }
 
@@ -136,7 +142,7 @@ export async function POST(request: Request): Promise<Response> {
     .from('match_requests')
     .update({
       status: 'accepted',
-      resolution_game_id: gid,
+      resolution_game_id: rawId,
       responded_at: new Date().toISOString(),
     })
     .eq('id', requestId)
@@ -147,7 +153,7 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse(
       {
         error: uErr.message,
-        gameId: gid,
+        gameId: rawId,
         detail: 'Game may have been created but the match request could not be marked accepted.',
       },
       500
@@ -158,23 +164,22 @@ export async function POST(request: Request): Promise<Response> {
     return jsonResponse(
       {
         error: 'This request is no longer pending — it may have been accepted, cancelled, or declined already.',
-        gameId: gid,
+        gameId: rawId,
       },
       409
     );
   }
 
-  if (isDirectOrPrivateLivePacedMatchRequest(r)) {
-    try {
-      await invalidateLiveQueueAvailabilityForUsers({
-        userIds: [r.white_player_id, r.black_player_id],
-        excludeGameId: gid,
-        excludeRequestId: requestId,
-      });
-    } catch (e) {
-      console.warn('[match-requests.accept] live queue invalidation failed', e);
-    }
+  const hostId = String(claimedRow.from_user_id ?? '').trim();
+  try {
+    await invalidateLiveQueueAvailabilityForUsers({
+      userIds: [...new Set([hostId, userId].filter(Boolean))],
+      excludeGameId: rawId,
+      excludeRequestId: requestId,
+    });
+  } catch (e) {
+    console.warn('[match-requests.join-open-listing] live queue invalidation failed', e);
   }
 
-  return jsonResponse({ ok: true, gameId: gid });
+  return jsonResponse({ ok: true, gameId: rawId });
 }

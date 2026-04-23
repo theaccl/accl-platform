@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { acclPerfMark, acclPerfTime } from '@/lib/acclPerfDebug';
 import { supabase } from '@/lib/supabaseClient';
 
 /**
@@ -16,16 +17,21 @@ export function PendingMatchRequestsBanner() {
   const [count, setCount] = useState(0);
 
   const refresh = useCallback(async (uid: string) => {
+    const t = acclPerfTime('PendingMatchRequestsBanner.refresh');
     const { count: c, error } = await supabase
       .from('match_requests')
       .select('id', { count: 'exact', head: true })
       .eq('to_user_id', uid)
       .eq('status', 'pending');
     if (error) {
-      console.log('Pending match requests count:', error.message);
+      if (typeof console !== 'undefined' && typeof console.log === 'function') {
+        console.log('Pending match requests count:', error.message);
+      }
+      t.end({ error: error.message });
       return;
     }
     setCount(c ?? 0);
+    t.end({ count: c ?? 0 });
   }, []);
 
   useEffect(() => {
@@ -52,21 +58,29 @@ export function PendingMatchRequestsBanner() {
 
   useEffect(() => {
     if (!userId) return;
+    acclPerfMark('PendingMatchRequestsBanner.realtime.subscribe', { userId });
     const channel = supabase
       .channel(`global-pending-mr-${userId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'match_requests' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'match_requests',
+          /** Was unfiltered → every row worldwide triggered refresh (major prod perf hit). */
+          filter: `to_user_id=eq.${userId}`,
+        },
         () => {
           void refresh(userId);
         }
       )
       .subscribe();
+    /** Backup poll only — realtime handles inbox changes. */
     const poll = window.setInterval(() => {
       void refresh(userId);
-    }, 2500);
+    }, 30_000);
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
       window.clearInterval(poll);
     };
   }, [userId, refresh]);

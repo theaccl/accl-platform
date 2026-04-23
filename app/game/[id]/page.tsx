@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Chess } from 'chess.js';
 import type { Square } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
@@ -23,7 +23,13 @@ import {
   isCorrespondenceDeadlineActive,
   isLiveDailyClockTicking,
 } from '@/lib/gameTiming';
+import { acclPerfTime } from '@/lib/acclPerfDebug';
+import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
 import { normalizeGameTempo } from '@/lib/gameTempo';
+import { userInLiveFreeSeatedGame } from '@/lib/hasActiveWaitingLiveFreeGame';
+import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
+import { clearHostLiveOpenSeatFollow, registerHostLiveOpenSeatFollow } from '@/lib/hostLiveOpenSeatFollow';
+import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 import { gameDisplayTempoLabel, gameModeBannerLabel } from '@/lib/gameDisplayLabel';
 import {
   canonicalLiveTimeControlForInsert,
@@ -44,6 +50,7 @@ import {
 } from '@/lib/ratingClassification';
 import { START_FEN } from '@/lib/startFen';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
+import { formatCreateSeatedGameGuardError } from '@/lib/formatCreateSeatedGameGuardError';
 import { supabase } from '@/lib/supabaseClient';
 import {
   fetchLatestFinishedGameAnalysisArtifacts,
@@ -62,6 +69,7 @@ import {
   type GameRouteAccessKind,
   shouldUsePublicSpectateRpc,
 } from '@/lib/gameRouteVisibility';
+import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 import { buildGameLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
@@ -736,6 +744,7 @@ export default function GamePage() {
   const params = useParams();
   const gameId = params?.id as string;
   const router = useRouter();
+  const pathname = usePathname() ?? '';
   const searchParams = useSearchParams();
   const publicSpectate =
     searchParams.get('public') === '1' || searchParams.get('spectate') === '1';
@@ -744,6 +753,7 @@ export default function GamePage() {
   const openIdentity = useOpenPublicIdentityCard();
 
   const [game, setGame] = useState<GameRow | null>(null);
+  const gameRef = useRef<GameRow | null>(null);
   const [gameAccess, setGameAccess] = useState<GameRouteAccessKind>('loading');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -800,6 +810,10 @@ export default function GamePage() {
   const joinOpenSeatInFlightRef = useRef(false);
 
   useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
     liveTimeoutInFlightRef.current = false;
   }, [gameId]);
 
@@ -854,10 +868,27 @@ export default function GamePage() {
           if (p.eventType !== 'UPDATE') return;
           const oldSt = p.old?.status;
           if (oldSt !== undefined && oldSt !== 'pending') return;
-          const row = p.new;
+          const row = p.new as {
+            status?: string;
+            resolution_game_id?: string | null;
+            tempo?: string | null;
+          };
           if (row.status === 'accepted' && row.resolution_game_id) {
-            router.push(`/game/${row.resolution_game_id}`);
-            setPendingRematchRequestId(null);
+            const gid = String(row.resolution_game_id).trim();
+            void (async () => {
+              const g = gameRef.current;
+              await navigateAfterAcceptIfAllowed({
+                flow: 'game-page-rematch-listener',
+                pathname,
+                router,
+                supabase,
+                authUserId: userId.trim() || null,
+                acceptedGameId: gid,
+                acceptedTempoHint: row.tempo ?? null,
+                boardGameFromPage: g ? { id: g.id, tempo: g.tempo ?? null } : null,
+              });
+              setPendingRematchRequestId(null);
+            })();
           }
         }
       )
@@ -865,7 +896,7 @@ export default function GamePage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [pendingRematchRequestId, router]);
+  }, [pendingRematchRequestId, router, pathname, userId]);
 
   useEffect(() => {
     if (!promotionPending) return;
@@ -973,8 +1004,11 @@ export default function GamePage() {
 
   const myColor = useMemo(() => {
     if (!game || !userId) return null;
-    if (game.white_player_id === userId) return 'white';
-    if (game.black_player_id === userId) return 'black';
+    const u = userId.trim().toLowerCase();
+    const w = String(game.white_player_id ?? '').trim().toLowerCase();
+    const b = String(game.black_player_id ?? '').trim().toLowerCase();
+    if (w && u === w) return 'white';
+    if (b && u === b) return 'black';
     return null;
   }, [game, userId]);
 
@@ -1216,6 +1250,7 @@ export default function GamePage() {
       setGame(null);
       setGameAccess('loading');
 
+      const perf = acclPerfTime(`game-page.initialLoad:${gameId}`);
       const { data: authData } = await supabase.auth.getUser();
       const uid = authData.user?.id ?? '';
       setUserId(uid);
@@ -1228,6 +1263,7 @@ export default function GamePage() {
         setGame(null);
         setGameAccess('spectate_unavailable');
       } finally {
+        perf.end();
         setLoading(false);
       }
     };
@@ -1258,12 +1294,19 @@ export default function GamePage() {
     joinOpenSeatInFlightRef.current = true;
     void (async () => {
       try {
+        if (
+          rowIndicatesLiveFreePlayPacing({ tempo: game.tempo, live_time_control: game.live_time_control }) &&
+          (await userInLiveFreeSeatedGame(supabase, userId))
+        ) {
+          setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
+          return;
+        }
         const { error } = await createSeatedGameGuard(supabase, {
           existingOpenSeatId: game.id,
           row: { black_player_id: userId },
         });
         if (error) {
-          setMessage(`Could not join as Black: ${error.message ?? 'Unknown error.'}`);
+          setMessage(formatCreateSeatedGameGuardError(error.message));
         }
       } finally {
         joinOpenSeatInFlightRef.current = false;
@@ -1272,6 +1315,19 @@ export default function GamePage() {
       }
     })();
   }, [joinOpenSeatIntent, game, userId, publicSpectate, gameId, router, loadGameSnapshot]);
+
+  /** Re-arm scoped host-follow if this user is waiting on a live free open seat (covers hosts who never hit Create/Find UI). */
+  useEffect(() => {
+    if (!game || !userId || publicSpectate) return;
+    if (game.play_context !== 'free' || game.tournament_id) return;
+    if (game.white_player_id !== userId) return;
+    if (game.black_player_id) return;
+    if (game.status !== 'active' && game.status !== 'waiting') return;
+    if (!rowIndicatesLiveFreePlayPacing({ tempo: game.tempo, live_time_control: game.live_time_control })) {
+      return;
+    }
+    registerHostLiveOpenSeatFollow(game.id);
+  }, [game, userId, publicSpectate]);
 
   useEffect(() => {
     if (!userId) {
@@ -1468,6 +1524,7 @@ export default function GamePage() {
       setMessage(error.message);
       return;
     }
+    clearHostLiveOpenSeatFollow();
     setGame(data as GameRow);
     void loadMoveLogs();
     window.setTimeout(() => {
@@ -1977,13 +2034,21 @@ export default function GamePage() {
           }}
         >
           <p style={{ fontSize: 18, marginBottom: 16 }}>Game not found</p>
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            style={{ padding: '8px 16px' }}
-          >
-            Back to home
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              style={{ padding: '8px 16px' }}
+            >
+              Back to home
+            </button>
+            <Link
+              href="/free/lobby"
+              style={{ padding: '8px 16px', border: '1px solid #64748b', borderRadius: 4, color: '#e2e8f0', textDecoration: 'none' }}
+            >
+              Back to lobby
+            </Link>
+          </div>
         </div>
       );
     }
@@ -2025,13 +2090,21 @@ export default function GamePage() {
           >
             Sign in to view
           </Link>
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            style={{ padding: '8px 16px', background: 'transparent', color: '#888', border: '1px solid #444' }}
-          >
-            Back to home
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              style={{ padding: '8px 16px', background: 'transparent', color: '#888', border: '1px solid #444' }}
+            >
+              Back to home
+            </button>
+            <Link
+              href="/free/lobby"
+              style={{ padding: '8px 16px', border: '1px solid #64748b', borderRadius: 4, color: '#e2e8f0', textDecoration: 'none' }}
+            >
+              Back to lobby
+            </Link>
+          </div>
         </div>
       );
     }
@@ -2059,13 +2132,21 @@ export default function GamePage() {
             <code style={{ color: '#cbd5e1' }}>?eco=k12</code> or <code style={{ color: '#cbd5e1' }}>?eco=adult</code> as
             appropriate.
           </p>
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            style={{ padding: '8px 16px' }}
-          >
-            Back to home
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              style={{ padding: '8px 16px' }}
+            >
+              Back to home
+            </button>
+            <Link
+              href="/free/lobby"
+              style={{ padding: '8px 16px', border: '1px solid #64748b', borderRadius: 4, color: '#e2e8f0', textDecoration: 'none' }}
+            >
+              Back to lobby
+            </Link>
+          </div>
         </div>
       );
     }
@@ -2084,13 +2165,21 @@ export default function GamePage() {
         }}
       >
         <p style={{ fontSize: 18, marginBottom: 16 }}>{message || 'Unable to load this game.'}</p>
-        <button
-          type="button"
-          onClick={() => router.push('/')}
-          style={{ padding: '8px 16px' }}
-        >
-          Back to home
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            style={{ padding: '8px 16px' }}
+          >
+            Back to home
+          </button>
+          <Link
+            href="/free/lobby"
+            style={{ padding: '8px 16px', border: '1px solid #64748b', borderRadius: 4, color: '#e2e8f0', textDecoration: 'none' }}
+          >
+            Back to lobby
+          </Link>
+        </div>
       </div>
     );
   }
@@ -2103,6 +2192,15 @@ export default function GamePage() {
     !isGameRecordFinished(g) && bothPlayersSeated(g) && (g.status === 'active' || g.status === 'waiting');
 
   const finishedRatingClass = game.status === 'finished' ? classifyGameForRating(game) : null;
+
+  const lobbyReturnHref = useMemo(() => {
+    const free =
+      String(game.play_context ?? '') === 'free' &&
+      (game.tournament_id == null || String(game.tournament_id).trim() === '');
+    if (!free) return '/free/lobby';
+    const m = platBucketForOpenSeat(game.tempo ?? null, game.live_time_control ?? null);
+    return m ? `/free/lobby/${m}` : '/free/lobby';
+  }, [game]);
 
   const showAbandonOpenSeat =
     !isSpectator &&
@@ -2319,6 +2417,35 @@ export default function GamePage() {
           <strong>Spectating</strong>
         </p>
       )}
+      {isSpectator &&
+      !isPublicViewer &&
+      game.play_context === 'free' &&
+      !game.tournament_id &&
+      bothPlayersSeated(game) &&
+      (game.status === 'active' || game.status === 'waiting') ? (
+        <p
+          data-testid="game-spectator-guest-hint"
+          style={{
+            margin: '0 0 12px 0',
+            padding: '10px 12px',
+            maxWidth: 560,
+            fontSize: 13,
+            lineHeight: 1.45,
+            color: '#cbd5e1',
+            border: '1px solid #475569',
+            borderRadius: 8,
+            background: '#0f172a',
+          }}
+        >
+          <strong style={{ color: '#e2e8f0' }}>Guest viewer</strong> — you are not White or Black on this game. You can
+          follow the live board and use <strong style={{ color: '#e2e8f0' }}>table chat</strong> below with the
+          players; piece moves are for the two seated players only. If you expected to play here, return to{' '}
+          <Link href="/free/lobby" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+            Lobby Chat
+          </Link>
+          .
+        </p>
+      ) : null}
 
       <p data-testid="game-row-id">
         <strong>Game ID:</strong>{' '}
@@ -2693,7 +2820,25 @@ export default function GamePage() {
         </div>
       )}
 
-      {message && <p>{message}</p>}
+      {message ? (
+        <div
+          role="alert"
+          data-testid="game-page-message-banner"
+          style={{
+            marginBottom: 14,
+            padding: '12px 14px',
+            maxWidth: 560,
+            borderRadius: 10,
+            border: '1px solid rgba(251, 191, 36, 0.45)',
+            background: 'rgba(69, 26, 3, 0.55)',
+            color: '#fde68a',
+            lineHeight: 1.5,
+            fontSize: 14,
+          }}
+        >
+          {message}
+        </div>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <button
@@ -2703,6 +2848,22 @@ export default function GamePage() {
         >
           Back to home
         </button>
+        <Link
+          href={lobbyReturnHref}
+          data-testid="game-back-to-lobby"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '8px 12px',
+            border: '1px solid #64748b',
+            borderRadius: 4,
+            color: '#e2e8f0',
+            textDecoration: 'none',
+            fontSize: 14,
+          }}
+        >
+          Back to lobby
+        </Link>
         {!isPublicViewer ? (
         <button
           type="button"
@@ -3317,10 +3478,13 @@ export default function GamePage() {
       ) : null}
       {!isPublicViewer && game ? (
         <GameTesterChatPanels
+          key={`chat-${game.id}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
           gameId={game.id}
           gameStatus={game.status}
           gameTempo={game.tempo ?? null}
           userId={userId}
+          whitePlayerId={game.white_player_id}
+          blackPlayerId={game.black_player_id}
           isSpectator={isSpectator}
           viewerEcosystem={viewerEcosystem}
           accessToken={chatAccessToken}

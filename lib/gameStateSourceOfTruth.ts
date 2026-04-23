@@ -1,5 +1,5 @@
 import { afterMoveTimingFields } from '@/lib/gameTiming';
-import { clockBudgetMsForGame } from '@/lib/gameTimeControl';
+import { clockBudgetMsForGame, liveFischerIncrementMsFromToken } from '@/lib/gameTimeControl';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export type AuthoritativeGameStatus = 'waiting' | 'active' | 'finished' | 'void';
@@ -60,6 +60,17 @@ export function buildAuthoritativeMovePatch(input: MovePatchInput): MoveWritePay
       ? Math.max(0, blackStoredBefore - elapsedSinceLastMove)
       : blackStoredBefore;
 
+  const incMs = liveFischerIncrementMsFromToken(input.liveTimeControl);
+  let whiteClockOut = whiteAfter;
+  let blackClockOut = blackAfter;
+  if (incMs > 0 && (tempo === 'live' || tempo === 'daily')) {
+    if (input.currentTurn === 'white') {
+      whiteClockOut = whiteAfter + incMs;
+    } else {
+      blackClockOut = blackAfter + incMs;
+    }
+  }
+
   const payload: MoveWritePayload = {
     fen: input.nextFen,
     turn: input.nextTurn,
@@ -67,8 +78,8 @@ export function buildAuthoritativeMovePatch(input: MovePatchInput): MoveWritePay
     move_deadline_at: timing.move_deadline_at,
     ...(tempo === 'live' || tempo === 'daily'
       ? {
-          white_clock_ms: whiteAfter,
-          black_clock_ms: blackAfter,
+          white_clock_ms: whiteClockOut,
+          black_clock_ms: blackClockOut,
         }
       : {}),
   };

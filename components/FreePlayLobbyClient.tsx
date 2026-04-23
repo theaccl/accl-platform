@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
+import { acclPerfTime } from '@/lib/acclPerfDebug';
 import { supabase } from '@/lib/supabaseClient';
 
 /**
@@ -11,17 +12,19 @@ import { supabase } from '@/lib/supabaseClient';
 export function FreePlayLobbyClient({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    void supabase.auth.getSession().then(() => setReady(true));
+    const t = acclPerfTime('free-lobby.getSession');
+    void supabase.auth.getSession().then(() => {
+      t.end();
+      setReady(true);
+    });
   }, []);
 
   return (
-    <div data-testid="free-lobby-root" className="flex-1 w-full min-h-0">
+    <div data-testid="free-lobby-root" className="relative flex-1 w-full min-h-0">
       {ready ? (
-        <span
-          data-testid="free-lobby-ready"
-          style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}
-          aria-hidden
-        />
+        <span className="sr-only" data-testid="free-lobby-ready">
+          Lobby session ready
+        </span>
       ) : null}
       {children}
     </div>

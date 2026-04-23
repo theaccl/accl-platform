@@ -17,8 +17,8 @@ function debugCreateSeatedGameGuardEnabled(): boolean {
  * - `app/game/[id]/page.tsx` — `?join=1` open-seat seating as Black.
  * - `lib/freePlayFindMatch.ts` — Find match / join compatible open seat.
  *
- * `/requests` **direct** match inbox accept should not use this path (it is not an open-seat claim); it uses
- * `POST /api/match-requests/accept` from `app/requests/page.tsx` instead.
+ * `/requests` **direct** match inbox accept uses `POST /api/match-requests/accept`.
+ * Open/public listing join uses `POST /api/match-requests/join-open-listing`.
  */
 export async function createSeatedGameGuard(
   supabase: SupabaseClient,

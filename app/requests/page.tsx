@@ -6,7 +6,8 @@
  * Execution trace (incoming direct challenge):
  * 1) UI: Incoming card → `onClick={() => void acceptRequest(r)}` (`data-testid="challenge-accept-<id>"`).
  * 2) `acceptRequest` → `POST /api/match-requests/accept` (Bearer session) — server performs `games.insert` + `match_requests` update.
- * 3) Open/public “Join” still uses `createGameFromRequest` (client `games.insert` only — no `create_seated_game_guard`).
+ *    Direct **live** accepts are blocked client + server if the addressee already has an active/waiting live free game (`Cannot accept while currently in a live game.`).
+ * 3) Open/public “Join” uses `POST /api/match-requests/join-open-listing` (void live queues server-side, then claim + insert).
  *
  * Production parity check (DevTools Network):
  * - Expected on **direct** Accept: `POST /api/match-requests/accept` — not `/rest/v1/rpc/create_seated_game_guard`.
@@ -15,14 +16,24 @@
  * Temporary runtime logging (opt-in, no rebuild required on web):
  * - In the browser console: `localStorage.setItem('accl_debug_requests_accept','1')` then reload and Accept.
  * - Optional env (requires rebuild): `NEXT_PUBLIC_ACCL_DEBUG_REQUESTS_ACCEPT=1`.
+ * - Accept redirect priority / navigation: `localStorage.setItem('accl_debug_accept_redirect','1')` or
+ *   `NEXT_PUBLIC_ACCL_DEBUG_ACCEPT_REDIRECT=1` → console `[ACCEPT_REDIRECT_TRACE]` (see `lib/postAcceptGameNavigation.ts`).
+ * - Performance: `localStorage.setItem('accl_debug_perf','1')` → `[ACCL_PERF]` timings (see `lib/acclPerfDebug.ts`).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { acclPerfMark, acclPerfTime } from '@/lib/acclPerfDebug';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
 import { gameRatedListLabel } from '@/lib/gameRated';
-import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
+import { userHasActiveWaitingLiveFreeGame, userInLiveFreeSeatedGame } from '@/lib/hasActiveWaitingLiveFreeGame';
+import {
+  isDirectOrPrivateLivePacedMatchRequest,
+  LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE,
+} from '@/lib/liveChallengeAcceptGuard';
+import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
+import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
@@ -56,14 +67,6 @@ function shortPlayerLabel(id: string, nameById: Record<string, string>): string 
   return `${t.slice(0, 8)}…`;
 }
 
-function supabaseErrText(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const m = String((err as { message: unknown }).message ?? '').trim();
-    if (m) return m;
-  }
-  return fallback;
-}
-
 function debugRequestsAcceptEnabled(): boolean {
   if (process.env.NODE_ENV === 'development') return true;
   if (process.env.NEXT_PUBLIC_ACCL_DEBUG_REQUESTS_ACCEPT === '1') return true;
@@ -75,8 +78,10 @@ function debugRequestsAcceptEnabled(): boolean {
 
 export default function RequestsPage() {
   const router = useRouter();
+  const pathname = usePathname() ?? '';
   const openIdentity = useOpenPublicIdentityCard();
   const actionInFlightRef = useRef(false);
+  const fetchRequestsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [requests, setRequests] = useState<MatchRequestRow[]>([]);
@@ -86,6 +91,7 @@ export default function RequestsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const t = acclPerfTime('requests-page.auth.getUser');
     void (async () => {
       const { data } = await supabase.auth.getUser();
       if (cancelled) return;
@@ -93,17 +99,44 @@ export default function RequestsPage() {
       setAuthUserId(uid);
       setAuthResolved(true);
       if (!uid) router.replace('/login');
+      t.end({ hasUser: Boolean(uid) });
     })();
     return () => {
       cancelled = true;
     };
   }, [router]);
 
+  /** After accept succeeds: shared priority gate + path-based “current board” resolution. */
+  const navigateAfterAcceptIfHigherPriority = useCallback(
+    async (newGameId: string, tempoHint?: string | null) => {
+      await navigateAfterAcceptIfAllowed({
+        flow: 'requests-page',
+        pathname,
+        router,
+        supabase,
+        authUserId,
+        acceptedGameId: newGameId,
+        acceptedTempoHint: tempoHint ?? null,
+        boardGameFromPage: null,
+        onSkipNavigate: () => {
+          if (typeof console !== 'undefined') {
+            console.log('Accepted game without redirect (lower priority)');
+          }
+          setMessage(
+            'Match accepted — your current game has priority. Open the new game from Match requests when you are ready.'
+          );
+        },
+      });
+    },
+    [authUserId, pathname, router]
+  );
+
   const fetchRequests = useCallback(async () => {
     if (!authUserId) {
       setRequests([]);
       return;
     }
+    const t = acclPerfTime('requests-page.fetchRequests');
     const { data, error } = await supabase
       .from('match_requests')
       .select('*')
@@ -114,10 +147,22 @@ export default function RequestsPage() {
       .order('created_at', { ascending: false });
     if (error) {
       setMessage(error.message);
+      t.end({ error: error.message });
       return;
     }
     setRequests((data ?? []) as MatchRequestRow[]);
+    t.end({ rows: Array.isArray(data) ? data.length : 0 });
   }, [authUserId]);
+
+  const scheduleFetchRequests = useCallback(() => {
+    if (fetchRequestsDebounceRef.current) {
+      clearTimeout(fetchRequestsDebounceRef.current);
+    }
+    fetchRequestsDebounceRef.current = setTimeout(() => {
+      fetchRequestsDebounceRef.current = null;
+      void fetchRequests();
+    }, 320);
+  }, [fetchRequests]);
 
   useEffect(() => {
     if (!authResolved || !authUserId) return;
@@ -155,87 +200,43 @@ export default function RequestsPage() {
 
   useEffect(() => {
     if (!authResolved || !authUserId) return;
+    acclPerfMark('requests-page.realtime.subscribe', { authUserId });
+    const uid = authUserId;
     const channel = supabase
-      .channel(`requests-${authUserId}`)
+      .channel(`requests-${uid}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'match_requests' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'match_requests',
+          filter: `to_user_id=eq.${uid}`,
+        },
         () => {
-          void fetchRequests();
+          scheduleFetchRequests();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'match_requests',
+          filter: `from_user_id=eq.${uid}`,
+        },
+        () => {
+          scheduleFetchRequests();
         }
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      if (fetchRequestsDebounceRef.current) {
+        clearTimeout(fetchRequestsDebounceRef.current);
+        fetchRequestsDebounceRef.current = null;
+      }
+      void supabase.removeChannel(channel);
     };
-  }, [authResolved, authUserId, fetchRequests]);
-
-  const createGameFromRequest = useCallback(
-    async (r: MatchRequestRow) => {
-      if (debugRequestsAcceptEnabled()) {
-        console.warn('[accl-debug] /requests createGameFromRequest → games.insert path', {
-          requestId: r.id,
-          request_type: r.request_type,
-          visibility: r.visibility ?? null,
-          tempo: r.tempo ?? null,
-          live_time_control: r.live_time_control ?? null,
-          rated: r.rated ?? null,
-        });
-      }
-      const challengeRow = { ...gameInsertFromAcceptedChallenge(r) };
-      /** Match request accept: two seated players — never use free-play open-seat RPC here. */
-      const gameCreateRes = await supabase.from('games').insert(challengeRow).select('id').single();
-      const newGame = gameCreateRes.data;
-      const gErr = gameCreateRes.error;
-      if (gErr) {
-        return {
-          error: new Error(supabaseErrText(gErr, 'Could not create the game from this request.')),
-        };
-      }
-      const rawId =
-        newGame && typeof newGame === 'object' && 'id' in newGame
-          ? String((newGame as { id?: string }).id ?? '').trim()
-          : '';
-      if (!rawId) {
-        return {
-          error: new Error(
-            'Game was not created (empty server response). Try again, or refresh if the request already resolved.'
-          ),
-        };
-      }
-      const gid = rawId;
-      const { data: updatedRows, error: uErr } = await supabase
-        .from('match_requests')
-        .update({
-          status: 'accepted',
-          resolution_game_id: gid,
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', r.id)
-        .eq('status', 'pending')
-        .select('id');
-      if (uErr) {
-        return {
-          error: new Error(
-            supabaseErrText(
-              uErr,
-              'Game may have been created but the match request could not be marked accepted. Refresh match requests.'
-            )
-          ),
-        };
-      }
-      const n = Array.isArray(updatedRows) ? updatedRows.length : updatedRows ? 1 : 0;
-      if (n === 0) {
-        return {
-          error: new Error(
-            'This request is no longer pending — it may have been accepted, cancelled, or declined already. Refresh the page.'
-          ),
-        };
-      }
-      return { gameId: gid };
-    },
-    []
-  );
+  }, [authResolved, authUserId, scheduleFetchRequests]);
 
   const acceptRequest = useCallback(
     async (r: MatchRequestRow) => {
@@ -260,6 +261,12 @@ export default function RequestsPage() {
           setMessage('Sign in to accept a match request.');
           return;
         }
+        if (isDirect(r) && isDirectOrPrivateLivePacedMatchRequest(r)) {
+          if (await userHasActiveWaitingLiveFreeGame(supabase, authUserId)) {
+            setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
+            return;
+          }
+        }
         const httpRes = await fetch('/api/match-requests/accept', {
           method: 'POST',
           headers: {
@@ -283,13 +290,13 @@ export default function RequestsPage() {
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
-        router.push(`/game/${gid}`);
+        await navigateAfterAcceptIfHigherPriority(gid, r.tempo ?? null);
       } finally {
         actionInFlightRef.current = false;
         setBusyReqId(null);
       }
     },
-    [authUserId, router]
+    [authUserId, navigateAfterAcceptIfHigherPriority]
   );
 
   const joinOpenListing = useCallback(
@@ -300,33 +307,46 @@ export default function RequestsPage() {
       setBusyReqId(r.id);
       setMessage('');
       try {
-        const { data: claimed, error: claimError } = await supabase
-          .from('match_requests')
-          .update({ to_user_id: authUserId })
-          .eq('id', r.id)
-          .eq('status', 'pending')
-          .eq('visibility', 'open')
-          .or(`to_user_id.is.null,to_user_id.eq.${authUserId}`)
-          .select('*')
-          .single();
-        if (claimError) {
-          setMessage(claimError.message);
+        if (rowIndicatesLiveFreePlayPacing(r) && (await userInLiveFreeSeatedGame(supabase, authUserId))) {
+          setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
           return;
         }
-        const claimedRow = claimed as MatchRequestRow;
-        const res = await createGameFromRequest(claimedRow);
-        if (res.error) {
-          setMessage(res.error.message);
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token?.trim();
+        if (!token) {
+          setMessage('Sign in to join a listing.');
+          return;
+        }
+        const httpRes = await fetch('/api/match-requests/join-open-listing', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requestId: r.id }),
+        });
+        const payload = (await httpRes.json().catch(() => ({}))) as { error?: unknown; gameId?: unknown };
+        if (!httpRes.ok) {
+          const err =
+            typeof payload.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : `Join failed (${httpRes.status})`;
+          setMessage(err);
+          return;
+        }
+        const gid = typeof payload.gameId === 'string' ? payload.gameId.trim() : '';
+        if (!gid) {
+          setMessage('Join succeeded but no game id was returned. Refresh match requests.');
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
-        if (res.gameId) router.push(`/game/${res.gameId}`);
+        await navigateAfterAcceptIfHigherPriority(gid, r.tempo ?? null);
       } finally {
         actionInFlightRef.current = false;
         setBusyReqId(null);
       }
     },
-    [authUserId, createGameFromRequest, router]
+    [authUserId, navigateAfterAcceptIfHigherPriority]
   );
 
   const declineRequest = useCallback(

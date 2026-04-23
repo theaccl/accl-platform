@@ -27,6 +27,7 @@ test.describe('usernameRules', () => {
     expect(profileRowNeedsUsername(null)).toBe(true);
     expect(profileRowNeedsUsername('')).toBe(true);
     expect(profileRowNeedsUsername('   ')).toBe(true);
+    expect(profileRowNeedsUsername('player_e84bd3f2')).toBe(true);
     expect(profileRowNeedsUsername('x')).toBe(false);
   });
 });

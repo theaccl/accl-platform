@@ -3,7 +3,7 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   PLAT_MODE_LABELS,
   PLAT_MODE_ORDER,
@@ -30,6 +30,7 @@ import {
   type PublicP1Read,
 } from '@/lib/p1PublicRatingRead';
 import { validateAcclUsername } from '@/lib/usernameRules';
+import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
@@ -153,6 +154,7 @@ async function loadOpponentP1Snapshot(profile: Profile): Promise<{
 }
 
 export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep = false }: Props) {
+  const pathname = usePathname() ?? '';
   const router = useRouter();
   const openIdentity = useOpenPublicIdentityCard();
   const [opponentEmail, setOpponentEmail] = useState('');
@@ -270,8 +272,23 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
           if (oldSt !== undefined && oldSt !== 'pending') return;
           const row = p.new;
           if (row.status === 'accepted' && row.resolution_game_id) {
-            router.push(`/game/${row.resolution_game_id}`);
-            setPendingChallengeRequestId(null);
+            void (async () => {
+              const gid = String(row.resolution_game_id).trim();
+              const reqRow = row as { tempo?: string | null };
+              const acceptedTempo = reqRow.tempo ?? null;
+              const { data: auth } = await supabase.auth.getUser();
+              await navigateAfterAcceptIfAllowed({
+                flow: 'direct-challenge-panel',
+                pathname,
+                router,
+                supabase,
+                authUserId: auth.user?.id ?? null,
+                acceptedGameId: gid,
+                acceptedTempoHint: acceptedTempo,
+                boardGameFromPage: null,
+              });
+              setPendingChallengeRequestId(null);
+            })();
           }
         }
       )
@@ -279,7 +296,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [pendingChallengeRequestId, router]);
+  }, [pendingChallengeRequestId, router, pathname]);
 
   const findOpponent = async () => {
     if (findBusy || challengeBusy) return;

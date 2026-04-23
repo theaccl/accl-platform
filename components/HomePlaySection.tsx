@@ -8,7 +8,9 @@ import {
   isLobbyNonFinishedGame,
   partitionNonFinishedLobbyGames,
 } from '@/lib/freePlayLobby';
+import type { FreePlayQueueResult } from '@/lib/freePlayFindMatch';
 import { runFreePlayCreateGame, runFreePlayFindMatchAutomatic } from '@/lib/freePlayFindMatch';
+import { registerHostLiveOpenSeatFollow } from '@/lib/hostLiveOpenSeatFollow';
 import {
   coercePlatTimeForMode,
   defaultPlatTimeControl,
@@ -79,7 +81,7 @@ export function HomePlaySection({
   }, []);
 
   const handleQueueResult = useCallback(
-    (res: { gameId: string } | { error: string; resumeGameId?: string; suggestCreate?: boolean }) => {
+    (res: FreePlayQueueResult) => {
       if ('error' in res) {
         if ('resumeGameId' in res && res.resumeGameId) {
           router.push(`/game/${res.resumeGameId}`);
@@ -90,6 +92,9 @@ export function HomePlaySection({
         return;
       }
       setSuggestCreate(false);
+      if (res.hostLiveOpenSeat) {
+        registerHostLiveOpenSeatFollow(res.gameId);
+      }
       router.push(`/game/${res.gameId}`);
     },
     [router]

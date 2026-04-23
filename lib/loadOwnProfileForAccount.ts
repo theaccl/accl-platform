@@ -39,7 +39,8 @@ export async function loadOrCreateOwnProfile(
     .from('profiles')
     .insert({
       id: user.id,
-      username: (typeof user.user_metadata?.username === 'string' ? user.user_metadata.username : null) ?? null,
+      // Keep username empty until explicit claim/onboarding writes a validated value.
+      username: null,
     })
     .select('username,bio,flag,avatar_path')
     .single();

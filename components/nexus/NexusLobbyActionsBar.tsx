@@ -14,13 +14,27 @@ const btnSecondary =
 
   "flex min-h-[48px] min-w-[120px] flex-1 items-center justify-center rounded-xl border border-white/[0.12] bg-[#141820] px-3 text-center text-sm font-semibold text-gray-200 transition hover:border-sky-500/40 hover:bg-[#1a2230]";
 
+const btnWatch =
+
+  "flex min-h-[48px] min-w-[120px] flex-1 items-center justify-center rounded-xl border border-violet-500/45 bg-violet-950/35 px-3 text-center text-sm font-semibold text-violet-50 transition hover:border-violet-400/55 hover:bg-violet-950/55";
+
 
 
 type NexusLobbyActionsBarProps = {
 
+  /** Scroll target for the watch / spectate block (mode rooms). */
+
+  watchSpectatorHref?: string;
+
+  watchSpectatorLabel?: string;
+
   /** Public open-seat + queue (scroll target on pages that embed `FreePlayMatchPanel`). */
 
   publicGameHref?: string;
+
+  /** Label for the scroll link (defaults to “Queue” — not only “Create game”). */
+
+  publicGameScrollLabel?: string;
 
   /** Private invite by username — not the public queue. */
 
@@ -42,7 +56,13 @@ type NexusLobbyActionsBarProps = {
 
 export default function NexusLobbyActionsBar({
 
+  watchSpectatorHref,
+
+  watchSpectatorLabel = "Watch live",
+
   publicGameHref = "#free-find-match-anchor",
+
+  publicGameScrollLabel = "Queue",
 
   directChallengeHref = "/free/create",
 
@@ -66,9 +86,19 @@ export default function NexusLobbyActionsBar({
 
       >
 
+        {watchSpectatorHref ? (
+          <a
+            href={watchSpectatorHref}
+            className={btnWatch}
+            data-testid="nexus-lobby-watch-spectator"
+          >
+            {watchSpectatorLabel}
+          </a>
+        ) : null}
+
         <a href={publicGameHref} className={btn} data-testid="nexus-lobby-public-game">
 
-          Create game
+          {publicGameScrollLabel}
 
         </a>
 

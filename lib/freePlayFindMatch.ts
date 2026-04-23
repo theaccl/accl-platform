@@ -3,7 +3,7 @@
  *
  * - **Open queue (UI):** list + manual Accept → join one seat (`FreeLobbyOpenGamesList` + `createSeatedGameGuard`).
  * - **Create game:** post a new open seat only (`runFreePlayCreateGame`).
- * - **Find match:** pick one random compatible seat from OpenQ and join only — never creates (`runFreePlayFindMatchAutomatic`).
+ * - **Find match:** join a random compatible open seat if any; otherwise **post** an open seat (same as Create) and wait.
  *
  * Integrity: RLS limits cross-user visibility; server RPCs enforce busy rules (see migrations).
  */
@@ -12,6 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { openSeatNewGameInsert } from '@/lib/gameStartupInsert';
 import type { GameTempo } from '@/lib/gameTempo';
+import { normalizeGameTempo } from '@/lib/gameTempo';
 import {
   type PlatMode,
   coercePlatTimeForMode,
@@ -19,6 +20,8 @@ import {
 } from '@/lib/freePlayModeTimeControl';
 import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOpenSeatsFilter';
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
+import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
+import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 
 export type { PlatMode } from '@/lib/freePlayModeTimeControl';
 
@@ -30,8 +33,8 @@ export type FreePlayQueueArgs = {
 };
 
 export type FreePlayQueueResult =
-  | { gameId: string }
-  | { error: string; resumeGameId?: string; suggestCreate?: boolean };
+  | { gameId: string; /** True when this session just **posted** a live open seat (not joined someone else's). */ hostLiveOpenSeat?: boolean }
+  | { error: string; resumeGameId?: string; suggestCreate?: boolean }; // suggestCreate reserved for non–find-match errors
 
 type OpenSeatCandidate = {
   id: string;
@@ -41,7 +44,9 @@ type OpenSeatCandidate = {
   rated: boolean | null;
 };
 
-const BUSY_MSG = 'You already have a free game in progress. Resume it before using the queue.';
+/** Shown when Create / Find / manual accept would violate one-active-or-waiting rule. */
+export const FREE_PLAY_QUEUE_BUSY_MESSAGE =
+  'You already have an active or waiting game. Leave that seat or resume that game before joining another.';
 
 function buildOpenSeatRow(
   userId: string,
@@ -59,13 +64,15 @@ function buildOpenSeatRow(
   return { ...base, tempo: 'live' as GameTempo, live_time_control: ltc };
 }
 
-async function assertFreePlayQueueEligible(
+/** Client-side gate: same rules as Create / Find before navigating to accept an open seat. */
+export async function checkUserFreePlayQueueEligible(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  targetTempo?: GameTempo
 ): Promise<{ ok: true } | { error: string; resumeGameId?: string }> {
   const { data: mine, error: mineErr } = await supabase
     .from('games')
-    .select('id,white_player_id,black_player_id')
+    .select('id,white_player_id,black_player_id,tempo,live_time_control')
     .eq('play_context', 'free')
     .is('tournament_id', null)
     .in('status', ['active', 'waiting'])
@@ -76,17 +83,31 @@ async function assertFreePlayQueueEligible(
     return { error: mineErr.message || 'Could not verify your active games.' };
   }
 
+  if (normalizeGameTempo(targetTempo) === 'live') {
+    const liveBusy = (mine ?? []).find((g) => {
+      const row = g as { tempo?: string | null; live_time_control?: string | null };
+      if (!rowIndicatesLiveFreePlayPacing(row)) return false;
+      const w = g.white_player_id;
+      const b = g.black_player_id;
+      if (w && b) return true;
+      return w === userId || b === userId;
+    });
+    if (liveBusy?.id) {
+      return { error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE, resumeGameId: liveBusy.id };
+    }
+  }
+
   for (const g of mine ?? []) {
     const w = g.white_player_id;
     const b = g.black_player_id;
     if (w && b) {
-      return { error: BUSY_MSG, resumeGameId: g.id };
+      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: g.id };
     }
     if (w === userId && !b) {
-      return { error: BUSY_MSG, resumeGameId: g.id };
+      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: g.id };
     }
     if (b === userId && !w) {
-      return { error: BUSY_MSG, resumeGameId: g.id };
+      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: g.id };
     }
   }
 
@@ -189,7 +210,7 @@ export async function runFreePlayCreateGame(
     return { error: 'Invalid time control for the selected mode.' };
   }
 
-  const gate = await assertFreePlayQueueEligible(supabase, userId);
+  const gate = await checkUserFreePlayQueueEligible(supabase, userId, mode === 'daily' ? 'daily' : 'live');
   if (!('ok' in gate)) {
     return { error: gate.error, resumeGameId: gate.resumeGameId };
   }
@@ -201,11 +222,11 @@ export async function runFreePlayCreateGame(
   }
   const id = created?.id as string | undefined;
   if (!id) return { error: 'Could not post to the queue.' };
-  return { gameId: id };
+  return { gameId: id, hostLiveOpenSeat: mode !== 'daily' };
 }
 
 /**
- * **Find match** — pick one random compatible seat from OpenQ and join; never creates a new row.
+ * **Find match** — join a random compatible open seat if one exists; otherwise post a new open seat (same as Create) and wait.
  */
 export async function runFreePlayFindMatchAutomatic(
   supabase: SupabaseClient,
@@ -218,7 +239,7 @@ export async function runFreePlayFindMatchAutomatic(
     return { error: 'Invalid time control for the selected mode.' };
   }
 
-  const gate = await assertFreePlayQueueEligible(supabase, userId);
+  const gate = await checkUserFreePlayQueueEligible(supabase, userId, mode === 'daily' ? 'daily' : 'live');
   if (!('ok' in gate)) {
     return { error: gate.error, resumeGameId: gate.resumeGameId };
   }
@@ -235,10 +256,7 @@ export async function runFreePlayFindMatchAutomatic(
   }
 
   if (rows.length === 0) {
-    return {
-      error: 'No opponent found.',
-      suggestCreate: true,
-    };
+    return runFreePlayCreateGame(supabase, args);
   }
 
   const pick = rows[Math.floor(Math.random() * rows.length)];
@@ -255,7 +273,7 @@ export async function runFreePlayFindMatchAutomatic(
   }
 
   if (joined && typeof joined === 'object' && 'id' in joined && (joined as { id: string }).id) {
-    return { gameId: (joined as { id: string }).id };
+    return { gameId: (joined as { id: string }).id, hostLiveOpenSeat: false };
   }
 
   return { error: 'Could not complete match. Try again.' };

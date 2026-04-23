@@ -239,6 +239,8 @@ export default function GameTesterChatPanels({
   gameStatus,
   gameTempo,
   userId,
+  whitePlayerId,
+  blackPlayerId,
   isSpectator,
   viewerEcosystem,
   accessToken,
@@ -248,6 +250,9 @@ export default function GameTesterChatPanels({
   /** `live` enables spectator chat; daily/correspondence have no in-game spectator channel (P2). */
   gameTempo: string | null;
   userId: string;
+  /** Seat ids for label logic (case-normalized); avoids mismatches vs board `isSpectator` when UUID casing differs. */
+  whitePlayerId: string;
+  blackPlayerId: string | null;
   isSpectator: boolean;
   viewerEcosystem: 'adult' | 'k12';
   accessToken: string | null;
@@ -262,7 +267,23 @@ export default function GameTesterChatPanels({
   /** Live games only: in-game chat uses spectator channel (players + viewers); not for daily/corr. */
   const showSpectator = isLive;
 
-  const devTraceRole = isSpectator ? 'spectator' : 'player';
+  const viewerIsTableParticipant =
+    !isSpectator ||
+    (!!userId &&
+      (() => {
+        const u = userId.trim().toLowerCase();
+        const w = String(whitePlayerId ?? '').trim().toLowerCase();
+        const b = String(blackPlayerId ?? '').trim().toLowerCase();
+        return (w.length > 0 && u === w) || (b.length > 0 && u === b);
+      })());
+
+  /** Labels: DB channel is `game_spectator`; seated players must not see “Spectator chat” as the panel title. */
+  const liveTableChatTitle = viewerIsTableParticipant ? 'Table chat (live)' : 'Spectator chat (live games)';
+  const liveTableChatSubtitle = viewerIsTableParticipant
+    ? 'You, your opponent, and viewers share this thread — the in-game channel during live play.'
+    : 'Viewers and players use this channel during the game — separate from post-game player chat.';
+
+  const devTraceRole = viewerIsTableParticipant ? 'player' : 'spectator';
 
   const [specMessages, setSpecMessages] = useState<ChatMsg[]>([]);
   const [playMessages, setPlayMessages] = useState<ChatMsg[]>([]);
@@ -710,8 +731,9 @@ export default function GameTesterChatPanels({
     <div data-testid="game-tester-chat-panels" style={{ marginTop: 20, maxWidth: 520 }}>
       <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
         <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — authenticated only; channels are separated.
-        During live games, only spectator chat is available in-game; player chat unlocks after the game ends.
-        Spectator chat is not used for daily/correspondence games.{' '}
+        During live games, the table uses one shared channel (labeled “Table chat” for players, “Spectator chat” for
+        viewers); post-game player-only chat unlocks after the game ends. Daily/correspondence boards do not use this
+        live channel.{' '}
         <Link href={lobbyHref} style={{ color: '#93c5fd' }}>
           Tester mode chat
         </Link>
@@ -764,12 +786,8 @@ export default function GameTesterChatPanels({
       ) : null}
       {showSpectator ? (
         <ChatStrip
-          title="Spectator chat (live games)"
-          subtitle={
-            isSpectator
-              ? 'Viewers and players use this channel during the game — separate from post-game player chat.'
-              : 'During an active live game, use this channel; separate from post-game player chat.'
-          }
+          title={liveTableChatTitle}
+          subtitle={liveTableChatSubtitle}
           accent="#a855f7"
           messages={specMessages}
           busy={specBusy}

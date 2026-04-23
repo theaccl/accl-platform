@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
+import { acclPerfMark } from "@/lib/acclPerfDebug";
+import { navigateAfterAcceptIfAllowed } from "@/lib/postAcceptGameNavigation";
 
 /** Free-play games created from challenge / open listing / rematch request — not tournaments or bots. */
 const REDIRECT_SOURCE_TYPES = new Set(["challenge", "open_listing", "rematch_request"]);
@@ -48,7 +50,7 @@ export function SenderChallengeGameRedirectListener() {
     }
     const uid = sessionUserId;
 
-    const tryNavigateToGame = (gameId: string) => {
+    const tryNavigateToGame = async (gameId: string, acceptedTempo: string | null | undefined) => {
       const g = gameId.trim();
       if (!g) {
         return;
@@ -62,8 +64,19 @@ export function SenderChallengeGameRedirectListener() {
       if (prev && prev.gameId === g && now - prev.at < 2500) {
         return;
       }
-      lastPushRef.current = { gameId: g, at: now };
-      router.push(`/game/${g}`);
+      const didPush = await navigateAfterAcceptIfAllowed({
+        flow: "sender-challenge-game-redirect-listener",
+        pathname: path,
+        router,
+        supabase,
+        authUserId: uid,
+        acceptedGameId: g,
+        acceptedTempoHint: acceptedTempo ?? null,
+        boardGameFromPage: null,
+      });
+      if (didPush) {
+        lastPushRef.current = { gameId: g, at: Date.now() };
+      }
     };
 
     const shouldRedirectOnGameInsert = (row: Record<string, unknown>): boolean => {
@@ -96,7 +109,7 @@ export function SenderChallengeGameRedirectListener() {
       if (!id) {
         return;
       }
-      tryNavigateToGame(id);
+      void tryNavigateToGame(id, String(row.tempo ?? ""));
     };
 
     const onOutgoingRequestResolved = (payload: { new: Record<string, unknown> }) => {
@@ -111,9 +124,15 @@ export function SenderChallengeGameRedirectListener() {
       if (!gid) {
         return;
       }
-      tryNavigateToGame(gid);
+      void tryNavigateToGame(gid, String(row.tempo ?? ""));
     };
 
+    acclPerfMark("SenderChallengeGameRedirectListener.realtime.subscribe", { uid });
+    /**
+     * Intentionally **no** `games` UPDATE listeners here: filtering `white_player_id=eq.uid` / `black_player_id=eq.uid`
+     * receives every move/update on active boards (very high volume) and was a major production perf cost.
+     * Open-seat host auto-follow after join: `HostLiveOpenSeatFollowListener` (`games` UPDATE, `id=eq.<gameId>` only).
+     */
     channel
       .on(
         "postgres_changes",

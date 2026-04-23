@@ -6,6 +6,7 @@
 const MIN_LEN = 3;
 const MAX_LEN = 20;
 const USERNAME_RE = /^[a-z][a-z0-9_]{2,19}$/;
+const GENERATED_FALLBACK_RE = /^player_[a-f0-9]{8}$/;
 
 const RESERVED = new Set([
   'admin',
@@ -52,5 +53,6 @@ export function validateAcclUsername(raw: string): UsernameValidation {
 }
 
 export function profileRowNeedsUsername(username: string | null | undefined): boolean {
-  return !String(username ?? '').trim();
+  const trimmed = String(username ?? '').trim();
+  return !trimmed || GENERATED_FALLBACK_RE.test(trimmed.toLowerCase());
 }

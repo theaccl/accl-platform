@@ -2,7 +2,7 @@ import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { NexusEcosystem, NexusLiveGame } from '@/lib/nexus/getNexusData';
 import { ratingFromPlayerRatingsMap } from '@/lib/p1PublicRatingRead';
 
-const WATCH_TCS = new Set(['10m', '15m', '30m', '60m']);
+const WATCH_TCS = new Set(['10m', '15m', '20m', '30m', '60m']);
 
 export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLiveGame[]> {
   const supabase = createServiceRoleClient();
