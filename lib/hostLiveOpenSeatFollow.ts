@@ -23,7 +23,7 @@ export function readStoredHostLiveOpenSeatGameId(): string | null {
 }
 
 export function registerHostLiveOpenSeatFollow(gameId: string): void {
-  const id = gameId.trim();
+  const id = String(gameId ?? '').trim();
   if (!id || typeof window === 'undefined') return;
   try {
     sessionStorage.setItem(STORAGE_KEY, id);

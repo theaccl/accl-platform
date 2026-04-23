@@ -49,11 +49,17 @@ export function HostLiveOpenSeatFollowListener() {
   const pathname = usePathname() ?? "";
   const pathnameRef = useRef(pathname);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [watchGameId, setWatchGameId] = useState<string | null>(() => readStoredHostLiveOpenSeatGameId());
+  /** Always start null — hydrate from sessionStorage after mount to avoid SSR/client hydration mismatch. */
+  const [watchGameId, setWatchGameId] = useState<string | null>(null);
 
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
+
+  useEffect(() => {
+    const stored = readStoredHostLiveOpenSeatGameId();
+    if (stored) setWatchGameId(stored);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

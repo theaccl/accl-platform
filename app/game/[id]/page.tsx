@@ -1319,14 +1319,20 @@ export default function GamePage() {
   /** Re-arm scoped host-follow if this user is waiting on a live free open seat (covers hosts who never hit Create/Find UI). */
   useEffect(() => {
     if (!game || !userId || publicSpectate) return;
+    const gid = String(game.id ?? '').trim();
+    if (!gid) return;
     if (game.play_context !== 'free' || game.tournament_id) return;
     if (game.white_player_id !== userId) return;
     if (game.black_player_id) return;
     if (game.status !== 'active' && game.status !== 'waiting') return;
-    if (!rowIndicatesLiveFreePlayPacing({ tempo: game.tempo, live_time_control: game.live_time_control })) {
+    try {
+      if (!rowIndicatesLiveFreePlayPacing({ tempo: game.tempo, live_time_control: game.live_time_control })) {
+        return;
+      }
+    } catch {
       return;
     }
-    registerHostLiveOpenSeatFollow(game.id);
+    registerHostLiveOpenSeatFollow(gid);
   }, [game, userId, publicSpectate]);
 
   useEffect(() => {
@@ -1999,6 +2005,17 @@ export default function GamePage() {
     return buildPairedAnalysisRows(effectiveAnalysis);
   }, [effectiveAnalysis]);
 
+  /** Must run before any conditional returns — hooks order must not depend on `loading` / `game`. */
+  const lobbyReturnHref = useMemo(() => {
+    if (!game) return '/free/lobby';
+    const free =
+      String(game.play_context ?? '') === 'free' &&
+      (game.tournament_id == null || String(game.tournament_id).trim() === '');
+    if (!free) return '/free/lobby';
+    const m = platBucketForOpenSeat(game.tempo ?? null, game.live_time_control ?? null);
+    return m ? `/free/lobby/${m}` : '/free/lobby';
+  }, [game]);
+
   if (loading) {
     return (
       <div
@@ -2192,15 +2209,6 @@ export default function GamePage() {
     !isGameRecordFinished(g) && bothPlayersSeated(g) && (g.status === 'active' || g.status === 'waiting');
 
   const finishedRatingClass = game.status === 'finished' ? classifyGameForRating(game) : null;
-
-  const lobbyReturnHref = useMemo(() => {
-    const free =
-      String(game.play_context ?? '') === 'free' &&
-      (game.tournament_id == null || String(game.tournament_id).trim() === '');
-    if (!free) return '/free/lobby';
-    const m = platBucketForOpenSeat(game.tempo ?? null, game.live_time_control ?? null);
-    return m ? `/free/lobby/${m}` : '/free/lobby';
-  }, [game]);
 
   const showAbandonOpenSeat =
     !isSpectator &&
