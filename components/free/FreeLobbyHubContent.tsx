@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useMemo } from 'react';
 
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayOpenPairingByMode } from '@/components/free/FreePlayOpenPairingByMode';
@@ -10,7 +11,11 @@ import { nexusPrestigeRoot } from '@/components/nexus/nexusShellTheme';
 import { nexusModuleHeadingClass } from '@/components/nexus/NexusHeader';
 import { useFreeOpenSeatActivity } from '@/hooks/useFreeOpenSeatActivity';
 import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
-import { PLAT_MODE_LABELS, PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
+import {
+  PLAT_MODE_LABELS,
+  PLAT_MODE_ORDER,
+  type PlatMode,
+} from '@/lib/freePlayModeTimeControl';
 import { FREE_PLAY_LOBBY_GENERAL_ROOM } from '@/lib/lobbyChatRooms';
 
 const focusRing =
@@ -22,6 +27,20 @@ const focusRing =
 export function FreeLobbyHubContent() {
   const { activity, loading } = useFreeOpenSeatActivity();
   const watchList = useFreePlayWatchList('adult');
+
+  const watchClockHints = useMemo(() => {
+    if (!watchList.data) return undefined;
+    return PLAT_MODE_ORDER.reduce(
+      (acc, m) => {
+        const keys = [
+          ...new Set(watchList.data!.byMode[m].map((r) => r.liveTimeControlKey).filter(Boolean)),
+        ].sort();
+        acc[m] = keys;
+        return acc;
+      },
+      {} as Record<PlatMode, string[]>
+    );
+  }, [watchList.data]);
 
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
@@ -44,6 +63,7 @@ export function FreeLobbyHubContent() {
           activity={activity}
           loading={loading}
           watchActivity={watchList.data?.watchActivity}
+          watchClockHints={watchClockHints}
         />
 
         <p className="mt-3 text-xs text-gray-500">

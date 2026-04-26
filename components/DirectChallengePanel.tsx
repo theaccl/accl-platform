@@ -31,6 +31,7 @@ import {
 } from '@/lib/p1PublicRatingRead';
 import { validateAcclUsername } from '@/lib/usernameRules';
 import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
+import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { supabase } from '@/lib/supabaseClient';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
@@ -363,7 +364,8 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
     try {
       const stored = platSelectionToStoredGameFields(platMode, platClock);
       challengeTempo = stored.tempo;
-      challengeLtc = stored.live_time_control;
+      const t = challengeTempo === 'daily' ? 'daily' : 'live';
+      challengeLtc = canonicalLiveTimeControlForInsert(t, stored.live_time_control) ?? stored.live_time_control;
     } catch {
       setMessage('Invalid mode and time control. Pick a valid combination.');
       return;

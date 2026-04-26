@@ -16,7 +16,8 @@ export function resolveTesterChatLane(
 
   if (isBoardSpectator) {
     if (live && (st === 'active' || st === 'waiting' || st === 'finished')) return 'spectator';
-    return requested === 'spectator' ? 'spectator' : 'none';
+    // Non-live boards: no spectator channel (daily/correspondence); never mount spectator UI here.
+    return 'none';
   }
 
   if (requested === 'spectator') {

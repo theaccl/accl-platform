@@ -4,7 +4,8 @@ import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
 import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 import { invalidateLiveQueueAvailabilityForUsers } from '@/lib/server/invalidateLiveQueueAvailability';
-import { userInLiveFreeSeatedGameAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
+import { freePlayTargetSlotFromGameOrRequestFields } from '@/lib/hasActiveWaitingLiveFreeGame';
+import { userInSeatedInSamePlatQueueSlotAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
 import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
@@ -102,9 +103,19 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (rowIndicatesLiveFreePlayPacing(r)) {
-    const seatedBusy = await userInLiveFreeSeatedGameAdmin(userId);
-    if (seatedBusy) {
-      return jsonResponse({ error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE }, 409);
+    const slot = freePlayTargetSlotFromGameOrRequestFields({
+      tempo: r.tempo,
+      live_time_control: r.live_time_control,
+      rated: r.rated === true,
+    });
+    if (slot) {
+      const s = await userInSeatedInSamePlatQueueSlotAdmin(userId, slot);
+      if ('queryError' in s) {
+        return jsonResponse({ error: 'Could not verify your active games.' }, 503);
+      }
+      if (s.blocked) {
+        return jsonResponse({ error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE }, 409);
+      }
     }
   }
 

@@ -12,7 +12,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { openSeatNewGameInsert } from '@/lib/gameStartupInsert';
 import type { GameTempo } from '@/lib/gameTempo';
-import { normalizeGameTempo } from '@/lib/gameTempo';
 import {
   type PlatMode,
   coercePlatTimeForMode,
@@ -20,8 +19,8 @@ import {
 } from '@/lib/freePlayModeTimeControl';
 import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOpenSeatsFilter';
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
-import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
-import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
+import { freePlayTargetSlot, openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
+import { userHasConflictingPlatQueueSlot } from '@/lib/hasActiveWaitingLiveFreeGame';
 
 export type { PlatMode } from '@/lib/freePlayModeTimeControl';
 
@@ -64,60 +63,42 @@ function buildOpenSeatRow(
   return { ...base, tempo: 'live' as GameTempo, live_time_control: ltc };
 }
 
-/** Client-side gate: same rules as Create / Find before navigating to accept an open seat. */
+/** Client-side gate: same rules as Create / Find before navigating to accept an open seat (scoped to mode+clock+rated). */
 export async function checkUserFreePlayQueueEligible(
   supabase: SupabaseClient,
   userId: string,
-  targetTempo?: GameTempo
+  target: { mode: PlatMode; clock: string; rated: boolean }
 ): Promise<{ ok: true } | { error: string; resumeGameId?: string }> {
-  const { data: mine, error: mineErr } = await supabase
-    .from('games')
-    .select('id,white_player_id,black_player_id,tempo,live_time_control')
-    .eq('play_context', 'free')
-    .is('tournament_id', null)
-    .in('status', ['active', 'waiting'])
-    .or(`white_player_id.eq.${userId},black_player_id.eq.${userId}`)
-    .order('created_at', { ascending: false });
-
-  if (mineErr) {
-    return { error: mineErr.message || 'Could not verify your active games.' };
+  if (target.mode === 'daily') {
+    return { ok: true };
   }
-
-  if (normalizeGameTempo(targetTempo) === 'live') {
-    const liveBusy = (mine ?? []).find((g) => {
-      const row = g as { tempo?: string | null; live_time_control?: string | null };
-      if (!rowIndicatesLiveFreePlayPacing(row)) return false;
-      const w = g.white_player_id;
-      const b = g.black_player_id;
-      if (w && b) return true;
-      return w === userId || b === userId;
-    });
-    if (liveBusy?.id) {
-      return { error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE, resumeGameId: liveBusy.id };
-    }
+  const slot = freePlayTargetSlot(
+    target.mode,
+    coercePlatTimeForMode(target.mode, target.clock),
+    target.rated
+  );
+  const hit = await userHasConflictingPlatQueueSlot(supabase, userId, slot);
+  if (hit && typeof hit === 'object' && 'queryError' in hit) {
+    return { error: 'Could not verify your active games.' };
   }
-
-  for (const g of mine ?? []) {
-    const w = g.white_player_id;
-    const b = g.black_player_id;
-    if (w && b) {
-      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: g.id };
-    }
-    if (w === userId && !b) {
-      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: g.id };
-    }
-    if (b === userId && !w) {
-      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: g.id };
-    }
+  if (typeof hit === 'string' && hit) {
+    return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: hit };
   }
-
   return { ok: true };
 }
 
 /**
- * Drop open seats whose White is already in another full free game (same rule as Find Match).
+ * Drop open seats whose White is already in another full free game in the same PLAT slot.
  */
-export async function filterOpenSeatRowsExcludingBusyHosts<T extends { white_player_id: string }>(
+export async function filterOpenSeatRowsExcludingBusyHosts<
+  T extends {
+    id: string;
+    white_player_id: string;
+    tempo: string | null;
+    live_time_control: string | null;
+    rated?: boolean | null;
+  },
+>(
   supabase: SupabaseClient,
   rows: T[]
 ): Promise<{ rows: T[]; error: string | null }> {
@@ -128,7 +109,7 @@ export async function filterOpenSeatRowsExcludingBusyHosts<T extends { white_pla
   const whiteIds = [...new Set(rows.map((r) => r.white_player_id))];
   const { data: wBusy, error: wErr } = await supabase
     .from('games')
-    .select('white_player_id')
+    .select('id,white_player_id,black_player_id,tempo,live_time_control,rated,status')
     .eq('play_context', 'free')
     .is('tournament_id', null)
     .in('status', ['active', 'waiting'])
@@ -137,7 +118,7 @@ export async function filterOpenSeatRowsExcludingBusyHosts<T extends { white_pla
 
   const { data: bBusy, error: bErr } = await supabase
     .from('games')
-    .select('black_player_id')
+    .select('id,white_player_id,black_player_id,tempo,live_time_control,rated,status')
     .eq('play_context', 'free')
     .is('tournament_id', null)
     .in('status', ['active', 'waiting'])
@@ -147,13 +128,34 @@ export async function filterOpenSeatRowsExcludingBusyHosts<T extends { white_pla
   if (wErr || bErr) {
     return { rows: [], error: (wErr ?? bErr)?.message || 'Could not validate open seats.' };
   }
+  type Seated = {
+    id: string;
+    white_player_id: string;
+    black_player_id: string | null;
+    tempo: string | null;
+    live_time_control: string | null;
+    rated: boolean | null;
+    status?: string | null;
+  };
+  const merged = new Map<string, Seated>();
+  for (const g of [...(wBusy ?? []), ...(bBusy ?? [])] as Seated[]) {
+    if (g?.id) {
+      merged.set(String(g.id), g);
+    }
+  }
+  const fullGames = [...merged.values()];
 
-  const busy = new Set<string>([
-    ...(wBusy ?? []).map((r) => r.white_player_id as string),
-    ...(bBusy ?? []).map((r) => r.black_player_id as string),
-  ]);
-
-  return { rows: rows.filter((r) => !busy.has(r.white_player_id)), error: null };
+  return {
+    rows: rows.filter((r) => {
+      for (const g of fullGames) {
+        if (openSeatRowHostSeatedConflictsInSameSlot(r, g)) {
+          return false;
+        }
+      }
+      return true;
+    }),
+    error: null,
+  };
 }
 
 /**
@@ -210,7 +212,11 @@ export async function runFreePlayCreateGame(
     return { error: 'Invalid time control for the selected mode.' };
   }
 
-  const gate = await checkUserFreePlayQueueEligible(supabase, userId, mode === 'daily' ? 'daily' : 'live');
+  const gate = await checkUserFreePlayQueueEligible(supabase, userId, {
+    mode,
+    clock: normalizedClock,
+    rated,
+  });
   if (!('ok' in gate)) {
     return { error: gate.error, resumeGameId: gate.resumeGameId };
   }
@@ -239,7 +245,11 @@ export async function runFreePlayFindMatchAutomatic(
     return { error: 'Invalid time control for the selected mode.' };
   }
 
-  const gate = await checkUserFreePlayQueueEligible(supabase, userId, mode === 'daily' ? 'daily' : 'live');
+  const gate = await checkUserFreePlayQueueEligible(supabase, userId, {
+    mode,
+    clock: normalizedClock,
+    rated,
+  });
   if (!('ok' in gate)) {
     return { error: gate.error, resumeGameId: gate.resumeGameId };
   }

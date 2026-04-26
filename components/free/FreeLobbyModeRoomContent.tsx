@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { FreeLobbyOpenGamesList } from '@/components/free/FreeLobbyOpenGamesList';
 import { FreePlayWatchSpectatorForMode } from '@/components/free/FreePlayWatchSpectatorForMode';
@@ -12,6 +12,7 @@ import { nexusPrestigeRoot } from '@/components/nexus/nexusShellTheme';
 import {
   coercePlatTimeForMode,
   defaultPlatTimeControl,
+  isValidPlatTimeForMode,
   PLAT_MODE_LABELS,
   type PlatMode,
 } from '@/lib/freePlayModeTimeControl';
@@ -31,6 +32,14 @@ const noopMode = (_m: PlatMode) => {
 export function FreeLobbyModeRoomContent({ mode }: Props) {
   const [clock, setClock] = useState<string>(() => defaultPlatTimeControl(mode));
   const [rated, setRated] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = new URLSearchParams(window.location.search).get('clock');
+    if (raw && isValidPlatTimeForMode(mode, raw)) {
+      setClock(raw);
+    }
+  }, [mode]);
 
   const onModeChange = useCallback(noopMode, []);
   const lobbyRoom = FREE_PLAY_LOBBY_ROOM_BY_MODE[mode];
@@ -60,7 +69,7 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
 
         {/* Secondary but still top-of-page: live spectate discovery for this mode. */}
         <div className="mt-4 min-w-0" data-accl-layout="mode-room-watch-secondary">
-          <FreePlayWatchSpectatorForMode mode={mode} />
+          <FreePlayWatchSpectatorForMode mode={mode} selectedClock={clock} />
         </div>
 
         {/* Secondary: post a seat / auto-match — below the two primary panels */}

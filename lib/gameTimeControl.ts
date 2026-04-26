@@ -18,12 +18,24 @@ export type DailyClockValue = '30m' | '60m';
 export type CorrespondencePaceValue = '1d' | '2d' | '3d';
 export type GameTimeControlToken = LiveClockValue | DailyClockValue | CorrespondencePaceValue;
 
+/**
+ * Normalizes UI / copy-paste tokens so DB CHECK allowlists (ASCII `main+inc`, `Nm`, `Nd`) always match.
+ * Strips NBSP, collapses whitespace, maps common Unicode minus/plus lookalikes to ASCII, lowercases.
+ */
 export function canonicalLiveTimeControlForInsert(
   _tempo: string | null | undefined,
   raw: string | null | undefined
 ): string | null {
   if (raw == null) return null;
-  const s = String(raw).trim().toLowerCase();
+  let s = String(raw)
+    .replace(/\u00a0/g, ' ')
+    .trim();
+  if (!s) return null;
+  s = s.replace(/\s+/g, '');
+  s = s
+    .replace(/\u2212|\u2013|\u2014|\uFE63|\uFF0D/g, '-')
+    .replace(/\uFF0B|\uFE62|\u207A/g, '+');
+  s = s.toLowerCase();
   return s === '' ? null : s;
 }
 

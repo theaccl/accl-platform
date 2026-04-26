@@ -1,3 +1,5 @@
+import { normalizeGameTempo } from '@/lib/gameTempo';
+
 import { type ChatChannel, isAllowedLobbyRoom } from './chatChannels';
 
 export type GamePolicyInput = {
@@ -32,12 +34,20 @@ export function isLiveGameInPlay(game: Pick<GamePolicyInput, 'status' | 'tempo'>
   return st === 'active' || st === 'waiting';
 }
 
+/** Daily or correspondence — same in-board / waiting lifecycle as live, but no spectator chat channel. */
+export function isDailyOrCorrespondenceGameInPlay(game: Pick<GamePolicyInput, 'status' | 'tempo'>): boolean {
+  const t = normalizeGameTempo(game.tempo);
+  if (t !== 'daily' && t !== 'correspondence') return false;
+  const st = String(game.status ?? '').trim().toLowerCase();
+  return st === 'active' || st === 'waiting';
+}
+
 /**
  * Player chat read: participants only — during live play (`game_player`) or post-game (`game_player` archive).
  */
 export function canAccessPlayerChat(game: GamePolicyInput, userId: string): boolean {
   if (!isGameParticipant(game, userId)) return false;
-  return isGameFinished(game) || isLiveGameInPlay(game);
+  return isGameFinished(game) || isLiveGameInPlay(game) || isDailyOrCorrespondenceGameInPlay(game);
 }
 
 /**

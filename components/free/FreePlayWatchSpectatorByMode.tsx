@@ -44,7 +44,9 @@ export function FreePlayWatchSpectatorByMode({ loading, error, data }: Props) {
         {PLAT_MODE_ORDER.map((mode) => {
           const rows = data?.byMode[mode] ?? [];
           const on = rows.length > 0;
-          const href = `/free/lobby/${mode}#watch-as-spectator-anchor`;
+          const clockKeys = [...new Set(rows.map((r) => r.liveTimeControlKey).filter(Boolean))].sort();
+          const clockQs = clockKeys.length === 1 ? `?clock=${encodeURIComponent(clockKeys[0]!)}` : '';
+          const href = `/free/lobby/${mode}${clockQs}#watch-as-spectator-anchor`;
           return (
             <li key={mode} className="min-h-0">
               <a

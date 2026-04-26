@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
 import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
-import { userHasActiveWaitingLiveFreeGame } from '@/lib/hasActiveWaitingLiveFreeGame';
+import { freePlayTargetSlotFromGameOrRequestFields } from '@/lib/hasActiveWaitingLiveFreeGame';
 import {
   isDirectOrPrivateLivePacedMatchRequest,
   LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE,
 } from '@/lib/liveChallengeAcceptGuard';
 import { invalidateLiveQueueAvailabilityForUsers } from '@/lib/server/invalidateLiveQueueAvailability';
-import { userHasActiveWaitingLiveFreeGameAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
+import { userHasConflictingPlatQueueSlotAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
 import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
@@ -109,11 +109,19 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (isDirectOrPrivateLivePacedMatchRequest(r)) {
-    const busy =
-      (await userHasActiveWaitingLiveFreeGameAdmin(userId)) ||
-      (await userHasActiveWaitingLiveFreeGame(supabase, userId));
-    if (busy) {
-      return jsonResponse({ error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE }, 409);
+    const slot = freePlayTargetSlotFromGameOrRequestFields({
+      tempo: r.tempo,
+      live_time_control: r.live_time_control,
+      rated: r.rated === true,
+    });
+    if (slot) {
+      const c = await userHasConflictingPlatQueueSlotAdmin(userId, slot);
+      if (c && typeof c === 'object' && 'queryError' in c) {
+        return jsonResponse({ error: 'Could not verify your active games.' }, 503);
+      }
+      if (typeof c === 'string' && c) {
+        return jsonResponse({ error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE }, 409);
+      }
     }
   }
 

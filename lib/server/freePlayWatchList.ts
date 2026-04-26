@@ -1,5 +1,5 @@
 import { PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
-import { formatGameTimeControlLabel } from '@/lib/gameTimeControl';
+import { canonicalLiveTimeControlForInsert, formatGameTimeControlLabel } from '@/lib/gameTimeControl';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
@@ -10,6 +10,8 @@ export type FreePlayWatchListRow = {
   blackLabel: string;
   timeLabel: string;
   mode: PlatMode;
+  /** Canonical `games.live_time_control` token for filtering watch lists by selected clock. */
+  liveTimeControlKey: string;
 };
 
 const emptyByMode = (): Record<PlatMode, FreePlayWatchListRow[]> =>
@@ -97,12 +99,19 @@ export async function fetchFreePlaySpectatableLobby(ecosystem: 'adult' | 'k12'):
     const wid = String(r.white_player_id ?? '');
     const bid = String(r.black_player_id ?? '');
     if (!wid || !bid) continue;
+    const tempo = r.tempo as string | null;
+    const ltcKey =
+      canonicalLiveTimeControlForInsert(tempo, r.live_time_control as string | null) ??
+      String(r.live_time_control ?? '')
+        .trim()
+        .toLowerCase();
     byMode[mode].push({
       id: String(r.id),
       whiteLabel: profileName(wid, 'W'),
       blackLabel: profileName(bid, 'B'),
-      timeLabel: formatGameTimeControlLabel(r.tempo as string | null, r.live_time_control as string | null),
+      timeLabel: formatGameTimeControlLabel(tempo, r.live_time_control as string | null),
       mode,
+      liveTimeControlKey: ltcKey,
     });
   }
 

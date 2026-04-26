@@ -26,7 +26,7 @@ import {
 import { acclPerfTime } from '@/lib/acclPerfDebug';
 import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
 import { normalizeGameTempo } from '@/lib/gameTempo';
-import { userInLiveFreeSeatedGame } from '@/lib/hasActiveWaitingLiveFreeGame';
+import { freePlayTargetSlotFromGameOrRequestFields, userInLiveFreeSeatedGame } from '@/lib/hasActiveWaitingLiveFreeGame';
 import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
 import { clearHostLiveOpenSeatFollow, registerHostLiveOpenSeatFollow } from '@/lib/hostLiveOpenSeatFollow';
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
@@ -1031,6 +1031,13 @@ export default function GamePage() {
       if (st === 'finished') return seated ? 'postgame_player' : 'spectator';
       return seated ? 'none' : 'spectator';
     }
+    const asyncPaced =
+      normalizeGameTempo(game.tempo) === 'daily' || normalizeGameTempo(game.tempo) === 'correspondence';
+    if (asyncPaced) {
+      if (st === 'active' || st === 'waiting') return seated ? 'table' : 'none';
+      if (st === 'finished' && seated) return 'postgame_player';
+      return 'none';
+    }
     if (st === 'finished' && seated) return 'postgame_player';
     return 'none';
   }, [game, userId, myColor, publicSpectate]);
@@ -1313,9 +1320,15 @@ export default function GamePage() {
     joinOpenSeatInFlightRef.current = true;
     void (async () => {
       try {
+        const joinSlot = freePlayTargetSlotFromGameOrRequestFields({
+          tempo: game.tempo,
+          live_time_control: game.live_time_control,
+          rated: game.rated === true,
+        });
         if (
+          joinSlot &&
           rowIndicatesLiveFreePlayPacing({ tempo: game.tempo, live_time_control: game.live_time_control }) &&
-          (await userInLiveFreeSeatedGame(supabase, userId))
+          (await userInLiveFreeSeatedGame(supabase, userId, joinSlot))
         ) {
           setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
           return;

@@ -7,17 +7,12 @@ import {
 } from '../../lib/liveChallengeAcceptGuard';
 
 test.describe('liveChallengeAcceptGuard', () => {
-  test('live incoming + user already in live => block', () => {
-    expect(shouldBlockAcceptIncomingLiveWhileInLiveGame('live', true)).toBe(true);
-    expect(shouldBlockAcceptIncomingLiveWhileInLiveGame(undefined, true)).toBe(true);
+  test('same slot conflict => block', () => {
+    expect(shouldBlockAcceptIncomingLiveWhileInLiveGame(true)).toBe(true);
   });
 
-  test('live incoming + user not in live => allow', () => {
-    expect(shouldBlockAcceptIncomingLiveWhileInLiveGame('live', false)).toBe(false);
-  });
-
-  test('daily incoming + user in live => allow (not this guard)', () => {
-    expect(shouldBlockAcceptIncomingLiveWhileInLiveGame('daily', true)).toBe(false);
+  test('no same-slot conflict => allow', () => {
+    expect(shouldBlockAcceptIncomingLiveWhileInLiveGame(false)).toBe(false);
   });
 
   test('blocked message constant', () => {

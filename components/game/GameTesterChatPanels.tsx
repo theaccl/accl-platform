@@ -354,8 +354,12 @@ function TesterSpectatorChatLane({ gameId, accessToken, viewerEcosystem }: LaneS
         setErr(formatChatSendError(await res.json().catch(() => ({}))));
         return;
       }
+      const j = (await res.json().catch(() => ({}))) as { message?: ChatMsg };
       setDraft('');
-      void load({ source: 'after_send' });
+      if (j.message?.id) {
+        setMessages((prev) => (prev.some((x) => x.id === j.message!.id) ? prev : [...prev, j.message!]));
+      }
+      void load({ bypassVisibility: true, source: 'after_send' });
     } finally {
       sendLock.current = false;
       setSending(false);
@@ -401,7 +405,7 @@ function TesterPlayerGameChatLane({
   accessToken,
   viewerEcosystem,
   variant,
-}: LaneSharedProps & { variant: 'live' | 'postgame' }) {
+}: LaneSharedProps & { variant: 'live' | 'postgame' | 'async_play' }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -513,8 +517,12 @@ function TesterPlayerGameChatLane({
         setErr(formatChatSendError(await res.json().catch(() => ({}))));
         return;
       }
+      const j = (await res.json().catch(() => ({}))) as { message?: ChatMsg };
       setDraft('');
-      void load({ source: 'after_send' });
+      if (j.message?.id) {
+        setMessages((prev) => (prev.some((x) => x.id === j.message!.id) ? prev : [...prev, j.message!]));
+      }
+      void load({ bypassVisibility: true, source: 'after_send' });
     } finally {
       sendLock.current = false;
       setSending(false);
@@ -534,14 +542,23 @@ function TesterPlayerGameChatLane({
   };
 
   const isLive = variant === 'live';
+  const isAsyncPlay = variant === 'async_play';
   return (
-    <div style={{ marginBottom: isLive ? 16 : 0 }}>
+    <div style={{ marginBottom: isLive || isAsyncPlay ? 16 : 0 }}>
       <ChatStrip
-        title={isLive ? 'Table chat (players only)' : 'Player chat (post-game, players only)'}
+        title={
+          isLive
+            ? 'Table chat (players only)'
+            : isAsyncPlay
+              ? 'Player chat (daily / correspondence)'
+              : 'Player chat (post-game, players only)'
+        }
         subtitle={
           isLive
             ? 'Player channel only — the two seated players. Spectators use a separate spectator channel.'
-            : 'Player channel archive after the game — only the two seated players.'
+            : isAsyncPlay
+              ? 'Player channel only — the two participants. There is no spectator chat on async boards.'
+              : 'Player channel archive after the game — only the two seated players.'
         }
         accent="#3b82f6"
         messages={messages}
@@ -590,7 +607,9 @@ export default function GameTesterChatPanels({
     [viewerChatRole, isBoardSpectator, gameTempo, gameStatus]
   );
 
-  const isLive = String(gameTempo ?? '').trim().toLowerCase() === 'live';
+  const tempoNorm = String(gameTempo ?? '').trim().toLowerCase();
+  const isLive = tempoNorm === 'live';
+  const isAsyncBoard = tempoNorm === 'daily' || tempoNorm === 'correspondence';
   const inPlay = gameStatus === 'active' || gameStatus === 'waiting';
 
   const canUseChat = !!accessToken && !!userId;
@@ -655,7 +674,11 @@ export default function GameTesterChatPanels({
         <TesterSpectatorChatLane key={`spectator-only-${gameId}`} {...laneProps} />
       ) : null}
       {effectiveLane === 'table' ? (
-        <TesterPlayerGameChatLane key={`player-live-${gameId}`} {...laneProps} variant="live" />
+        <TesterPlayerGameChatLane
+          key={`player-table-${gameId}-${isLive ? 'live' : 'async'}`}
+          {...laneProps}
+          variant={isLive ? 'live' : 'async_play'}
+        />
       ) : null}
       {effectiveLane === 'postgame_player' ? (
         <TesterPlayerGameChatLane key={`player-post-${gameId}`} {...laneProps} variant="postgame" />
@@ -679,7 +702,11 @@ export default function GameTesterChatPanels({
             ? 'This should not happen for an active live game — refresh if the board looks wrong.'
             : gameStatus === 'finished'
               ? 'Post-game player chat appears when you are a seated participant; spectators use spectator chat on live boards.'
-              : 'Daily and correspondence games do not use these live channels here — by design. Use tester lobby chat if you need a side channel.'}
+              : isAsyncBoard && inPlay && isBoardSpectator
+                ? 'Player chat is only for the two participants. Async boards do not have a spectator chat channel.'
+                : isAsyncBoard && inPlay
+                  ? 'This should not happen for a seated participant — refresh if the board looks wrong.'
+                  : 'No chat panel for this view. Use tester lobby chat if you need a side channel.'}
         </p>
       ) : null}
     </div>

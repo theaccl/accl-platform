@@ -11,12 +11,14 @@ type Props = {
   loading: boolean;
   /** When set (hub), show a second link to that mode’s “Watch live” list when lit. */
   watchActivity?: Record<PlatMode, boolean>;
+  /** Distinct spectatable clock tokens per mode (for deep-linking the mode room watch list). */
+  watchClockHints?: Record<PlatMode, string[]>;
 };
 
 /**
  * Hub shortcuts: native anchors + forced assign on primary click (Lit = hash to Open Games).
  */
-export function FreePlayOpenPairingByMode({ activity, loading, watchActivity }: Props) {
+export function FreePlayOpenPairingByMode({ activity, loading, watchActivity, watchClockHints }: Props) {
   return (
     <section
       className="relative z-[100] mb-4 rounded-xl border border-[#243244] bg-[#0f141c] px-4 py-3 sm:px-5"
@@ -36,6 +38,9 @@ export function FreePlayOpenPairingByMode({ activity, loading, watchActivity }: 
         {PLAT_MODE_ORDER.map((mode) => {
           const on = activity[mode];
           const watchOn = watchActivity?.[mode] === true;
+          const watchClocks = watchClockHints?.[mode];
+          const watchQs =
+            watchClocks?.length === 1 ? `?clock=${encodeURIComponent(watchClocks[0]!)}` : '';
           const modeLabel = PLAT_MODE_LABELS[mode];
           const modeRoomHref = on
             ? `/free/lobby/${mode}#free-lobby-open-games-anchor`
@@ -84,13 +89,13 @@ export function FreePlayOpenPairingByMode({ activity, loading, watchActivity }: 
               {watchActivity ? (
                 watchOn ? (
                   <a
-                    href={`/free/lobby/${mode}#watch-as-spectator-anchor`}
+                    href={`/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`}
                     onClick={(e) =>
-                      forceDomNavigation(e, `/free/lobby/${mode}#watch-as-spectator-anchor`)
+                      forceDomNavigation(e, `/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`)
                     }
                     onPointerUp={(e) => {
                       if (e.pointerType === 'touch') {
-                        window.location.assign(`/free/lobby/${mode}#watch-as-spectator-anchor`);
+                        window.location.assign(`/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`);
                       }
                     }}
                     className={`mt-1 block touch-manipulation rounded-md py-1 text-center text-[10px] font-semibold leading-tight text-violet-300 underline-offset-2 hover:text-violet-100 hover:underline ${focusRing}`}

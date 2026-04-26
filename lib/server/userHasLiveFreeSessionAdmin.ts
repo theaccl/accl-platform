@@ -1,76 +1,92 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
+import {
+  type FreePlayQueueTargetSlot,
+  freePlayUserBlockedForTargetSlot,
+  freePlayUserSeatedInConflictingSlot,
+} from '@/lib/freePlayQueueSlotConflict';
 
-const LIVE_BUSY_LOOKBACK = 120;
+const BUSY_LOOKBACK = 120;
+const FREE_BUSY_SELECT =
+  'id,white_player_id,black_player_id,tempo,live_time_control,rated,status' as const;
 
-/**
- * Bypasses RLS (service role) to detect whether the user is in an active/waiting **live-paced** free game.
- * Use from trusted server routes only (e.g. match accept API).
- */
-export async function userHasActiveWaitingLiveFreeGameAdmin(userId: string): Promise<boolean> {
+type Mine = {
+  id: string;
+  white_player_id: string;
+  black_player_id: string | null;
+  tempo: string | null;
+  live_time_control: string | null;
+  rated: boolean | null;
+  status?: string | null;
+};
+
+async function loadFreePlayBusyUserGamesAdmin(userId: string): Promise<
+  { rows: Mine[]; error: true } | { rows: Mine[]; error: false }
+> {
   const uid = userId.trim();
-  if (!uid) return false;
-
+  if (!uid) {
+    return { rows: [], error: false };
+  }
   let admin: SupabaseClient;
   try {
     admin = createServiceRoleClient();
   } catch {
-    return true;
+    return { rows: [], error: true };
   }
 
   const { data, error } = await admin
     .from('games')
-    .select('id,tempo,live_time_control')
+    .select(FREE_BUSY_SELECT)
     .eq('play_context', 'free')
     .is('tournament_id', null)
     .in('status', ['active', 'waiting'])
     .or(`white_player_id.eq.${uid},black_player_id.eq.${uid}`)
     .order('created_at', { ascending: false })
-    .limit(LIVE_BUSY_LOOKBACK);
+    .limit(BUSY_LOOKBACK);
 
   if (error) {
-    console.warn('[userHasActiveWaitingLiveFreeGameAdmin] games select failed — treating as busy', error.message);
-    return true;
+    console.warn('[loadFreePlayBusyUserGamesAdmin] select failed', error.message);
+    return { rows: [], error: true };
   }
-  if (!data?.length) return false;
-
-  return (data as { tempo?: string | null; live_time_control?: string | null }[]).some((g) =>
-    rowIndicatesLiveFreePlayPacing(g)
-  );
+  return { rows: (data ?? []) as Mine[], error: false };
 }
 
-/** Seated live free game only — for secured join-open flows. */
-export async function userInLiveFreeSeatedGameAdmin(userId: string): Promise<boolean> {
-  const uid = userId.trim();
-  if (!uid) return false;
-
-  let admin: SupabaseClient;
-  try {
-    admin = createServiceRoleClient();
-  } catch {
-    return true;
+export async function userHasConflictingPlatQueueSlotAdmin(
+  userId: string,
+  target: FreePlayQueueTargetSlot
+): Promise<string | null | { queryError: true }> {
+  if (target.mode === 'daily') {
+    return null;
   }
-
-  const { data, error } = await admin
-    .from('games')
-    .select('id,tempo,live_time_control')
-    .eq('play_context', 'free')
-    .is('tournament_id', null)
-    .in('status', ['active', 'waiting'])
-    .not('black_player_id', 'is', null)
-    .or(`white_player_id.eq.${uid},black_player_id.eq.${uid}`)
-    .order('created_at', { ascending: false })
-    .limit(LIVE_BUSY_LOOKBACK);
-
+  const { rows, error } = await loadFreePlayBusyUserGamesAdmin(userId);
   if (error) {
-    console.warn('[userInLiveFreeSeatedGameAdmin] games select failed — treating as busy', error.message);
-    return true;
+    return { queryError: true };
   }
-  if (!data?.length) return false;
-
-  return (data as { tempo?: string | null; live_time_control?: string | null }[]).some((g) =>
-    rowIndicatesLiveFreePlayPacing(g)
-  );
+  for (const g of rows) {
+    if (freePlayUserBlockedForTargetSlot(userId, g, target)) {
+      return g.id;
+    }
+  }
+  return null;
 }
+
+export async function userInSeatedInSamePlatQueueSlotAdmin(
+  userId: string,
+  target: FreePlayQueueTargetSlot
+): Promise<{ blocked: true } | { blocked: false } | { queryError: true }> {
+  if (target.mode === 'daily') {
+    return { blocked: false };
+  }
+  const { rows, error } = await loadFreePlayBusyUserGamesAdmin(userId);
+  if (error) {
+    return { queryError: true };
+  }
+  for (const g of rows) {
+    if (freePlayUserSeatedInConflictingSlot(userId, g, target)) {
+      return { blocked: true };
+    }
+  }
+  return { blocked: false };
+}
+

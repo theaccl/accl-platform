@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { DirectChallengePanel } from "@/components/DirectChallengePanel";
 import { FreePlayMatchPanel } from "@/components/FreePlayMatchPanel";
 import { HomePlaySection } from "@/components/HomePlaySection";
@@ -12,6 +12,7 @@ import { FreePlayOpenPairingByMode } from "@/components/free/FreePlayOpenPairing
 import {
   coercePlatTimeForMode,
   defaultPlatTimeControl,
+  PLAT_MODE_ORDER,
   type PlatMode,
 } from "@/lib/freePlayModeTimeControl";
 import { useFreeOpenSeatActivity } from "@/hooks/useFreeOpenSeatActivity";
@@ -36,6 +37,20 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
   const { activity: openSeatActivity, loading: openSeatLoading } = useFreeOpenSeatActivity();
   const watchList = useFreePlayWatchList("adult");
 
+  const watchClockHints = useMemo(() => {
+    if (!watchList.data) return undefined;
+    return PLAT_MODE_ORDER.reduce(
+      (acc, m) => {
+        const keys = [
+          ...new Set(watchList.data!.byMode[m].map((r) => r.liveTimeControlKey).filter(Boolean)),
+        ].sort();
+        acc[m] = keys;
+        return acc;
+      },
+      {} as Record<PlatMode, string[]>
+    );
+  }, [watchList.data]);
+
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
       <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-5 sm:pt-6">
@@ -48,6 +63,7 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
           activity={openSeatActivity}
           loading={openSeatLoading}
           watchActivity={watchList.data?.watchActivity}
+          watchClockHints={watchClockHints}
         />
       </div>
       <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-1 items-start gap-5 px-4 py-5 sm:gap-6 sm:px-5 sm:py-6 lg:grid-cols-2 lg:gap-8 lg:py-6">

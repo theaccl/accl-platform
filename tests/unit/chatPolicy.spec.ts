@@ -39,6 +39,15 @@ test.describe('chatPolicy (P2 separation)', () => {
     expect(canPostPlayerChat(baseGame, 'x')).toBe(false);
   });
 
+  test('player chat: daily and correspondence in play', () => {
+    const daily = { ...baseGame, tempo: 'daily' as string | null };
+    expect(canAccessPlayerChat({ ...daily, status: 'active' }, 'w1')).toBe(true);
+    expect(canPostPlayerChat({ ...daily, status: 'waiting' }, 'b1')).toBe(true);
+    expect(canAccessPlayerChat({ ...daily, status: 'active' }, 'x')).toBe(false);
+    const corr = { ...baseGame, tempo: 'correspondence' as string | null };
+    expect(canAccessPlayerChat({ ...corr, status: 'waiting' }, 'w1')).toBe(true);
+  });
+
   test('spectator chat: live games only, not seated players', () => {
     expect(canReadSpectatorChat(baseGame, 'w1')).toBe(false);
     expect(canPostSpectatorChat(baseGame, 'w1')).toBe(false);

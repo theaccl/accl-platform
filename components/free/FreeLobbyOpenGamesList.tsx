@@ -15,7 +15,6 @@ import {
   type PlatMode,
   platTimeOptionsForMode,
 } from '@/lib/freePlayModeTimeControl';
-import { normalizeGameTempo } from '@/lib/gameTempo';
 import { formatGameTimeControlLabel } from '@/lib/gameTimeControl';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 
@@ -69,11 +68,11 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
       setPreJoinError('Sign in to accept a game.');
       return;
     }
-    const gate = await checkUserFreePlayQueueEligible(
-      supabase,
-      auth.user.id,
-      normalizeGameTempo(selected.tempo)
-    );
+    const gate = await checkUserFreePlayQueueEligible(supabase, auth.user.id, {
+      mode,
+      clock: selectedClock,
+      rated: selectedRated,
+    });
     if ('error' in gate) {
       setPreJoinError(gate.error);
       setPreJoinResumeId(gate.resumeGameId ?? null);
@@ -105,7 +104,7 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
         <strong className="text-gray-400">{ratedLabel}</strong>. Tap a row, then <strong className="text-gray-400">Accept game</strong> to join as Black (not the same as Find match, which auto-joins).
       </p>
       <p className="mt-1 text-[10px] text-gray-600" role="status">
-        List refreshes about every {Math.round(15_000 / 1000)}s while you stay on this page.
+        This list updates live when new seats are posted or joined.
       </p>
       {loading ? <p className="mt-3 text-sm text-gray-500">Loading open seats…</p> : null}
       {error ? (

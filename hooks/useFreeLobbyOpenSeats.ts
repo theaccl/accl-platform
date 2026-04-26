@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 
+import { FreePlayLobbyGamesRealtimeContext } from '@/components/free/FreePlayLobbyGamesRealtimeProvider';
 import {
   openSeatMatchesPlatClock,
   openSeatMatchesPlatMode,
@@ -11,9 +12,6 @@ import {
 import type { PlatMode } from '@/lib/freePlayModeTimeControl';
 import { filterOpenSeatRowsExcludingBusyHosts } from '@/lib/freePlayFindMatch';
 import { supabase } from '@/lib/supabaseClient';
-
-/** Refresh open-seat snapshot while user stays in a mode room (no realtime yet). */
-const OPEN_SEATS_POLL_MS = 15_000;
 
 export type FreeLobbyOpenSeatRow = FreeOpenSeatRow & {
   /** Host display name when profiles load. */
@@ -35,6 +33,7 @@ export function useFreeLobbyOpenSeats(
   const [raw, setRaw] = useState<FreeLobbyOpenSeatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lobbyRt = useContext(FreePlayLobbyGamesRealtimeContext);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,12 +97,20 @@ export function useFreeLobbyOpenSeats(
     };
 
     void run(true);
-    const id = setInterval(() => void run(false), OPEN_SEATS_POLL_MS);
+    if (!lobbyRt) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const unsub = lobbyRt.subscribe(() => {
+      if (cancelled) return;
+      void run(false);
+    });
     return () => {
       cancelled = true;
-      clearInterval(id);
+      unsub();
     };
-  }, []);
+  }, [lobbyRt]);
 
   const rows = useMemo(() => {
     return raw.filter((r) => {

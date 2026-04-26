@@ -3,20 +3,41 @@
 import Link from 'next/link';
 
 import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
-import type { PlatMode } from '@/lib/freePlayModeTimeControl';
-import { PLAT_MODE_LABELS } from '@/lib/freePlayModeTimeControl';
+import {
+  PLAT_MODE_LABELS,
+  coercePlatTimeForMode,
+  isValidPlatTimeForMode,
+  type PlatMode,
+} from '@/lib/freePlayModeTimeControl';
+import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
+import type { FreePlayWatchListRow } from '@/lib/server/freePlayWatchList';
 
 type Props = {
   mode: PlatMode;
   viewerEcosystem?: 'adult' | 'k12';
+  /** When set, only list games matching this room clock (same token as Open Games / create-find). */
+  selectedClock?: string;
 };
+
+function rowsForSelectedClock(
+  mode: PlatMode,
+  selectedClock: string | undefined,
+  rows: FreePlayWatchListRow[]
+): FreePlayWatchListRow[] {
+  const raw = String(selectedClock ?? '').trim();
+  if (!raw || !isValidPlatTimeForMode(mode, raw)) return rows;
+  const coerced = coercePlatTimeForMode(mode, raw);
+  const tempo = mode === 'daily' ? 'daily' : 'live';
+  const want = canonicalLiveTimeControlForInsert(tempo, coerced) ?? coerced.trim().toLowerCase();
+  return rows.filter((r) => r.liveTimeControlKey === want);
+}
 
 /**
  * Mode room: list live games in this PLAT bucket with spectate-only links.
  */
-export function FreePlayWatchSpectatorForMode({ mode, viewerEcosystem = 'adult' }: Props) {
+export function FreePlayWatchSpectatorForMode({ mode, viewerEcosystem = 'adult', selectedClock }: Props) {
   const { data, loading, error } = useFreePlayWatchList(viewerEcosystem);
-  const rows = data?.byMode[mode] ?? [];
+  const rows = rowsForSelectedClock(mode, selectedClock, data?.byMode[mode] ?? []);
   const label = PLAT_MODE_LABELS[mode];
 
   return (

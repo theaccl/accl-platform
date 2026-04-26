@@ -1,5 +1,4 @@
 import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
-import { normalizeGameTempo } from '@/lib/gameTempo';
 
 /** Shown when the addressee already has an active/waiting live free game and tries to accept another live request. */
 export const LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE =
@@ -24,12 +23,11 @@ export function isDirectOrPrivateLivePacedMatchRequest(row: {
 }
 
 /**
- * Block accepting an incoming **live** match request when the user is already seated in an
- * active/waiting **live** free game (direct challenge / rematch via `/api/match-requests/accept` only).
+ * Block accepting an incoming **live** match request (caller already ensured live-paced) when the user has a
+ * free-play conflict in the **same** PLAT slot (mode+clock+rated) — not global “in any live game.”
  */
 export function shouldBlockAcceptIncomingLiveWhileInLiveGame(
-  incomingRequestTempo: string | null | undefined,
-  userHasActiveWaitingLiveFreeGame: boolean
+  hasConflictingPlatQueueSlot: boolean
 ): boolean {
-  return normalizeGameTempo(incomingRequestTempo) === 'live' && userHasActiveWaitingLiveFreeGame;
+  return hasConflictingPlatQueueSlot;
 }

@@ -112,6 +112,13 @@ export async function resolveAcceptNavigationContext(
   return { currentGame, pathBoardFromDb: pathGameFromDb };
 }
 
+export type PostAcceptSkipContext = {
+  reason: string;
+  currentGame: AcceptGameRef | null;
+  acceptedGameId: string;
+  acceptedTempo: string | null;
+};
+
 export type PostAcceptNavigateArgs = {
   flow: string;
   pathname: string;
@@ -121,7 +128,8 @@ export type PostAcceptNavigateArgs = {
   acceptedGameId: string;
   acceptedTempoHint?: string | null;
   boardGameFromPage?: AcceptGameRef | null;
-  onSkipNavigate?: () => void;
+  /** Fires when we intentionally skip `router.push` to the accepted game. */
+  onSkipNavigate?: (context: PostAcceptSkipContext) => void;
 };
 
 /**
@@ -179,13 +187,23 @@ export async function navigateAfterAcceptIfAllowed(args: PostAcceptNavigateArgs)
         perf.end({ branch: 'missing-acc-row+hint', pushed: true });
         return true;
       }
-      args.onSkipNavigate?.();
+      args.onSkipNavigate?.({
+        reason: fallbackDecision.reason,
+        currentGame,
+        acceptedGameId: gid,
+        acceptedTempo: tempoHint,
+      });
       perf.end({ branch: 'missing-acc-row+hint', pushed: false });
       return false;
     }
     if (args.pathname.startsWith('/game/')) {
       emitTrace(args.boardGameFromPage ?? null, null, false);
-      args.onSkipNavigate?.();
+      args.onSkipNavigate?.({
+        reason: 'missing-acc-row-on-board',
+        currentGame: currentGame,
+        acceptedGameId: gid,
+        acceptedTempo: args.acceptedTempoHint ?? null,
+      });
       perf.end({ branch: 'missing-acc-row-on-board', pushed: false });
       return false;
     }
@@ -222,7 +240,12 @@ export async function navigateAfterAcceptIfAllowed(args: PostAcceptNavigateArgs)
       pathname: args.pathname,
     });
   }
-  args.onSkipNavigate?.();
+  args.onSkipNavigate?.({
+    reason: decision.reason,
+    currentGame,
+    acceptedGameId: gid,
+    acceptedTempo: acceptedTempo,
+  });
   perf.end({ branch: 'decision', pushed: false, reason: decision.reason });
   return false;
 }

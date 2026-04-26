@@ -21,13 +21,18 @@
  * - Performance: `localStorage.setItem('accl_debug_perf','1')` → `[ACCL_PERF]` timings (see `lib/acclPerfDebug.ts`).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { acclPerfMark, acclPerfTime } from '@/lib/acclPerfDebug';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { getTempoType } from '@/lib/gameAcceptRedirectPriority';
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
 import { gameRatedListLabel } from '@/lib/gameRated';
-import { userHasActiveWaitingLiveFreeGame, userInLiveFreeSeatedGame } from '@/lib/hasActiveWaitingLiveFreeGame';
+import {
+  freePlayTargetSlotFromGameOrRequestFields,
+  userHasConflictingPlatQueueSlot,
+  userInSeatedInSamePlatQueueSlot,
+} from '@/lib/hasActiveWaitingLiveFreeGame';
 import {
   isDirectOrPrivateLivePacedMatchRequest,
   LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE,
@@ -87,6 +92,7 @@ export default function RequestsPage() {
   const [requests, setRequests] = useState<MatchRequestRow[]>([]);
   const [busyReqId, setBusyReqId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [postAcceptNavHint, setPostAcceptNavHint] = useState<ReactNode | null>(null);
   const [nameById, setNameById] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -118,9 +124,35 @@ export default function RequestsPage() {
         acceptedGameId: newGameId,
         acceptedTempoHint: tempoHint ?? null,
         boardGameFromPage: null,
-        onSkipNavigate: () => {
+        onSkipNavigate: (ctx) => {
+          setPostAcceptNavHint(null);
+          const cur = ctx.currentGame;
+          if (
+            cur &&
+            getTempoType({ tempo: cur.tempo }) === 'live' &&
+            getTempoType({ tempo: ctx.acceptedTempo }) === 'daily'
+          ) {
+            setMessage('');
+            setPostAcceptNavHint(
+              <span>
+                You accepted a daily game while a live game is in progress.{' '}
+                <Link href={`/game/${ctx.acceptedGameId}`} className="text-sky-400 underline hover:text-sky-300">
+                  Open daily game
+                </Link>
+                {' — '}
+                <Link
+                  href={`/game/${String(cur.id).trim()}`}
+                  className="font-semibold text-emerald-400 underline hover:text-emerald-300"
+                >
+                  Return to your live game
+                </Link>
+                .
+              </span>
+            );
+            return;
+          }
           if (typeof console !== 'undefined') {
-            console.log('Accepted game without redirect (lower priority)');
+            console.log('Accepted game without redirect (lower priority)', ctx.reason);
           }
           setMessage(
             'Match accepted — your current game has priority. Open the new game from Match requests when you are ready.'
@@ -245,6 +277,7 @@ export default function RequestsPage() {
       actionInFlightRef.current = true;
       setBusyReqId(r.id);
       setMessage('');
+      setPostAcceptNavHint(null);
       try {
         if (debugRequestsAcceptEnabled()) {
           console.warn('[accl-debug] /requests acceptRequest → POST /api/match-requests/accept', {
@@ -262,9 +295,21 @@ export default function RequestsPage() {
           return;
         }
         if (isDirect(r) && isDirectOrPrivateLivePacedMatchRequest(r)) {
-          if (await userHasActiveWaitingLiveFreeGame(supabase, authUserId)) {
-            setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
-            return;
+          const slot = freePlayTargetSlotFromGameOrRequestFields({
+            tempo: r.tempo,
+            live_time_control: r.live_time_control,
+            rated: r.rated === true,
+          });
+          if (slot) {
+            const c = await userHasConflictingPlatQueueSlot(supabase, authUserId, slot);
+            if (c && typeof c === 'object' && 'queryError' in c) {
+              setMessage('Could not verify your active games.');
+              return;
+            }
+            if (typeof c === 'string' && c) {
+              setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
+              return;
+            }
           }
         }
         const httpRes = await fetch('/api/match-requests/accept', {
@@ -307,9 +352,16 @@ export default function RequestsPage() {
       setBusyReqId(r.id);
       setMessage('');
       try {
-        if (rowIndicatesLiveFreePlayPacing(r) && (await userInLiveFreeSeatedGame(supabase, authUserId))) {
-          setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
-          return;
+        if (rowIndicatesLiveFreePlayPacing(r)) {
+          const slot = freePlayTargetSlotFromGameOrRequestFields({
+            tempo: r.tempo,
+            live_time_control: r.live_time_control,
+            rated: r.rated === true,
+          });
+          if (slot && (await userInSeatedInSamePlatQueueSlot(supabase, authUserId, slot))) {
+            setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
+            return;
+          }
         }
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token?.trim();
@@ -448,6 +500,11 @@ export default function RequestsPage() {
           Open Free play
         </Link>
       </p>
+      {postAcceptNavHint ? (
+        <p data-testid="requests-post-accept-hint" className="text-sm text-gray-200">
+          {postAcceptNavHint}
+        </p>
+      ) : null}
       {message ? <p data-testid="requests-inbox-message">{message}</p> : null}
 
       <section style={{ marginBottom: 16 }}>

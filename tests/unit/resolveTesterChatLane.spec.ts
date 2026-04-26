@@ -11,4 +11,9 @@ test.describe('resolveTesterChatLane', () => {
     expect(resolveTesterChatLane('spectator', false, 'live', 'active')).toBe('table');
     expect(resolveTesterChatLane('spectator', false, 'live', 'finished')).toBe('postgame_player');
   });
+
+  test('board spectator on async tempo never maps to spectator lane', () => {
+    expect(resolveTesterChatLane('spectator', true, 'daily', 'active')).toBe('none');
+    expect(resolveTesterChatLane('table', true, 'correspondence', 'waiting')).toBe('none');
+  });
 });

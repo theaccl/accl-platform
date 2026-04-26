@@ -3,11 +3,13 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
+import { FreePlayLobbyGamesRealtimeProvider } from '@/components/free/FreePlayLobbyGamesRealtimeProvider';
 import { acclPerfTime } from '@/lib/acclPerfDebug';
 import { supabase } from '@/lib/supabaseClient';
 
 /**
  * Free lobby shell: stable test ids for E2E (`free-lobby-root`, `free-lobby-ready`).
+ * One shared `games` Realtime filter (`play_context=eq.free`) + debounced fan-out (see FreePlayLobbyGamesRealtimeProvider).
  */
 export function FreePlayLobbyClient({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -26,7 +28,7 @@ export function FreePlayLobbyClient({ children }: { children: ReactNode }) {
           Lobby session ready
         </span>
       ) : null}
-      {children}
+      <FreePlayLobbyGamesRealtimeProvider>{children}</FreePlayLobbyGamesRealtimeProvider>
     </div>
   );
 }
