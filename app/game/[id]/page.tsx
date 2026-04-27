@@ -76,6 +76,18 @@ import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
 import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
+const MOVE_LOG_LOAD_REASONS = [
+  'bootstrap',
+  'realtime_insert',
+  'post_move',
+  'timeout_finish',
+  'resign',
+  'abandon_open_seat',
+  'unknown',
+] as const;
+
+type MoveLogLoadReason = (typeof MOVE_LOG_LOAD_REASONS)[number];
+
 type GameRow = {
   id: string;
   white_player_id: string;
@@ -108,6 +120,9 @@ type GameRow = {
   move_deadline_at?: string | null;
   white_clock_ms?: number | null;
   black_clock_ms?: number | null;
+  updated_at?: string | null;
+  /** Server-side half-move count; used to skip redundant move-log fetches on snapshot-only churn. */
+  move_count?: number | null;
 };
 
 type PublicFinishedGameSnapshot = {
@@ -802,6 +817,8 @@ export default function GamePage() {
   const [showDisplayNameLoadNotice, setShowDisplayNameLoadNotice] = useState(false);
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
   const liveTimeoutInFlightRef = useRef(false);
+  const timeoutCheckRef = useRef<string | null>(null);
+  const lastMoveCountRef = useRef<number | null>(null);
   const [finishedGameArtifacts, setFinishedGameArtifacts] = useState<FinishedGameAnalysisArtifactRow[] | null>(
     null
   );
@@ -824,6 +841,7 @@ export default function GamePage() {
 
   useEffect(() => {
     liveTimeoutInFlightRef.current = false;
+    lastMoveCountRef.current = null;
   }, [gameId]);
 
   useEffect(() => {
@@ -1190,16 +1208,84 @@ export default function GamePage() {
     };
   })();
 
-  const loadMoveLogs = useCallback(async () => {
+  const loadMoveLogs = useCallback(async (reason: MoveLogLoadReason) => {
     if (!gameId) return;
-    if ((publicSpectate || !userId) && !game) return;
+    if (!publicSpectate && !userId) return;
+    /** Always-on counters + trace (runs even when move-count guard returns early). */
+    if (typeof window !== 'undefined') {
+      const w = window as Window & { __accl_debug?: Record<string, unknown> };
+      w.__accl_debug = w.__accl_debug ?? {};
+      const dbg = w.__accl_debug;
+      const prevByReason = (dbg.moveLogsByReason ?? {}) as Partial<Record<MoveLogLoadReason, number>>;
+      dbg.moveLogsByReason = {
+        ...prevByReason,
+        [reason]: (prevByReason[reason] ?? 0) + 1,
+      };
+      dbg.moveLogsTotal = Number(dbg.moveLogsTotal ?? 0) + 1;
+      dbg.lastMoveLogsReason = reason;
+      dbg.lastMoveLogsAt = Date.now();
+      const now = Date.now();
+      const prevTrace = Array.isArray(dbg.loadMoveLogsTrace)
+        ? (dbg.loadMoveLogsTrace as { reason: string; at: number }[])
+        : [];
+      dbg.loadMoveLogsTrace = [...prevTrace, { reason, at: now }].slice(-10);
+    }
+    /** When game row may lag the new log row (INSERT / local submit), never coalesce on move_count. */
+    const moveCountStaleOk =
+      reason === 'bootstrap' || reason === 'post_move' || reason === 'realtime_insert';
+    if (!moveCountStaleOk) {
+      const g = gameRef.current;
+      const mc =
+        g && typeof g.move_count === 'number' && Number.isFinite(g.move_count) ? g.move_count : null;
+      if (mc !== null && lastMoveCountRef.current === mc) {
+        return;
+      }
+      if (mc !== null) {
+        lastMoveCountRef.current = mc;
+      }
+    }
+    if (process.env.NODE_ENV === 'development') {
+      const stack =
+        new Error().stack?.split('\n').slice(1, 8).join('\n') ?? '';
+      console.debug('[accl] loadMoveLogs', {
+        reason,
+        gameId,
+        timestamp: new Date().toISOString(),
+        stack,
+      });
+    }
+    const started = Date.now();
     const { data } = await supabase
       .from('game_move_logs')
       .select('san, fen_before, fen_after, created_at, from_sq, to_sq')
       .eq('game_id', gameId)
       .order('created_at', { ascending: true });
+    if (typeof window !== 'undefined') {
+      const w = window as Window & {
+        __accl_debug?: Record<string, unknown>;
+      };
+      const dbg = w.__accl_debug ?? {};
+      const n = Number(dbg.gameLogsFetchCount ?? 0) + 1;
+      const total = Number(dbg.gameLogsFetchTotalMs ?? 0) + (Date.now() - started);
+      w.__accl_debug = {
+        ...dbg,
+        gameLogsFetchCount: n,
+        gameLogsFetchTotalMs: total,
+        gameLogsFetchAvgMs: Math.round((total / n) * 10) / 10,
+      };
+    }
     setMoveLogs((data ?? []) as MoveLogRow[]);
-  }, [gameId, publicSpectate, userId, game, setMoveLogs]);
+    const gAfter = gameRef.current;
+    const mcAfter =
+      gAfter && typeof gAfter.move_count === 'number' && Number.isFinite(gAfter.move_count)
+        ? gAfter.move_count
+        : null;
+    if (mcAfter !== null) {
+      lastMoveCountRef.current = mcAfter;
+    } else if ((data ?? []).length > 0) {
+      lastMoveCountRef.current = (data ?? []).length;
+    }
+  }, [gameId, publicSpectate, userId, setMoveLogs]);
 
   const loadGameSnapshot = useCallback(
     async (authUid?: string | null) => {
@@ -1265,7 +1351,22 @@ export default function GamePage() {
         return;
       }
 
+      const started = Date.now();
       const { data, error } = await supabase.from('games').select('*').eq('id', gameId).single();
+      if (typeof window !== 'undefined') {
+        const w = window as Window & {
+          __accl_debug?: Record<string, unknown>;
+        };
+        const dbg = w.__accl_debug ?? {};
+        const n = Number(dbg.gameSnapshotFetchCount ?? 0) + 1;
+        const total = Number(dbg.gameSnapshotFetchTotalMs ?? 0) + (Date.now() - started);
+        w.__accl_debug = {
+          ...dbg,
+          gameSnapshotFetchCount: n,
+          gameSnapshotFetchTotalMs: total,
+          gameSnapshotFetchAvgMs: Math.round((total / n) * 10) / 10,
+        };
+      }
       if (error) {
         setMessage(error.message);
         setGame(null);
@@ -1398,10 +1499,39 @@ export default function GamePage() {
     });
   }, [userId]);
 
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logsBootstrapKeyRef = useRef('');
+
   useEffect(() => {
+    if (!gameId) return;
     if (!userId && !publicSpectate) return;
-    void loadMoveLogs();
-  }, [loadMoveLogs, userId, publicSpectate]);
+    const key = `${gameId}|${userId || 'anon'}|${publicSpectate ? 'public' : 'private'}`;
+    if (logsBootstrapKeyRef.current === key) return;
+    logsBootstrapKeyRef.current = key;
+    void loadMoveLogs('bootstrap');
+  }, [gameId, userId, publicSpectate, loadMoveLogs]);
+  const scheduleRefresh = useCallback(
+    (opts?: {
+      snapshot?: boolean;
+      logs?: boolean;
+      debounceMs?: number;
+      moveLogsReason?: MoveLogLoadReason;
+    }) => {
+      const snapshot = opts?.snapshot !== false;
+      const logs = opts?.logs === true;
+      const debounceMs = opts?.debounceMs ?? 220;
+      const moveLogsReason = opts?.moveLogsReason ?? 'unknown';
+      if (refreshTimerRef.current != null) {
+        clearTimeout(refreshTimerRef.current);
+      }
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        if (snapshot) void loadGameSnapshot();
+        if (logs) void loadMoveLogs(moveLogsReason);
+      }, debounceMs);
+    },
+    [loadGameSnapshot, loadMoveLogs]
+  );
 
   useEffect(() => {
     if (!gameId) return;
@@ -1413,32 +1543,37 @@ export default function GamePage() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         () => {
-          void loadGameSnapshot();
-          void loadMoveLogs();
+          scheduleRefresh({ snapshot: true, logs: false });
         }
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'game_move_logs', filter: `game_id=eq.${gameId}` },
+        { event: 'INSERT', schema: 'public', table: 'game_move_logs', filter: `game_id=eq.${gameId}` },
         () => {
-          void loadGameSnapshot();
-          void loadMoveLogs();
+          scheduleRefresh({
+            snapshot: false,
+            logs: true,
+            moveLogsReason: 'realtime_insert',
+          });
         }
       )
       .subscribe();
 
     return () => {
+      if (refreshTimerRef.current != null) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
-  }, [gameId, loadGameSnapshot, loadMoveLogs, publicSpectate, userId]);
+  }, [gameId, scheduleRefresh, publicSpectate, userId]);
 
   /** Tab focus / visibility: reconcile if realtime missed a frame or user was backgrounded. */
   useEffect(() => {
     if (!gameId) return;
     if (!userId && !publicSpectate) return;
     const refresh = () => {
-      void loadGameSnapshot();
-      void loadMoveLogs();
+      scheduleRefresh({ snapshot: true, logs: false, debounceMs: 0 });
     };
     const onVis = () => {
       if (document.visibilityState === 'visible') refresh();
@@ -1449,7 +1584,7 @@ export default function GamePage() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [gameId, loadGameSnapshot, loadMoveLogs, publicSpectate, userId]);
+  }, [gameId, scheduleRefresh, publicSpectate, userId]);
 
   /**
    * Live / daily: soft polling while in live mode so turn + clocks match even if
@@ -1466,7 +1601,6 @@ export default function GamePage() {
 
     const t = window.setInterval(() => {
       void loadGameSnapshot();
-      void loadMoveLogs();
     }, 2000);
     return () => window.clearInterval(t);
   }, [
@@ -1477,7 +1611,6 @@ export default function GamePage() {
     game?.status,
     game?.tempo,
     loadGameSnapshot,
-    loadMoveLogs,
   ]);
 
   useEffect(() => {
@@ -1505,15 +1638,10 @@ export default function GamePage() {
         return;
       }
       setGame(data as GameRow);
-      void loadMoveLogs();
+      void loadMoveLogs('timeout_finish');
       window.setTimeout(() => {
         void loadGameSnapshot();
-        void loadMoveLogs();
-      }, 200);
-      window.setTimeout(() => {
-        void loadGameSnapshot();
-        void loadMoveLogs();
-      }, 900);
+      }, 600);
     },
     [loadGameSnapshot, loadMoveLogs]
   );
@@ -1527,6 +1655,9 @@ export default function GamePage() {
     const check = () => {
       const state = liveDailyClockTimeoutState(game, Date.now());
       if (state.applies && state.flaggedLoser) {
+        const timeoutKey = `${gameId}-${game.status}-${game.turn}`;
+        if (timeoutCheckRef.current === timeoutKey) return;
+        timeoutCheckRef.current = timeoutKey;
         void scheduleLiveTimeoutFinish(game, state.flaggedLoser);
       }
     };
@@ -1534,7 +1665,7 @@ export default function GamePage() {
     check();
     const timer = setInterval(check, 1000);
     return () => clearInterval(timer);
-  }, [game, scheduleLiveTimeoutFinish]);
+  }, [game, gameId, scheduleLiveTimeoutFinish]);
 
   const handleResign = async () => {
     if (!game || !myColor || resigning) return;
@@ -1552,15 +1683,10 @@ export default function GamePage() {
       return;
     }
     setGame(data as GameRow);
-    void loadMoveLogs();
+    void loadMoveLogs('resign');
     window.setTimeout(() => {
       void loadGameSnapshot();
-      void loadMoveLogs();
-    }, 200);
-    window.setTimeout(() => {
-      void loadGameSnapshot();
-      void loadMoveLogs();
-    }, 900);
+    }, 600);
   };
 
   /** Open-seat creator exits before Black joins — same RPC as resign (white vacates). */
@@ -1582,15 +1708,10 @@ export default function GamePage() {
     }
     clearHostLiveOpenSeatFollow();
     setGame(data as GameRow);
-    void loadMoveLogs();
+    void loadMoveLogs('abandon_open_seat');
     window.setTimeout(() => {
       void loadGameSnapshot();
-      void loadMoveLogs();
-    }, 200);
-    window.setTimeout(() => {
-      void loadGameSnapshot();
-      void loadMoveLogs();
-    }, 900);
+    }, 600);
   };
 
   const handleOfferDraw = async () => {
@@ -1795,16 +1916,11 @@ export default function GamePage() {
 
     setReplayStep(null);
     setSavingMove(false);
-    // E2E: immediate + 200ms + 900ms reconciliation (keep in sync with resign / terminal handlers).
-    void loadMoveLogs();
+    // E2E: immediate log refresh + single delayed snapshot reconciliation.
+    void loadMoveLogs('post_move');
     window.setTimeout(() => {
       void loadGameSnapshot();
-      void loadMoveLogs();
-    }, 200);
-    window.setTimeout(() => {
-      void loadGameSnapshot();
-      void loadMoveLogs();
-    }, 900);
+    }, 600);
   };
 
   const applyPlayerMove = (
