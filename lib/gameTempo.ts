@@ -3,7 +3,7 @@ export type GameTempo = (typeof GAME_TEMPOS)[number];
 export const DEFAULT_GAME_TEMPO: GameTempo = 'live';
 
 export function normalizeGameTempo(raw: string | null | undefined): GameTempo {
-  const v = String(raw ?? '').toLowerCase();
+  const v = String(raw ?? '').trim().toLowerCase();
   if (v === 'live' || v === 'daily' || v === 'correspondence') return v;
   return DEFAULT_GAME_TEMPO;
 }

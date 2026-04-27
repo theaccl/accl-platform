@@ -7,13 +7,15 @@ import {
 import { isDirectOrPrivateLivePacedMatchRequest } from '../../lib/liveChallengeAcceptGuard';
 
 test.describe('freePlayLiveSession', () => {
-  test('live clock token recognized even when tempo mis-stored as daily', () => {
+  test('live tempo is recognized with normalized trim/lowercase', () => {
     expect(liveTimeControlTokenIndicatesLivePacing('5m')).toBe(true);
-    expect(rowIndicatesLiveFreePlayPacing({ tempo: 'daily', live_time_control: '5m' })).toBe(true);
+    expect(rowIndicatesLiveFreePlayPacing({ tempo: ' LIVE ', live_time_control: '5m' })).toBe(true);
   });
 
-  test('daily pace (1d/2d/3d) is not live pacing', () => {
+  test('async tempo is not live pacing even with live-looking clock tokens', () => {
     expect(rowIndicatesLiveFreePlayPacing({ tempo: 'daily', live_time_control: '1d' })).toBe(false);
+    expect(rowIndicatesLiveFreePlayPacing({ tempo: ' DAILY ', live_time_control: '5m' })).toBe(false);
+    expect(rowIndicatesLiveFreePlayPacing({ tempo: ' correspondence ', live_time_control: '3+2' })).toBe(false);
     expect(liveTimeControlTokenIndicatesLivePacing('1d')).toBe(false);
   });
 

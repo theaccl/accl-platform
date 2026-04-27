@@ -139,6 +139,14 @@ type PublicFinishedGameSnapshot = {
   move_logs: MoveLogRow[];
 };
 
+type CurrentMoveGameRow = {
+  id: string;
+  status: string;
+  turn: string | null;
+  white_player_id: string;
+  black_player_id: string | null;
+};
+
 /** chess.js promotion piece letters */
 type PromotionPiece = 'q' | 'r' | 'b' | 'n';
 
@@ -804,6 +812,7 @@ export default function GamePage() {
   );
   const [finishedAnalysisSummaryLoading, setFinishedAnalysisSummaryLoading] = useState(false);
   const [finishedAnalysisSummaryError, setFinishedAnalysisSummaryError] = useState<string | null>(null);
+  const [nextGameWithMyMoveId, setNextGameWithMyMoveId] = useState<string | null>(null);
 
   const spectateGrowthTracked = useRef(false);
   /** Prevents duplicate join RPC (e.g. React Strict Mode). */
@@ -1011,6 +1020,18 @@ export default function GamePage() {
     if (b && u === b) return 'black';
     return null;
   }, [game, userId]);
+
+  /** `?spectate=1` / `?public=1` = spectator path; strip for seated players (any tempo) so they always use the player lane. */
+  useEffect(() => {
+    if (!gameId || !userId || !publicSpectate || !game) return;
+    const u = userId.trim();
+    const w = String(game.white_player_id ?? '').trim();
+    const b = String(game.black_player_id ?? '').trim();
+    if (u !== w && u !== b) return;
+    const st = String(game.status ?? '');
+    if (st !== 'active' && st !== 'waiting') return;
+    router.replace(`/game/${encodeURIComponent(gameId)}`);
+  }, [game, gameId, publicSpectate, userId, router]);
 
   const isSpectator = myColor === null;
   const isPublicViewer = !userId && !!game;
@@ -1327,7 +1348,7 @@ export default function GamePage() {
         });
         if (
           joinSlot &&
-          rowIndicatesLiveFreePlayPacing({ tempo: game.tempo, live_time_control: game.live_time_control }) &&
+          normalizeGameTempo(game.tempo) === 'live' &&
           (await userInLiveFreeSeatedGame(supabase, userId, joinSlot))
         ) {
           setMessage(LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE);
@@ -2044,6 +2065,42 @@ export default function GamePage() {
     const m = platBucketForOpenSeat(game.tempo ?? null, game.live_time_control ?? null);
     return m ? `/free/lobby/${m}` : '/free/lobby';
   }, [game]);
+  const mainLobbyHref = '/free/lobby';
+
+  useEffect(() => {
+    if (!userId || !gameId) {
+      setNextGameWithMyMoveId(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from('games')
+        .select('id,status,turn,white_player_id,black_player_id,updated_at')
+        .eq('play_context', 'free')
+        .is('tournament_id', null)
+        .in('status', ['active', 'waiting'])
+        .or(`white_player_id.eq.${userId},black_player_id.eq.${userId}`)
+        .order('updated_at', { ascending: false })
+        .limit(24);
+      if (cancelled || error || !data?.length) {
+        if (!cancelled) setNextGameWithMyMoveId(null);
+        return;
+      }
+      const rows = (data as CurrentMoveGameRow[]).filter((r) => String(r.id) !== gameId);
+      const next = rows.find((r) => {
+        const t = String(r.turn ?? '').trim().toLowerCase();
+        if (t !== 'white' && t !== 'black') return false;
+        if (!r.black_player_id) return false;
+        if (t === 'white') return r.white_player_id === userId;
+        return r.black_player_id === userId;
+      });
+      setNextGameWithMyMoveId(next?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, gameId]);
 
   if (loading) {
     return (
@@ -2415,6 +2472,56 @@ export default function GamePage() {
       <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#777', lineHeight: 1.45 }}>
         {gameTimingRuleSummaryLine(normalizeGameTempo(game.tempo))}
       </p>
+      {!isPublicViewer ? (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            margin: '0 0 12px 0',
+          }}
+        >
+          <Link
+            href={mainLobbyHref}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #475569',
+              borderRadius: 8,
+              color: '#e2e8f0',
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            Main Lobby Chat
+          </Link>
+          <Link
+            href={lobbyReturnHref}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #334155',
+              borderRadius: 8,
+              color: '#cbd5e1',
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            Mode Chat Room
+          </Link>
+          <Link
+            href="/free/active"
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #334155',
+              borderRadius: 8,
+              color: '#93c5fd',
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            Review / Resume games
+          </Link>
+        </div>
+      ) : null}
       {showCorrespondenceClocks &&
         game.move_deadline_at &&
         normalizeGameTempo(game.tempo) === 'correspondence' && (
@@ -2560,6 +2667,37 @@ export default function GamePage() {
             : game.turn}
         </p>
       )}
+      {!isPublicViewer && game.status !== 'finished' && nextGameWithMyMoveId ? (
+        <div
+          data-testid="game-next-move-hint"
+          style={{
+            margin: '0 0 12px 0',
+            padding: '10px 12px',
+            maxWidth: 620,
+            border: '1px solid #14532d',
+            borderRadius: 8,
+            background: '#052e16',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <span style={{ color: '#bbf7d0', fontSize: 13, fontWeight: 700 }}>Your move in another game</span>
+          <Link
+            href={`/game/${nextGameWithMyMoveId}`}
+            style={{ color: '#86efac', textDecoration: 'underline', fontSize: 13, fontWeight: 700 }}
+          >
+            Open next game
+          </Link>
+          <Link
+            href="/free/active"
+            style={{ color: '#93c5fd', textDecoration: 'underline', fontSize: 13, fontWeight: 600 }}
+          >
+            View all current games
+          </Link>
+        </div>
+      ) : null}
 
       {game.status === 'finished' && (
         <>
@@ -2607,13 +2745,33 @@ export default function GamePage() {
                 Use <strong style={{ color: '#e2e8f0' }}>Home</strong> or <strong style={{ color: '#e2e8f0' }}>Back</strong> in the top bar to leave this replay.
               </p>
             ) : (
-              <Link
-                href="/trainer/review"
-                data-testid="game-finished-history-link"
-                style={{ color: '#93c5fd', fontSize: 14, fontWeight: 600 }}
-              >
-                ← All finished games
-              </Link>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                <Link
+                  href="/trainer/review"
+                  data-testid="game-finished-history-link"
+                  style={{ color: '#93c5fd', fontSize: 14, fontWeight: 600 }}
+                >
+                  ← All finished games
+                </Link>
+                <Link
+                  href={mainLobbyHref}
+                  style={{ color: '#7dd3fc', fontSize: 14, fontWeight: 600, textDecoration: 'underline' }}
+                >
+                  Main Lobby Chat
+                </Link>
+                <Link
+                  href={lobbyReturnHref}
+                  style={{ color: '#cbd5e1', fontSize: 14, fontWeight: 600, textDecoration: 'underline' }}
+                >
+                  Mode Chat Room
+                </Link>
+                <Link
+                  href="/free/active"
+                  style={{ color: '#93c5fd', fontSize: 14, fontWeight: 600, textDecoration: 'underline' }}
+                >
+                  Review / Resume games
+                </Link>
+              </div>
             )}
           </div>
           <div

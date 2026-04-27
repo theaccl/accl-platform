@@ -72,6 +72,7 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
       mode,
       clock: selectedClock,
       rated: selectedRated,
+      tempo: selected.tempo,
     });
     if ('error' in gate) {
       setPreJoinError(gate.error);

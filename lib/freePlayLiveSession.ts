@@ -27,8 +27,5 @@ export function rowIndicatesLiveFreePlayPacing(row: {
   tempo?: string | null;
   live_time_control?: string | null;
 }): boolean {
-  const ltc = String(row.live_time_control ?? '').trim().toLowerCase();
-  if (DAILY_PACE_LTC.has(ltc)) return false;
-  if (liveTimeControlTokenIndicatesLivePacing(row.live_time_control)) return true;
   return normalizeGameTempo(row.tempo) === 'live';
 }

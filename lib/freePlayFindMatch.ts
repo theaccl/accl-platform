@@ -21,6 +21,7 @@ import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOp
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { freePlayTargetSlot, openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
 import { userHasConflictingPlatQueueSlot } from '@/lib/hasActiveWaitingLiveFreeGame';
+import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export type { PlatMode } from '@/lib/freePlayModeTimeControl';
 
@@ -67,9 +68,13 @@ function buildOpenSeatRow(
 export async function checkUserFreePlayQueueEligible(
   supabase: SupabaseClient,
   userId: string,
-  target: { mode: PlatMode; clock: string; rated: boolean }
+  target: { mode: PlatMode; clock: string; rated: boolean; tempo?: string | null }
 ): Promise<{ ok: true } | { error: string; resumeGameId?: string }> {
-  if (target.mode === 'daily') {
+  const normalizedTempo =
+    target.tempo == null
+      ? (target.mode === 'daily' ? 'daily' : 'live')
+      : normalizeGameTempo(target.tempo);
+  if (normalizedTempo !== 'live') {
     return { ok: true };
   }
   const slot = freePlayTargetSlot(
@@ -224,6 +229,11 @@ export async function runFreePlayCreateGame(
   const row = buildOpenSeatRow(userId, mode, normalizedClock, rated);
   const { data: created, error: insErr } = await supabase.from('games').insert(row).select('id').single();
   if (insErr) {
+    const slot = freePlayTargetSlot(mode, normalizedClock, rated);
+    const resume = await userHasConflictingPlatQueueSlot(supabase, userId, slot);
+    if (typeof resume === 'string' && resume.trim()) {
+      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: resume };
+    }
     return { error: insErr.message || 'Could not create open seat.' };
   }
   const id = created?.id as string | undefined;

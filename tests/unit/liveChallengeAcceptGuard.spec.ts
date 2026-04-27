@@ -21,13 +21,13 @@ test.describe('liveChallengeAcceptGuard', () => {
     );
   });
 
-  test('mis-stored tempo daily + live clock still counts as live-paced direct request', () => {
+  test('daily direct request with live-looking clock is async, not live-blocked', () => {
     expect(
       isDirectOrPrivateLivePacedMatchRequest({
         visibility: 'direct',
-        tempo: 'daily',
+        tempo: ' daily ',
         live_time_control: '3+2',
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 });
