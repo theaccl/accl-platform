@@ -47,6 +47,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `STRIPE_SECRET_KEY` | **Test mode only:** `sk_test_…` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (test dashboard) |
 | `ACCL_ANALYSIS_QUEUE_SECRET` | Internal analysis queue auth |
+| `ACCL_TOURNAMENT_OPS_SECRET` | Internal tournament operator routes (`x-accl-tournament-ops-secret`, min 16 chars) |
 | `ACCL_INTERNAL_PAYMENTS_SECRET` | Internal payout/refund route auth |
 | `SUPABASE_ACCESS_TOKEN` | Optional: **Supabase CLI** (`supabase link`, migrations) — not required at runtime |
 
