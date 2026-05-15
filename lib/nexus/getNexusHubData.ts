@@ -136,7 +136,6 @@ function toIdentitySummary(user: User | null, prev: ReturnType<typeof identityPr
 }
 
 const MSG = {
-  activeTournaments: "Active tournament snapshot not available yet.",
   recentResults: "No recent results available.",
   standingSignedOut: "Standing context not available.",
   standingOutOfRange: "You are currently outside the visible standings range.",
@@ -203,14 +202,10 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     TOURNAMENT_CAP,
   );
 
-  const activeTournaments =
+  const activeTournaments: NexusHubPayload["activeTournaments"] =
     tournamentRows.length > 0
       ? { state: "ready" as const, items: tournamentRows }
-      : (placeholdersUsed.push("active_tournaments_empty"),
-        {
-          state: "placeholder" as const,
-          message: MSG.activeTournaments,
-        });
+      : { state: "ready" as const, items: [] };
 
   const recentRows = mapWinnersToRecentRows(recentWinners, RECENT_LIMIT);
   const hasRecentFinishedWins = recentRows.length > 0;

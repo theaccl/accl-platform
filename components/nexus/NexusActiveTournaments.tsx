@@ -54,6 +54,31 @@ export default function NexusActiveTournaments({ state }: { state: NexusTourname
             ) : null}
           </div>
         </div>
+      ) : state.items.length === 0 ? (
+        <div className="rounded-lg border border-[#243244] bg-[#0f1420] px-3 py-4 text-sm text-gray-400">
+          <p>No active tournaments right now.</p>
+          {isValidHubHandoffHref(TOURNAMENTS_HREF) ? (
+            <p className="mt-2 text-[11px] text-gray-500">
+              <NexusLinkWrapper
+                href={TOURNAMENTS_HREF}
+                isValid
+                title="Opens tournaments page"
+                className="font-medium text-red-300/80 underline-offset-2 hover:underline"
+              >
+                Tournaments hub
+              </NexusLinkWrapper>{" "}
+              ·{" "}
+              <NexusLinkWrapper
+                href="/tournaments/join"
+                isValid
+                title="Join a pending tournament"
+                className="font-medium text-red-300/80 underline-offset-2 hover:underline"
+              >
+                Join pending
+              </NexusLinkWrapper>
+            </p>
+          ) : null}
+        </div>
       ) : (
         <ul className="space-y-3">
           {state.items.map((row) => {
@@ -75,7 +100,17 @@ export default function NexusActiveTournaments({ state }: { state: NexusTourname
                   summaryClassName="px-3 py-2.5"
                   summary={
                     <>
-                      <p className="text-[15px] font-medium leading-snug text-gray-100">{row.name}</p>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-[15px] font-medium leading-snug text-gray-100">{row.name}</p>
+                        <NexusLinkWrapper
+                          href={row.href}
+                          isValid={Boolean(row.href && isValidHubHandoffHref(row.href))}
+                          title="Open tournament page"
+                          className="shrink-0 text-[11px] font-semibold text-red-300/90 underline underline-offset-2 hover:text-red-200"
+                        >
+                          Details
+                        </NexusLinkWrapper>
+                      </div>
                       {(row.userParticipating || row.userHasActiveGame) && (
                         <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium">
                           {row.userHasActiveGame ? (
