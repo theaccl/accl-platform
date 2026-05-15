@@ -27,7 +27,6 @@ import { createServiceRoleClient } from "@/lib/supabaseServiceRoleClient";
 import type {
   NexusHubPayload,
   NexusIdentitySummaryData,
-  NexusPreloadedData,
   NexusStandingContextState,
   NexusSystemActivityState,
   NexusTournamentRow,
@@ -276,7 +275,7 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     hasRecentFinishedWins,
   });
 
-  const nexusData: NexusPreloadedData = {
+  const nexusData: NexusHubPayload["nexusData"] = {
     matchRequests: { pendingCount: pendingMatchCount },
     games: liveGames,
     profiles: {

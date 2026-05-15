@@ -1,5 +1,8 @@
 /** Phase 1–2.5 NEXUS command-center payload types (distinct from legacy `NexusData` in getNexusData.ts). */
 
+import type { NexusAnnouncement, NexusLiveGame } from "@/lib/nexus/getNexusData";
+import type { PublicP1Read } from "@/lib/p1PublicRatingRead";
+
 export type PlaceholderState = {
   state: "placeholder";
   message: string;
@@ -104,6 +107,21 @@ export type NexusActionCard = {
   emphasis?: "primary" | "secondary";
 };
 
+/**
+ * Single hub load: one server pass for data that would otherwise be re-fetched by client modules.
+ * (See getNexusHubData.)
+ */
+export type NexusPreloadedData = {
+  matchRequests: { pendingCount: number };
+  games: NexusLiveGame[];
+  profiles: {
+    self: { userId: string; username: string | null; rating: number | null } | null;
+  };
+  tournamentEntries: { ids: string[] };
+  announcements: NexusAnnouncement[];
+  playerP1Snapshot: PublicP1Read | null;
+};
+
 export type NexusHubPayload = {
   identity: NexusIdentitySummaryData;
   activeTournaments: NexusTournamentSnapshotState;
@@ -111,6 +129,7 @@ export type NexusHubPayload = {
   standingContext: NexusStandingContextState;
   systemActivity: NexusSystemActivityState;
   actionCards: NexusActionCard[];
+  nexusData: NexusPreloadedData;
   meta: {
     /** Stable keys when a module is in placeholder mode, e.g. active_tournaments_empty */
     placeholdersUsed: string[];
