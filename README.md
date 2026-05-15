@@ -50,7 +50,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `ACCL_TOURNAMENT_OPS_SECRET` | Internal tournament operator routes (`x-accl-tournament-ops-secret`, min 16 chars) |
 | `ACCL_INTERNAL_PAYMENTS_SECRET` | Internal payout/refund route auth |
 
-Tournament operator HTTP surface (server-only, not for browsers): `POST /api/internal/tournaments/create`, `POST /api/internal/tournaments/add-entrants`, `POST /api/internal/tournaments/bootstrap-bracket`. Bodies and behavior match [`app/api/internal/tournaments/`](app/api/internal/tournaments/) (pending tournament, profile validation, then [`persistTournamentBracket`](lib/tournamentPersist.ts)).
+Tournament operator HTTP surface (server-only, not for browsers): `POST /api/internal/tournaments/create`, `POST /api/internal/tournaments/add-entrants`, `POST /api/internal/tournaments/bootstrap-bracket`. Bodies and behavior match [`app/api/internal/tournaments/`](app/api/internal/tournaments/) (pending tournament, profile validation, then [`persistTournamentBracket`](lib/tournamentPersist.ts)). Supabase RLS/grants baseline: [`docs/security/SUPABASE_SECURITY_BASELINE.md`](docs/security/SUPABASE_SECURITY_BASELINE.md).
 | `SUPABASE_ACCESS_TOKEN` | Optional: **Supabase CLI** (`supabase link`, migrations) — not required at runtime |
 
 Additional optional keys (bots, Stripe Connect, etc.) are documented in code and `AGENTS.md`.
