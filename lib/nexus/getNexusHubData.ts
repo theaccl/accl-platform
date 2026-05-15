@@ -1,23 +1,31 @@
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { getActivityFeed } from "@/lib/nexus/getActivityFeed";
+import { getAnnouncements } from "@/lib/nexus/getAnnouncements";
 import type { NexusEcosystem } from "@/lib/nexus/getNexusData";
 import { getLiveGames } from "@/lib/nexus/getLiveGames";
 import { getRecentWinners } from "@/lib/nexus/getRecentWinners";
 import { getStandings } from "@/lib/nexus/getStandings";
 import {
   buildNexusHubActionCards,
+  isNexusHubListedTournamentStatus,
   mapActivityFeedToRows,
   mapTournamentRows,
   mapWinnersToRecentRows,
   scoreAndSortTournamentRows,
 } from "@/lib/nexus/nexusHubMapping";
-import { acclRatingFromP1, formatRatingDisplay, parseP1FromSnapshotPayload } from "@/lib/p1PublicRatingRead";
+import {
+  acclRatingFromP1,
+  formatRatingDisplay,
+  parseP1FromSnapshotPayload,
+  type PublicP1Read,
+} from "@/lib/p1PublicRatingRead";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import { createServiceRoleClient } from "@/lib/supabaseServiceRoleClient";
 import type {
   NexusHubPayload,
   NexusIdentitySummaryData,
+  NexusPreloadedData,
   NexusStandingContextState,
   NexusSystemActivityState,
   NexusTournamentRow,
@@ -28,6 +36,7 @@ export type { HubActionCardsParams } from "@/lib/nexus/nexusHubMapping";
 export {
   buildNexusHubActionCards,
   formatRelativeTimeUtc,
+  isNexusHubListedTournamentStatus,
   isSafeHubDocumentId,
   isValidNexusHubHref,
   mapActivityFeedToRows,
@@ -42,6 +51,17 @@ export {
 
 const TOURNAMENT_QUERY_LIMIT = 20;
 const TOURNAMENT_CAP = 12;
+
+async function fetchPendingMatchRequestCount(userId: string): Promise<number> {
+  const supabase = createServiceRoleClient();
+  const { count, error } = await supabase
+    .from("match_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("to_user_id", userId)
+    .eq("status", "pending");
+  if (error) return 0;
+  return count ?? 0;
+}
 
 async function fetchTournamentEntryIdsForUser(
   userId: string,
@@ -89,9 +109,7 @@ async function fetchHonestActiveTournaments(ecosystem: NexusEcosystem): Promise<
     .order("created_at", { ascending: false })
     .limit(TOURNAMENT_QUERY_LIMIT);
   if (error) return [];
-  const active = (data ?? []).filter((r) =>
-    ["active", "in_progress", "live"].includes(String(r.status ?? "").toLowerCase()),
-  );
+  const active = (data ?? []).filter((r) => isNexusHubListedTournamentStatus(r.status));
   const mapped: NexusTournamentRow[] = active.map((r) => {
     const sl = (r as { sponsor_label?: string | null }).sponsor_label;
     const tierLabel = sl && String(sl).trim() ? String(sl).trim() : undefined;
@@ -152,24 +170,29 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
   }
   const prev = identityPreviewFromUser(user, { profileUsername });
   let identity = toIdentitySummary(user, prev);
+  let playerP1Snapshot: PublicP1Read | null = null;
   if (user?.id) {
     const supabaseSnap = createServiceRoleClient();
     const { data: snap } = await supabaseSnap.rpc("get_public_profile_snapshot", {
       p_profile_id: user.id,
     });
     const p1 = parseP1FromSnapshotPayload(snap);
+    playerP1Snapshot = p1;
     const accl = acclRatingFromP1(p1, profileRating);
     if (accl != null) {
       identity = { ...identity, elo: formatRatingDisplay(accl) };
     }
   }
 
-  const [recentWinners, activityFeed, liveGames, standings, tournamentRowsRaw] = await Promise.all([
+  const [recentWinners, activityFeed, liveGames, standings, tournamentRowsRaw, announcements, pendingMatchCount] =
+    await Promise.all([
     getRecentWinners(ecosystem),
     getActivityFeed(ecosystem),
     getLiveGames(ecosystem),
     getStandings(ecosystem),
     fetchHonestActiveTournaments(ecosystem),
+    getAnnouncements(ecosystem),
+    user?.id ? fetchPendingMatchRequestCount(user.id) : Promise.resolve(0),
   ]);
 
   const tournamentIds = tournamentRowsRaw.map((r) => r.id);
@@ -261,6 +284,24 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     hasRecentFinishedWins,
   });
 
+  const nexusData: NexusPreloadedData = {
+    matchRequests: { pendingCount: pendingMatchCount },
+    games: liveGames,
+    profiles: {
+      self:
+        user?.id != null
+          ? {
+              userId: user.id,
+              username: profileUsername,
+              rating: profileRating,
+            }
+          : null,
+    },
+    tournamentEntries: { ids: userTournamentEntryIds },
+    announcements,
+    playerP1Snapshot,
+  };
+
   return {
     identity,
     activeTournaments,
@@ -268,6 +309,7 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     standingContext,
     systemActivity,
     actionCards,
+    nexusData,
     meta: {
       placeholdersUsed,
       generatedAt,

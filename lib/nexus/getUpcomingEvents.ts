@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { NexusEcosystem, NexusTournament, NexusUpcomingEvent } from '@/lib/nexus/getNexusData';
+import { isNexusHubListedTournamentStatus } from '@/lib/nexus/nexusHubMapping';
 import {
   economicsFromDbCents,
   inferEconomicsFromEventTitle,
@@ -20,7 +21,7 @@ export async function getUpcomingEvents(
       .eq('ecosystem_scope', ecosystem)
       .order('created_at', { ascending: false })
       .limit(50);
-    const active = (data ?? []).filter((r) => ['active', 'in_progress', 'live'].includes(String(r.status ?? '').toLowerCase()));
+    const active = (data ?? []).filter((r) => isNexusHubListedTournamentStatus(r.status));
     return active.slice(0, 10).map((r) => {
       const tier = 'Tier B';
       const participants = 16;

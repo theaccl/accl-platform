@@ -59,14 +59,14 @@ test.describe("NEXUS hub mapping", () => {
         {
           id: "850e8400-e29b-41d4-a716-446655440003",
           name: "Open",
-          status: "in_progress",
+          status: "active",
           updatedAt: "2026-01-01T00:00:00.000Z",
           href: "",
         },
       ],
       12,
     );
-    expect(rows[0].stageLabel).toBe(stageLabelFromStatus("in_progress"));
+    expect(rows[0].stageLabel).toBe(stageLabelFromStatus("active"));
   });
 
   test("mapActivityFeedToRows normalizes and bounds to 10", () => {

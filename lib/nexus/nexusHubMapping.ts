@@ -78,11 +78,20 @@ export function isValidNexusHubHref(href: string): boolean {
   return isAllowedDynamicHref(href);
 }
 
+/**
+ * Hub “active tournaments” list — must match `tournaments.status` in DB (`active` only).
+ * Not to be confused with game `tempo` = `live` or legacy/non-DB status strings.
+ */
+export function isNexusHubListedTournamentStatus(status: unknown): boolean {
+  return String(status ?? "").toLowerCase().trim() === "active";
+}
+
 /** Safe stage line from DB status only — no invented round numbers. */
 export function stageLabelFromStatus(status: string): string | undefined {
   const s = String(status ?? "").toLowerCase().trim();
-  if (s === "in_progress" || s === "live") return "In progress";
+  if (s === "pending") return "Pending";
   if (s === "active") return "Active";
+  if (s === "completed") return "Completed";
   return undefined;
 }
 
@@ -292,8 +301,7 @@ export function mapTournamentRows(raw: NexusTournamentRow[], max = 12): NexusTou
 function tournamentRelevanceScore(r: NexusTournamentRow): number {
   if (r.userHasActiveGame) return 100;
   if (r.userParticipating) return 80;
-  const s = String(r.status ?? "").toLowerCase().trim();
-  if (s === "active" || s === "in_progress" || s === "live") return 50;
+  if (isNexusHubListedTournamentStatus(r.status)) return 50;
   return 20;
 }
 

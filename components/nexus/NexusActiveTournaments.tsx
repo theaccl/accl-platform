@@ -19,8 +19,9 @@ function formatExactUpdated(iso: string): string {
 
 function tournamentStatusExplainer(status: string): string {
   const s = String(status).toLowerCase().trim();
+  if (s === "pending") return "Registration or setup — bracket not active yet.";
   if (s === "active") return "Tournament is active and ongoing.";
-  if (s === "in_progress" || s === "live") return "Matches or bracket activity is in progress.";
+  if (s === "completed") return "Tournament has completed.";
   return `Recorded status: ${status}.`;
 }
 
