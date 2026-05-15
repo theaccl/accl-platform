@@ -1,30 +1,291 @@
+/**
+ * Display / UI / mono stack (Barlow Condensed, DM Sans, JetBrains Mono).
+ * Must precede other @import (CSS spec). Loaded at runtime in the browser.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
 @import "tailwindcss";
 
-/* Tailwind v4 theme tokens; VS Code CSS validator may not know @theme — build is valid. */
+/**
+ * ACCL global tokens — single vocabulary (`--accl-*`, `--font-accl-*`).
+ * Reference checklist + conflicts: docs/design/ACCL_TOKEN_CONFLICT_REPORT.md
+ * Primitives (`--accl-bg-*`, `--accl-text-*`, …) are the source of truth for hex/rem.
+ * `--accl-palette-*`, `--accl-surface-*`, `--accl-elevation-*` are thin aliases only.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-accl-display: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-accl-ui: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-accl-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Surfaces */
+  --accl-bg-base: #0d1117;
+  --accl-bg-arena: #07080c;
+  --accl-bg-elevated: #0f1724;
+  --accl-bg-card: #111723;
+  --accl-bg-card-end: #1a2231;
+  --accl-bg-game: #000000;
+  --accl-bg-popover: #252a38;
+
+  /* Borders */
+  --accl-border-subtle: rgba(255, 255, 255, 0.06);
+  --accl-border-muted: #243244;
+  --accl-border-strong: #2a3442;
+  --accl-border-accent: rgba(239, 68, 68, 0.35);
+
+  /* Text */
+  --accl-text-primary: #f4f4f5;
+  --accl-text-secondary: #e5e7eb;
+  --accl-text-muted: #9ca3af;
+  --accl-text-faint: #6b7280;
+
+  /* Accents (arena) */
+  --accl-accent-crimson: #b91c1c;
+  --accl-accent-crimson-bright: #ef4444;
+  --accl-accent-gold: #d4a017;
+  --accl-accent-amber: #f59e0b;
+
+  /* Semantic status (UI feedback, not gameplay authority) */
+  --accl-status-success: #22c55e;
+  --accl-status-success-muted: rgba(34, 197, 94, 0.15);
+  --accl-status-warning: #eab308;
+  --accl-status-warning-muted: rgba(234, 179, 8, 0.15);
+  --accl-status-danger: #ef4444;
+  --accl-status-danger-muted: rgba(239, 68, 68, 0.15);
+  --accl-status-info: #38bdf8;
+  --accl-status-info-muted: rgba(56, 189, 248, 0.12);
+  --accl-status-neutral: #64748b;
+  --accl-status-neutral-muted: rgba(100, 116, 139, 0.2);
+
+  /* Spacing scale (rem) */
+  --accl-space-0: 0;
+  --accl-space-1: 0.25rem;
+  --accl-space-2: 0.5rem;
+  --accl-space-3: 0.75rem;
+  --accl-space-4: 1rem;
+  --accl-space-5: 1.25rem;
+  --accl-space-6: 1.5rem;
+  --accl-space-8: 2rem;
+  --accl-space-10: 2.5rem;
+  --accl-space-12: 3rem;
+
+  /* Radius */
+  --accl-radius-sm: 0.375rem;
+  --accl-radius-md: 0.5rem;
+  --accl-radius-lg: 0.75rem;
+  --accl-radius-xl: 1rem;
+  --accl-radius-2xl: 1.25rem;
+  --accl-radius-pill: 9999px;
+
+  /* Typography scale */
+  --accl-text-2xs: 0.625rem;
+  --accl-text-xs: 0.6875rem;
+  --accl-text-sm: 0.875rem;
+  --accl-text-base: 1rem;
+  --accl-text-lg: 1.125rem;
+  --accl-text-xl: 1.25rem;
+  --accl-text-2xl: 1.5rem;
+  --accl-text-3xl: 1.875rem;
+  --accl-text-display: clamp(1.75rem, 4vw, 2.25rem);
+  --accl-leading-tight: 1.25;
+  --accl-leading-snug: 1.375;
+  --accl-leading-normal: 1.5;
+  --accl-tracking-wide: 0.18em;
+  --accl-tracking-wider: 0.22em;
+  --accl-tracking-caps: 0.25em;
+
+  /* Depth / shadow */
+  --accl-shadow-card: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 4px 24px rgba(0, 0, 0, 0.35);
+  --accl-shadow-card-hover: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset, 0 8px 32px rgba(0, 0, 0, 0.4);
+  --accl-shadow-panel: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset;
+
+  /* Z-index layers */
+  --accl-z-base: 0;
+  --accl-z-raised: 10;
+  --accl-z-dropdown: 50;
+  --accl-z-sticky: 100;
+  --accl-z-overlay: 150;
+  --accl-z-modal: 200;
+  --accl-z-toast: 300;
+  /* Extended labels (same stack as above; use for new components / docs alignment) */
+  --accl-z-board: 10;
+  --accl-z-notification: 300;
+
+  /* --------------------------------------------------------------------------
+     Reconciled token v0.1 — semantic + motion + layout aliases (see
+     docs/design/ACCL_DESIGN_DIRECTION_V1.md). Core --accl-bg-*, --accl-text-*,
+     --accl-status-* hex values above remain canonical unless a theme overrides.
+     -------------------------------------------------------------------------- */
+
+  /* Palette labels — alias primitives only (no duplicate hex for the same role). */
+  --accl-palette-abyss: var(--accl-bg-base);
+  --accl-palette-deep-panel: var(--accl-bg-elevated);
+  --accl-palette-mid-panel: var(--accl-bg-card);
+  --accl-palette-elevated: var(--accl-bg-card-end);
+  --accl-palette-board-line: var(--accl-border-muted);
+  --accl-palette-grid-line: var(--accl-border-strong);
+  --accl-palette-popover: var(--accl-bg-popover);
+  --accl-palette-graphite: #3a3e50;
+  --accl-palette-trainer-cyan: #3a9dc4;
+  --accl-palette-trainer-steel: #2a7a9e;
+
+  /* Semantic surfaces / text — alias layer (consumers may migrate here over time) */
+  --accl-surface-page: var(--accl-bg-base);
+  --accl-surface-arena: var(--accl-bg-arena);
+  --accl-surface-panel: var(--accl-bg-elevated);
+  --accl-surface-card: var(--accl-bg-card);
+  --accl-surface-card-end: var(--accl-bg-card-end);
+  --accl-surface-modal: var(--accl-bg-card-end);
+  --accl-surface-popover: var(--accl-bg-popover);
+  --accl-border-default: var(--accl-border-muted);
+  --accl-border-hover: var(--accl-border-strong);
+  --accl-border-prestige: var(--accl-accent-gold);
+  --accl-border-danger: var(--accl-accent-crimson);
+  --accl-border-pending: var(--accl-accent-amber);
+  --accl-border-trainer: var(--accl-palette-trainer-steel);
+  --accl-text-tertiary: var(--accl-text-faint);
+  --accl-text-prestige: var(--accl-accent-gold);
+  --accl-text-on-prestige: var(--accl-bg-game);
+  --accl-text-inverse: var(--accl-bg-base);
+  --accl-text-success: var(--accl-status-success);
+  --accl-text-pending: var(--accl-accent-amber);
+  --accl-text-trainer: var(--accl-accent-trainer);
+  --accl-text-danger-display: var(--accl-accent-crimson-bright);
+
+  /*
+   * Locked presence / status roles — map to existing semantic status colors.
+   * Do not repurpose these names for unrelated UI (design constitution).
+   */
+  --accl-status-online: var(--accl-status-success);
+  --accl-status-pending: var(--accl-status-warning);
+  --accl-status-in-game: var(--accl-status-info);
+  --accl-status-offline: var(--accl-status-neutral);
+  --accl-status-danger-semantic: var(--accl-status-danger);
+  --accl-status-active: var(--accl-status-success);
+
+  --accl-accent-prestige: var(--accl-accent-gold);
+  --accl-accent-prestige-soft: #a8873a;
+  --accl-accent-pressure: var(--accl-accent-crimson);
+  --accl-accent-pressure-bright: var(--accl-accent-crimson-bright);
+  --accl-accent-enforcement: var(--accl-accent-crimson);
+  --accl-accent-trainer: var(--accl-palette-trainer-cyan);
+  --accl-accent-trainer-soft: var(--accl-palette-trainer-steel);
+
+  /* Focus (visible ring — align with prestige gold) */
+  --accl-focus-ring: var(--accl-accent-gold);
+  --accl-focus-ring-width: 2px;
+  --accl-focus-ring-offset: 2px;
+
+  /* Typography weights / tracking (optional; rem-based scale stays above) */
+  --accl-font-weight-regular: 400;
+  --accl-font-weight-medium: 500;
+  --accl-font-weight-semibold: 600;
+  --accl-font-weight-bold: 700;
+  --accl-font-weight-extrabold: 800;
+  --accl-tracking-tight: -0.01em;
+  --accl-tracking-display: 0.08em;
+  --accl-tracking-mono: 0.12em;
+  --accl-leading-loose: 1.7;
+
+  /* Motion — durations collapse to 0 under prefers-reduced-motion (below) */
+  --accl-duration-instant: 80ms;
+  --accl-duration-quick: 120ms;
+  --accl-duration-fast: 150ms;
+  --accl-duration-base: 200ms;
+  --accl-duration-medium: 250ms;
+  --accl-duration-slow: 300ms;
+  --accl-duration-deliberate: 500ms;
+  --accl-duration-ceremony: 600ms;
+  --accl-duration-breathing: 3000ms;
+  --accl-ease-standard: cubic-bezier(0.2, 0, 0.2, 1);
+  --accl-ease-in-out: cubic-bezier(0.4, 0, 0.4, 1);
+  --accl-ease-pulse: ease-in-out;
+  --accl-ease-linear: linear;
+  --accl-transition-hover: background-color var(--accl-duration-quick) var(--accl-ease-standard),
+    border-color var(--accl-duration-quick) var(--accl-ease-standard),
+    box-shadow var(--accl-duration-quick) var(--accl-ease-standard),
+    transform var(--accl-duration-quick) var(--accl-ease-standard);
+  --accl-transition-fade: opacity var(--accl-duration-base) var(--accl-ease-standard);
+  --accl-transition-page-enter: opacity var(--accl-duration-base) var(--accl-ease-standard),
+    transform var(--accl-duration-base) var(--accl-ease-standard);
+
+  /* Longer-cycle UI (pulse / breathing); scholastic may override */
+  --accl-duration-pulse: 1000ms;
+  /* Nexus shell enter — between fast and base */
+  --accl-duration-shell: 180ms;
+
+  /* Elevation labels (background-shift first; shadows stay on cards/panels above) */
+  --accl-elevation-page: var(--accl-bg-base);
+  --accl-elevation-panel: var(--accl-bg-elevated);
+  --accl-elevation-nested: var(--accl-bg-card);
+
+  /* Component spacing aliases (rem; map to scale above) */
+  --accl-card-padding: var(--accl-space-4);
+  --accl-card-padding-lg: var(--accl-space-6);
+  --accl-card-gap: var(--accl-space-5);
+  --accl-section-gap: var(--accl-space-12);
+  --accl-inline-gap: var(--accl-space-2);
+  --accl-badge-padding-x: 0.375rem;
+  --accl-badge-padding-y: 0.15625rem;
+  --accl-grid-max-width: 80rem;
+
+  /* Modal / popover shadows (approved heavy shadows — optional use) */
+  --accl-shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --accl-shadow-popover: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --accl-shadow-piece: 0 4px 8px rgba(0, 0, 0, 0.45);
+
+  /* Legacy theme bridge (light default unused for primary ACCL shell) */
+  --background: var(--accl-bg-base);
+  --foreground: var(--accl-text-primary);
+}
+
+/*
+ * K–12 / scholastic — surface lift + softer pressure; locked status hues unchanged
+ * (still inherited from base --accl-status-* they alias). Opt-in:
+ * <html data-theme="scholastic"> or an ancestor with .theme-scholastic
+ */
+[data-theme="scholastic"],
+.theme-scholastic {
+  --accl-bg-base: #1a1e2e;
+  --accl-bg-arena: #151a28;
+  --accl-bg-elevated: #252a40;
+  --accl-bg-card: #2d3349;
+  --accl-bg-card-end: #333a52;
+  --accl-border-muted: #3d4560;
+  --accl-border-strong: #4a5472;
+  --accl-accent-gold: #d4b45a;
+  --accl-accent-crimson: #9e3434;
+  --accl-accent-crimson-bright: #c75545;
+  --accl-duration-pulse: 1400ms;
 }
 
 /* stylelint-disable-next-line at-rule-no-unknown */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-accl-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-accl-mono), ui-monospace, monospace;
+  --font-display: var(--font-accl-display), ui-sans-serif, system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: var(--accl-bg-base);
+    --foreground: var(--accl-text-primary);
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--accl-bg-base);
+  color: var(--accl-text-primary);
+  font-family: var(--font-accl-ui), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Display headings: Barlow Condensed */
+.font-display {
+  font-family: var(--font-accl-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-mono-accl {
+  font-family: var(--font-accl-mono), ui-monospace, monospace;
 }
 
 /* Phase 17: slightly larger readable base on small screens (Nexus and app chrome). */
@@ -45,11 +306,34 @@ body {
 }
 
 .nexus-shell-enter {
-  animation: nexus-shell-fade-in 180ms ease-out both;
+  animation: nexus-shell-fade-in var(--accl-duration-shell) var(--accl-ease-standard) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --accl-duration-instant: 0ms;
+    --accl-duration-quick: 0ms;
+    --accl-duration-fast: 0ms;
+    --accl-duration-base: 0ms;
+    --accl-duration-medium: 0ms;
+    --accl-duration-slow: 0ms;
+    --accl-duration-deliberate: 0ms;
+    --accl-duration-ceremony: 0ms;
+    --accl-duration-pulse: 0ms;
+    --accl-duration-breathing: 0ms;
+    --accl-duration-shell: 0ms;
+  }
+
   .nexus-shell-enter {
     animation: none;
   }
+}
+
+/** Minimal game page shell — frames canvas; gameplay layout unchanged inside */
+.accl-game-shell {
+  min-height: 100vh;
+  background: var(--accl-bg-game);
+  color: var(--accl-text-primary);
+  padding: var(--accl-space-6);
+  font-family: var(--font-accl-ui), ui-sans-serif, system-ui, sans-serif;
 }
