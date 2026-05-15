@@ -8,7 +8,6 @@ import { getRecentWinners } from "@/lib/nexus/getRecentWinners";
 import { getStandings } from "@/lib/nexus/getStandings";
 import {
   buildNexusHubActionCards,
-  isNexusHubListedTournamentStatus,
   mapActivityFeedToRows,
   mapTournamentRows,
   mapWinnersToRecentRows,
@@ -21,6 +20,9 @@ import {
   type PublicP1Read,
 } from "@/lib/p1PublicRatingRead";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
+import {
+  fetchTournamentDirectoryRows,
+} from "@/lib/server/tournamentDirectoryReadModel";
 import { createServiceRoleClient } from "@/lib/supabaseServiceRoleClient";
 import type {
   NexusHubPayload,
@@ -100,24 +102,19 @@ function enrichTournamentUserContext(
   });
 }
 
-async function fetchHonestActiveTournaments(ecosystem: NexusEcosystem): Promise<NexusTournamentRow[]> {
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("tournaments")
-    .select("id,name,status,created_at,sponsor_label")
-    .eq("ecosystem_scope", ecosystem)
-    .order("created_at", { ascending: false })
-    .limit(TOURNAMENT_QUERY_LIMIT);
-  if (error) return [];
-  const active = (data ?? []).filter((r) => isNexusHubListedTournamentStatus(r.status));
-  const mapped: NexusTournamentRow[] = active.map((r) => {
-    const sl = (r as { sponsor_label?: string | null }).sponsor_label;
-    const tierLabel = sl && String(sl).trim() ? String(sl).trim() : undefined;
+async function fetchActiveTournamentsForHub(ecosystem: NexusEcosystem): Promise<NexusTournamentRow[]> {
+  const dir = await fetchTournamentDirectoryRows({
+    ecosystem,
+    statusFilter: "active",
+    limit: TOURNAMENT_QUERY_LIMIT,
+  });
+  const mapped: NexusTournamentRow[] = dir.map((r) => {
+    const tierLabel = r.sponsorLabel?.trim() ? r.sponsorLabel.trim() : undefined;
     return {
-      id: String(r.id ?? "").trim(),
-      name: String(r.name ?? "Tournament").trim() || "Tournament",
-      status: String(r.status ?? "—").trim() || "—",
-      updatedAt: String((r as { created_at?: string }).created_at ?? ""),
+      id: r.id,
+      name: r.name,
+      status: r.status,
+      updatedAt: r.createdAt,
       href: "",
       ...(tierLabel ? { tierLabel } : {}),
     };
@@ -190,7 +187,7 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     getActivityFeed(ecosystem),
     getLiveGames(ecosystem),
     getStandings(ecosystem),
-    fetchHonestActiveTournaments(ecosystem),
+    fetchActiveTournamentsForHub(ecosystem),
     getAnnouncements(ecosystem),
     user?.id ? fetchPendingMatchRequestCount(user.id) : Promise.resolve(0),
   ]);

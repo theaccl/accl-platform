@@ -1,6 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { NexusEcosystem, NexusTournament, NexusUpcomingEvent } from '@/lib/nexus/getNexusData';
-import { isNexusHubListedTournamentStatus } from '@/lib/nexus/nexusHubMapping';
+import { fetchTournamentDirectoryRows } from '@/lib/server/tournamentDirectoryReadModel';
 import {
   economicsFromDbCents,
   inferEconomicsFromEventTitle,
@@ -9,46 +9,51 @@ import {
 
 type Mode = 'active' | 'upcoming';
 
+function roundStatusLine(status: string): string {
+  const s = String(status ?? '').toLowerCase().trim();
+  if (s === 'active') return 'Round in progress';
+  if (s === 'pending') return 'Registration / setup';
+  if (s === 'completed') return 'Completed';
+  return String(status ?? '—');
+}
+
 export async function getUpcomingEvents(
   ecosystem: NexusEcosystem,
   mode: Mode
 ): Promise<NexusTournament[] | NexusUpcomingEvent[]> {
   const supabase = createServiceRoleClient();
   if (mode === 'active') {
-    const { data } = await supabase
-      .from('tournaments')
-      .select('id,name,status,created_at,sponsor_tag,sponsor_label,entry_fee_cents,prize_pool_cents')
-      .eq('ecosystem_scope', ecosystem)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    const active = (data ?? []).filter((r) => isNexusHubListedTournamentStatus(r.status));
-    return active.slice(0, 10).map((r) => {
+    const dir = await fetchTournamentDirectoryRows({
+      ecosystem,
+      statusFilter: 'active',
+      limit: 50,
+    });
+    return dir.slice(0, 10).map((r) => {
       const tier = 'Tier B';
-      const participants = 16;
       const stage = 'Quarterfinal';
-      const start = String(r.created_at ?? null);
-      const feeCents = (r as { entry_fee_cents?: number | null }).entry_fee_cents;
-      const poolCents = (r as { prize_pool_cents?: number | null }).prize_pool_cents;
+      const start = r.createdAt;
+      const feeCents = r.entryFeeCents;
+      const poolCents = r.prizePoolCents;
       const recorded =
         typeof feeCents === 'number' || typeof poolCents === 'number'
           ? economicsFromDbCents(
               typeof feeCents === 'number' ? feeCents : null,
               typeof poolCents === 'number' ? poolCents : null,
               ecosystem,
-              { lock_utc: start }
+              { lock_utc: start },
             )
           : null;
       const t: NexusTournament = {
-        id: String(r.id),
-        name: String(r.name ?? 'Tournament'),
+        id: r.id,
+        name: r.name,
         tier,
-        round_status: 'Round in progress',
-        participants,
+        round_status: roundStatusLine(r.status),
+        participants: r.participantCount,
         stage,
         start_utc: start,
-        economics: recorded ?? inferTournamentEconomics({ tier, participants, stage, start_utc: start }, ecosystem),
-        sponsor_tag: (r as { sponsor_tag?: string | null }).sponsor_tag ?? null,
-        sponsor_label: (r as { sponsor_label?: string | null }).sponsor_label ?? null,
+        economics: recorded ?? inferTournamentEconomics({ tier, participants: r.participantCount, stage, start_utc: start }, ecosystem),
+        sponsor_tag: r.sponsorTag,
+        sponsor_label: r.sponsorLabel,
       };
       return t;
     });
