@@ -3,9 +3,8 @@
  * Does not change RLS. Call only from server routes / RSC / route handlers.
  *
  * Detail access model (product):
- * - Anonymous: adult ecosystem only via /api/tournaments/directory (K-12 requires auth there).
- * - Authenticated: adult + k12 directory listings (metadata only — no bracket, no created_by).
- * - Entrants/creators: existing /tournaments/[id] + RLS for full rows; not replaced here.
+ * - Anonymous snapshot: adult + active/completed only via GET /api/tournaments/[id]/snapshot (no K–12, no pending).
+ * - Authenticated same-ecosystem: may load snapshot for active/completed; entrants/creators also see pending.
  * - Operators: unchanged internal routes + service_role.
  */
 

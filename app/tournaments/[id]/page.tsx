@@ -59,7 +59,7 @@ export default function TournamentDetailPage() {
   const idRaw = typeof params?.id === 'string' ? params.id : '';
   const idOk = useMemo(() => UUID_RE.test(idRaw), [idRaw]);
 
-  const [authReady, setAuthReady] = useState(false);
+  const [snapshotLoading, setSnapshotLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [payBusy, setPayBusy] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
@@ -112,121 +112,148 @@ export default function TournamentDetailPage() {
     void (async () => {
       const { data } = await supabase.auth.getUser();
       if (cancelled) return;
-      if (!data.user?.id) {
-        router.replace('/login');
+      setCurrentUserId(data.user?.id ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!idOk) {
+      setSnapshotLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setSnapshotLoading(true);
+      const res = await fetch(`/api/tournaments/${encodeURIComponent(idRaw)}/snapshot`, {
+        credentials: 'include',
+      });
+      const j = (await res.json()) as {
+        ok?: boolean;
+        code?: string;
+        error?: string;
+        tournament?: {
+          id: string;
+          name: string;
+          status: string;
+          format: string;
+          tempo: string | null;
+          liveTimeControl: string | null;
+          rated: boolean;
+          ecosystemScope: string;
+          entryFeeCents: number | null;
+          prizePoolCents: number | null;
+          createdAt: string;
+          createdById: string | null;
+        };
+        entries?: Array<{
+          userId: string;
+          displayName: string;
+          seed: number | null;
+          eliminated: boolean;
+          currentRound: number;
+        }>;
+        matches?: Array<{
+          id: string;
+          round: number;
+          matchNumber: number;
+          player1: { userId: string | null; displayName: string | null };
+          player2: { userId: string | null; displayName: string | null };
+          winnerUserId: string | null;
+          gameId: string | null;
+          nextMatchId: string | null;
+          advanceWinnerAs: string | null;
+        }>;
+        gameStatusById?: Record<string, string>;
+        displayNamesByUserId?: Record<string, string>;
+      };
+      if (cancelled) return;
+      if (res.status === 401 && j.code === 'K12_REQUIRES_AUTH') {
+        router.replace(`/login?next=${encodeURIComponent(`/tournaments/${idRaw}`)}`);
         return;
       }
-      setCurrentUserId(data.user.id);
-      setAuthReady(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authReady || !idOk) return;
-    let cancelled = false;
-    void (async () => {
-      const [tRes, eRes, mRes] = await Promise.all([
-        supabase
-          .from('tournaments')
-          .select(
-            'id, name, status, format, tempo, live_time_control, rated, created_by, created_at, ecosystem_scope, entry_fee_cents, prize_pool_cents'
-          )
-          .eq('id', idRaw)
-          .maybeSingle(),
-        supabase
-          .from('tournament_entries')
-          .select('user_id, seed, eliminated, current_round')
-          .eq('tournament_id', idRaw)
-          .order('seed', { ascending: true, nullsFirst: false }),
-        supabase
-          .from('tournament_matches')
-          .select(
-            'id, round_number, match_number, player1_id, player2_id, game_id, winner_id, next_match_id, advance_winner_as'
-          )
-          .eq('tournament_id', idRaw)
-          .order('round_number', { ascending: true })
-          .order('match_number', { ascending: true }),
-      ]);
-      if (cancelled) return;
-      const err = tRes.error?.message ?? eRes.error?.message ?? mRes.error?.message ?? null;
-      const matches = (mRes.data as MatchRow[] | null) ?? [];
-      const gameIds = [...new Set(matches.map((m) => m.game_id).filter((x): x is string => Boolean(x)))];
-      let gameStatusById: Record<string, string> = {};
-      if (gameIds.length > 0) {
-        const gRes = await supabase.from('games').select('id, status').in('id', gameIds);
-        if (!gRes.error && gRes.data) {
-          gameStatusById = Object.fromEntries(
-            (gRes.data as { id: string; status: string }[]).map((g) => [g.id, g.status])
-          );
-        }
+      if (!res.ok || !j.ok || !j.tournament) {
+        setDisplayNames({});
+        setPayload({
+          tournament: null,
+          entries: [],
+          matches: [],
+          gameStatusById: {},
+          error: j.error ?? `Could not load tournament (${res.status})`,
+        });
+        setSnapshotLoading(false);
+        return;
       }
+
+      const tournament: TournamentRow = {
+        id: j.tournament.id,
+        name: j.tournament.name,
+        status: j.tournament.status,
+        format: j.tournament.format,
+        tempo: j.tournament.tempo ?? '',
+        live_time_control: j.tournament.liveTimeControl ?? null,
+        rated: j.tournament.rated,
+        created_by: j.tournament.createdById,
+        created_at: j.tournament.createdAt,
+        ecosystem_scope: j.tournament.ecosystemScope,
+        entry_fee_cents: j.tournament.entryFeeCents,
+        prize_pool_cents: j.tournament.prizePoolCents,
+      };
+
+      const entries: EntryRow[] = (j.entries ?? []).map((e) => ({
+        user_id: e.userId,
+        seed: e.seed,
+        eliminated: e.eliminated,
+        current_round: e.currentRound,
+      }));
+
+      const matches: MatchRow[] = (j.matches ?? []).map((m) => ({
+        id: m.id,
+        round_number: m.round,
+        match_number: m.matchNumber,
+        player1_id: m.player1?.userId ?? null,
+        player2_id: m.player2?.userId ?? null,
+        game_id: m.gameId,
+        winner_id: m.winnerUserId,
+        next_match_id: m.nextMatchId,
+        advance_winner_as: m.advanceWinnerAs,
+      }));
+
+      setDisplayNames(j.displayNamesByUserId ?? {});
       setPayload({
-        tournament: (tRes.data as TournamentRow | null) ?? null,
-        entries: (eRes.data as EntryRow[] | null) ?? [],
+        tournament,
+        entries,
         matches,
-        gameStatusById,
-        error: err,
+        gameStatusById: j.gameStatusById ?? {},
+        error: null,
       });
+      setSnapshotLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [authReady, idOk, idRaw]);
-
-  useEffect(() => {
-    if (!payload) return;
-    const ids = new Set<string>();
-    for (const e of payload.entries) ids.add(e.user_id);
-    for (const m of payload.matches) {
-      if (m.player1_id) ids.add(m.player1_id);
-      if (m.player2_id) ids.add(m.player2_id);
-      if (m.winner_id) ids.add(m.winner_id);
-    }
-    const t = payload.tournament;
-    if (t?.created_by) ids.add(t.created_by);
-    const championId = championUserIdFromTournament(t?.status ?? '', payload.matches);
-    if (championId) ids.add(championId);
-    const list = [...ids];
-    if (list.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      const pRes = await supabase.from('profiles').select('id, username').in('id', list);
-      if (cancelled) return;
-      const next: Record<string, string> = {};
-      for (const id of list) next[id] = id.slice(0, 8) + '…';
-      if (!pRes.error && pRes.data) {
-        for (const r of pRes.data as { id: string; username: string | null }[]) {
-          next[r.id] = r.username?.trim() || r.id.slice(0, 8) + '…';
-        }
-      }
-      setDisplayNames(next);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [payload]);
+  }, [idOk, idRaw, router]);
 
   const labelFor = (uid: string | null) => {
     if (!uid) return '—';
     return displayNames[uid] ?? uid.slice(0, 8) + '…';
   };
 
-  if (!authReady) {
-    return (
-      <main style={{ padding: 24 }}>
-        <p>Loading…</p>
-      </main>
-    );
-  }
-
   if (!idOk) {
     return (
       <main style={{ padding: 24 }}>
         <p>Invalid tournament id.</p>
         <Link href="/tournaments">Tournaments hub</Link>
+      </main>
+    );
+  }
+
+  if (snapshotLoading) {
+    return (
+      <main style={{ padding: 24 }}>
+        <p>Loading…</p>
       </main>
     );
   }
