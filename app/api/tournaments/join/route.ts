@@ -1,9 +1,5 @@
-/**
- * @deprecated Self-serve registration — use `POST /api/tournaments/join` with `{ tournamentId }`.
- * This route delegates to the same server-side join implementation for backward compatibility.
- */
 import { resolveUserNexusEcosystemFromAuthMetadata } from '@/lib/auth/resolveUserNexusEcosystem';
-import { resolveTournamentJoinActorCookieOrBearer } from '@/lib/auth/resolveTournamentJoinActor';
+import { resolveTournamentJoinActorCookieOnly } from '@/lib/auth/resolveTournamentJoinActor';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { guardRequest } from '@/lib/server/requestGuard';
 import { executeFreePendingTournamentJoin } from '@/lib/server/tournamentFreeJoin';
@@ -11,8 +7,8 @@ import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 
 export const runtime = 'nodejs';
 
-type RegisterBody = {
-  tournament_id?: unknown;
+type JoinBody = {
+  tournamentId?: unknown;
 };
 
 function json(body: unknown, status = 200): Response {
@@ -27,23 +23,23 @@ export async function POST(request: Request): Promise<Response> {
   if (!guard.ok) return guard.response;
 
   try {
-    const actor = await resolveTournamentJoinActorCookieOrBearer(request);
+    const actor = await resolveTournamentJoinActorCookieOnly();
     if (!actor) {
-      auditApiLog('tournament_register', { result: 'unauthorized' });
+      auditApiLog('tournament_join', { result: 'unauthorized' });
       return json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
     }
 
-    let body: RegisterBody;
+    let body: JoinBody;
     try {
-      body = (await request.json()) as RegisterBody;
+      body = (await request.json()) as JoinBody;
     } catch {
       return json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400);
     }
 
-    const tournamentId = String(body.tournament_id ?? '').trim();
+    const tournamentId = String(body.tournamentId ?? '').trim();
     if (!tournamentId) {
-      auditApiLog('tournament_register', { result: 'bad_request', user: shortId(actor.id) });
-      return json({ error: 'tournament_id is required', code: 'TOURNAMENT_ID_REQUIRED' }, 400);
+      auditApiLog('tournament_join', { result: 'bad_request', user: shortId(actor.id) });
+      return json({ error: 'tournamentId is required', code: 'TOURNAMENT_ID_REQUIRED' }, 400);
     }
 
     let supabase;
@@ -51,46 +47,42 @@ export async function POST(request: Request): Promise<Response> {
       supabase = createServiceRoleClient();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Service configuration error';
-      auditApiLog('tournament_register', { result: 'config_error', user: shortId(actor.id) });
+      auditApiLog('tournament_join', { result: 'config_error', user: shortId(actor.id) });
       return json({ error: msg, code: 'SERVER_MISCONFIGURED' }, 503);
     }
 
     const userEcosystem = resolveUserNexusEcosystemFromAuthMetadata(actor);
-    const exec = await executeFreePendingTournamentJoin({
+    const result = await executeFreePendingTournamentJoin({
       supabase,
       userId: actor.id,
       tournamentId,
       userEcosystem,
     });
 
-    if (!exec.ok) {
-      auditApiLog('tournament_register', {
+    if (!result.ok) {
+      auditApiLog('tournament_join', {
         result: 'denied',
-        code: String(exec.payload.code ?? ''),
+        code: String(result.payload.code ?? ''),
         user: shortId(actor.id),
         tournament_id: shortId(tournamentId),
       });
-      return json(exec.payload, exec.status);
+      return json(result.payload, result.status);
     }
 
-    auditApiLog('tournament_register', {
-      result: exec.alreadyJoined ? 'already_joined' : 'joined',
+    auditApiLog('tournament_join', {
+      result: result.alreadyJoined ? 'already_joined' : 'joined',
       user: shortId(actor.id),
       tournament_id: shortId(tournamentId),
     });
 
     return json({
       ok: true,
-      tournament_id: tournamentId,
-      user_id: actor.id,
-      alreadyJoined: exec.alreadyJoined,
-      eligibility: exec.eligibility,
-      deprecated: true,
-      use_join_endpoint: '/api/tournaments/join',
+      tournamentId,
+      alreadyJoined: result.alreadyJoined,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Registration failed';
-    auditApiLog('tournament_register', { result: 'error', detail: message });
+    const message = e instanceof Error ? e.message : 'Join failed';
+    auditApiLog('tournament_join', { result: 'error', detail: message });
     return json({ error: message, code: 'UNEXPECTED_ERROR' }, 503);
   } finally {
     guard.release();

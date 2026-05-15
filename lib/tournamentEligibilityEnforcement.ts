@@ -36,6 +36,17 @@ export function enforceTournamentRegistration(decision: EligibilityDecision): vo
   }
 }
 
+/** Free / unpaid tournament self-serve join — uses free-play jurisdiction gates. */
+export function enforceFreeTournamentJoin(decision: EligibilityDecision): void {
+  if (!decision.canAccessFreePlay) {
+    throw new EligibilityEnforcementError(
+      'TOURNAMENT_FREE_JOIN_NOT_ALLOWED',
+      'User is not eligible for free tournament entry in this jurisdiction.',
+      decision
+    );
+  }
+}
+
 export function enforceDepositAccess(decision: EligibilityDecision): void {
   if (!decision.canEnterPaidTournaments) {
     throw new EligibilityEnforcementError(
