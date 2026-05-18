@@ -1,9 +1,9 @@
-/** P3 dark prestige surface tokens — UI-only; shared class fragments for Nexus / free lobby. */
+/** P3 dark prestige surface tokens — map to Phase 1A CSS variables */
 export const nexusPrestigeRoot =
-  "bg-[#07080c] text-[#f4f4f5] antialiased [--nexus-crimson:#b91c1c] [--nexus-gold:#d4a017] [--nexus-surface:#101218]";
+  "bg-[var(--accl-bg-arena)] text-[var(--accl-text-primary)] antialiased [--nexus-crimson:var(--accl-accent-crimson)] [--nexus-gold:var(--accl-accent-gold)] [--nexus-surface:var(--accl-bg-elevated)]";
 
 export const nexusPrestigeCard =
-  "rounded-2xl border border-white/[0.06] bg-[var(--nexus-surface)] shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]";
+  "rounded-[var(--accl-radius-2xl)] border border-[var(--accl-border-subtle)] bg-[var(--nexus-surface)] shadow-[var(--accl-shadow-card)]";
 
 export const nexusPrestigeTabActive =
   "z-[1] border border-red-500/35 bg-gradient-to-b from-red-900/55 to-red-950/80 text-white shadow-md shadow-red-950/50 ring-2 ring-red-500/70 ring-offset-2 ring-offset-[#0a0c10] motion-safe:active:scale-[0.99] motion-safe:transition-transform motion-safe:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080a0e]";

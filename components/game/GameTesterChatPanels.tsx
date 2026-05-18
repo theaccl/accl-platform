@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import Link from 'next/link';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
@@ -15,8 +15,8 @@ const CHAT_BODY_MAX = 2000;
 /** Dev-only: detect duplicate realtime channel creation (Strict Mode / effect churn). */
 let gameChatChannelSeq = 0;
 
-/** Dev-only: where a chat load was triggered from */
-type GameChatLoadSource = 'initial' | 'visibilitychange' | 'poll' | 'realtime' | 'after_send';
+/** Dev-only: where a chat load was triggered from (initial and tab focus; no network poll) */
+type GameChatLoadSource = 'initial' | 'visibilitychange';
 
 type ChatMsg = {
   id: string;
@@ -77,6 +77,45 @@ async function chatFetch(
       ...(init?.headers ?? {}),
     },
   });
+}
+
+function sortChatChronological(list: ChatMsg[]): ChatMsg[] {
+  return [...list].sort(
+    (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+  );
+}
+
+function parseInsertRowToMsg(row: Record<string, unknown>): ChatMsg | null {
+  const id = typeof row.id === 'string' ? row.id : null;
+  const created_at = typeof row.created_at === 'string' ? row.created_at : null;
+  const sender_id = typeof row.sender_id === 'string' ? row.sender_id : null;
+  const body = typeof row.body === 'string' ? row.body : null;
+  if (!id || !created_at || !sender_id || body == null) return null;
+  return { id, created_at, sender_id, body, sender_username: null };
+}
+
+/**
+ * On postgres INSERT, merge into in-memory list (no full refetch). Deduplicate with optimistic / own echo.
+ * Each lane only reacts to the matching `channel` so `game_spectator` and `game_player` stay isolated.
+ */
+function appendIncomingFromRealtime(
+  setMessages: Dispatch<SetStateAction<ChatMsg[]>>,
+  newRow: Record<string, unknown>,
+  expectedChannel: 'game_spectator' | 'game_player'
+) {
+  if (String(newRow.channel ?? '') !== expectedChannel) return;
+  const m = parseInsertRowToMsg(newRow);
+  if (!m) return;
+  setMessages((prev: ChatMsg[]) =>
+    prev.some((x) => x.id === m.id) ? prev : sortChatChronological([...prev, m])
+  );
+  void (async () => {
+    const { data, error } = await supabase.from('profiles').select('username').eq('id', m.sender_id).maybeSingle();
+    if (error || !data) return;
+    const u = (data as { username: string | null }).username ?? null;
+    if (u == null) return;
+    setMessages((p: ChatMsg[]) => p.map((x) => (x.id === m.id ? { ...x, sender_username: u } : x)));
+  })();
 }
 
 function ChatStrip({
@@ -314,27 +353,21 @@ function TesterSpectatorChatLane({ gameId, accessToken, viewerEcosystem }: LaneS
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'tester_chat_messages', filter },
         (payload) => {
-          const row = payload.new as { channel?: string | null };
-          if (String(row.channel ?? '') !== 'game_spectator') return;
-          void load({ bypassVisibility: true, source: 'realtime' });
+          appendIncomingFromRealtime(setMessages, payload.new as Record<string, unknown>, 'game_spectator');
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') void load({ bypassVisibility: true, source: 'initial' });
-      });
+      .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [gameId, load]);
+  }, [gameId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => void load({ source: 'poll' }), 6000);
     const onVis = () => {
       if (document.visibilityState === 'visible') void load({ source: 'visibilitychange' });
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
-      window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [load]);
@@ -357,9 +390,20 @@ function TesterSpectatorChatLane({ gameId, accessToken, viewerEcosystem }: LaneS
       const j = (await res.json().catch(() => ({}))) as { message?: ChatMsg };
       setDraft('');
       if (j.message?.id) {
-        setMessages((prev) => (prev.some((x) => x.id === j.message!.id) ? prev : [...prev, j.message!]));
+        const fromApi = j.message as ChatMsg;
+        setMessages((prev) => (prev.some((x) => x.id === fromApi.id) ? prev : sortChatChronological([...prev, fromApi])));
+        if (fromApi.sender_username == null && fromApi.sender_id) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', fromApi.sender_id)
+            .maybeSingle();
+          const u = (data as { username: string | null } | null)?.username ?? null;
+          if (u != null) {
+            setMessages((p) => p.map((x) => (x.id === fromApi.id ? { ...x, sender_username: u } : x)));
+          }
+        }
       }
-      void load({ bypassVisibility: true, source: 'after_send' });
     } finally {
       sendLock.current = false;
       setSending(false);
@@ -477,27 +521,21 @@ function TesterPlayerGameChatLane({
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'tester_chat_messages', filter },
         (payload) => {
-          const row = payload.new as { channel?: string | null };
-          if (String(row.channel ?? '') !== 'game_player') return;
-          void load({ bypassVisibility: true, source: 'realtime' });
+          appendIncomingFromRealtime(setMessages, payload.new as Record<string, unknown>, 'game_player');
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') void load({ bypassVisibility: true, source: 'initial' });
-      });
+      .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [gameId, load, variant]);
+  }, [gameId, variant]);
 
   useEffect(() => {
-    const id = window.setInterval(() => void load({ source: 'poll' }), 6000);
     const onVis = () => {
       if (document.visibilityState === 'visible') void load({ source: 'visibilitychange' });
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
-      window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [load]);
@@ -520,9 +558,20 @@ function TesterPlayerGameChatLane({
       const j = (await res.json().catch(() => ({}))) as { message?: ChatMsg };
       setDraft('');
       if (j.message?.id) {
-        setMessages((prev) => (prev.some((x) => x.id === j.message!.id) ? prev : [...prev, j.message!]));
+        const fromApi = j.message as ChatMsg;
+        setMessages((prev) => (prev.some((x) => x.id === fromApi.id) ? prev : sortChatChronological([...prev, fromApi])));
+        if (fromApi.sender_username == null && fromApi.sender_id) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', fromApi.sender_id)
+            .maybeSingle();
+          const u = (data as { username: string | null } | null)?.username ?? null;
+          if (u != null) {
+            setMessages((p) => p.map((x) => (x.id === fromApi.id ? { ...x, sender_username: u } : x)));
+          }
+        }
       }
-      void load({ bypassVisibility: true, source: 'after_send' });
     } finally {
       sendLock.current = false;
       setSending(false);

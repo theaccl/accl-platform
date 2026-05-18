@@ -1,6 +1,9 @@
 import { Chess } from 'chess.js';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import { selectBotMove, type BotCandidateLine, type BotName } from '@/lib/bot/botPersonality';
+import { verifyTournamentOpsSecret } from '@/lib/internalTournamentOpsAuth';
+import { insertGameMoveLog } from '@/lib/replay/gameMoveLogInsert';
+import { auditApiLog, shortId } from '@/lib/server/prodLog';
 
 type Body = {
   bot?: unknown;
@@ -14,10 +17,24 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+/**
+ * Legacy alternate bot-move path — disabled for clients.
+ * Production bot moves run only via POST /api/game/submit-move after the human ply.
+ */
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ): Promise<Response> {
+  if (!verifyTournamentOpsSecret(request)) {
+    return json(
+      {
+        error: 'This route is disabled for client use. Bot moves are applied via POST /api/game/submit-move.',
+        code: 'BOT_MOVE_ROUTE_DISABLED',
+      },
+      403,
+    );
+  }
+
   const { id: gameId } = await context.params;
   if (!gameId) return json({ error: 'game id required' }, 400);
 
@@ -73,17 +90,41 @@ export async function POST(
     .single();
   if (updateErr) return json({ error: updateErr.message }, 500);
 
-  await supabase.from('game_move_logs').insert({
-    game_id: gameId,
-    // For bot games, black_player_id is the effective bot identity chosen at game creation.
-    player_id: game.black_player_id,
-    san: moved.san,
-    from_sq: moved.from,
-    to_sq: moved.to,
-    fen_before: game.fen,
-    fen_after: nextFen,
-    move_duration_ms: 0,
-  });
+  const logInsert = await insertGameMoveLog(
+    supabase,
+    {
+      game_id: gameId,
+      player_id: String(game.black_player_id ?? ''),
+      san: moved.san,
+      from_sq: moved.from,
+      to_sq: moved.to,
+      fen_before: String(game.fen ?? '').trim() || null,
+      fen_after: nextFen,
+      move_duration_ms: 0,
+    },
+    'legacy_ops',
+  );
+  if (!logInsert.ok) {
+    auditApiLog('bot_game_move_legacy', {
+      result: logInsert.code,
+      game_id: shortId(gameId),
+      move_log_insert_failed: true,
+      replay_integrity_warning: true,
+    });
+    return json(
+      {
+        error: {
+          code: logInsert.code,
+          message: logInsert.message,
+          retryable: true,
+        },
+        move_applied: true,
+        move_log_failed: true,
+        game: updated,
+      },
+      409,
+    );
+  }
 
   return json({ ok: true, bot, selected, game: updated });
 }

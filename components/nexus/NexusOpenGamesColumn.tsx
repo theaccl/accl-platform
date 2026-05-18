@@ -1,10 +1,13 @@
 import { nexusPrestigeCard } from "@/components/nexus/nexusShellTheme";
 import { nexusModuleHeadingClass } from "@/components/nexus/NexusHeader";
+import type { NexusLiveGame } from "@/lib/nexus/getNexusData";
 
 /**
  * Placeholder until liveGames is threaded in a follow-up — UI shell only.
+ * `games` is preloaded from the hub; kept for a future list without a second client fetch.
  */
-export default function NexusOpenGamesColumn() {
+export default function NexusOpenGamesColumn({ games: _games }: { games?: NexusLiveGame[] }) {
+  void _games;
   return (
     <section
       className={`${nexusPrestigeCard} flex min-h-[168px] flex-col p-4 sm:min-h-[180px] sm:p-5`}

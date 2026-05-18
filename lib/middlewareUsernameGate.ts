@@ -20,7 +20,6 @@ export function pathnameRequiresUsernameClaim(pathname: string): boolean {
     pathname.startsWith('/nexus') ||
     pathname.startsWith('/modes') ||
     pathname.startsWith('/game') ||
-    pathname.startsWith('/free') ||
     pathname.startsWith('/requests') ||
     pathname.startsWith('/players') ||
     pathname.startsWith('/tournaments') ||

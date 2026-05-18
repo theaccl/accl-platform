@@ -1,20 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
 import fetchPolyfill from 'cross-fetch';
 
-import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
-import { botGameInsert } from '@/lib/gameStartupInsert';
+import {
+  BOT_DIFFICULTY_LABELS,
+  normalizeBotDifficultyLevel,
+  type BotDifficultyLevel,
+} from '@/lib/bot/botDifficulty';
+import { botProfileForPersonalityStyle, configuredBotUserIds } from '@/lib/bot/botIdentity';
 import type { BotName } from '@/lib/bot/botPersonality';
+import {
+  BOT_PERSONALITY_LABELS,
+  BOT_PERSONALITY_STYLES,
+  normalizeBotPersonalityStyle,
+  type BotPersonalityStyle,
+} from '@/lib/bot/botPersonalityStyle';
+import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
+import {
+  normalizeComputerPlayPlatMode,
+  resolveComputerPlayLiveTimeControl,
+} from '@/lib/freePlayComputerEntry';
+import { botGameInsert } from '@/lib/gameStartupInsert';
 import { getRuntimeConfigValidationReport } from '@/lib/runtimeConfigValidation';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { tooManyRequests } from '@/lib/server/httpJson';
-
-const BOT_USER_IDS: Record<BotName, string> = {
-  'Cardi Bot': '10000000-0000-0000-0000-000000000001',
-  'Aggro Bot': '10000000-0000-0000-0000-000000000002',
-  'Endgame Bot': '10000000-0000-0000-0000-000000000003',
-};
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -23,13 +32,13 @@ function json(body: unknown, status = 200): Response {
 }
 
 function configuredBotUserId(bot: BotName): string {
-  const envMap: Partial<Record<BotName, string | undefined>> = {
-    'Cardi Bot': process.env.BOT_USER_ID_CARDI,
-    'Aggro Bot': process.env.BOT_USER_ID_AGGRO,
-    'Endgame Bot': process.env.BOT_USER_ID_ENDGAME,
-  };
-  const configured = envMap[bot]?.trim();
-  return configured && configured.length > 0 ? configured : BOT_USER_IDS[bot];
+  return configuredBotUserIds()[bot];
+}
+
+function resolveLegacyBotName(raw: unknown): BotName | null {
+  const s = String(raw ?? '').trim();
+  if (s === 'Cardi Bot' || s === 'Aggro Bot' || s === 'Endgame Bot') return s;
+  return null;
 }
 
 async function resolveAuthenticatedUserId(request: Request): Promise<string | null> {
@@ -62,12 +71,40 @@ export async function POST(request: Request): Promise<Response> {
     return tooManyRequests(rl.retryAfterSec);
   }
 
-  const body = (await request.json().catch(() => ({}))) as { bot?: unknown };
-  const bot = String(body.bot ?? '') as BotName;
-  if (!['Cardi Bot', 'Aggro Bot', 'Endgame Bot'].includes(bot)) {
-    return json({ error: 'bot must be Cardi Bot | Aggro Bot | Endgame Bot' }, 400);
+  const body = (await request.json().catch(() => ({}))) as {
+    bot?: unknown;
+    difficulty?: unknown;
+    personalityStyle?: unknown;
+    personality?: unknown;
+    liveTimeControl?: unknown;
+    timeControl?: unknown;
+    platMode?: unknown;
+    mode?: unknown;
+  };
+
+  const difficulty: BotDifficultyLevel = normalizeBotDifficultyLevel(body.difficulty ?? 3);
+  const personalityStyle: BotPersonalityStyle = normalizeBotPersonalityStyle(
+    body.personalityStyle ?? body.personality ?? 'balanced',
+  );
+
+  const legacyBot = resolveLegacyBotName(body.bot);
+  const profileBot: BotName = legacyBot ?? botProfileForPersonalityStyle(personalityStyle);
+  const botUserId = configuredBotUserId(profileBot);
+  const opponentLabel = legacyBot ?? BOT_PERSONALITY_LABELS[personalityStyle];
+
+  const platMode = normalizeComputerPlayPlatMode(body.platMode ?? body.mode);
+  const liveTimeControlRaw = String(body.liveTimeControl ?? body.timeControl ?? '').trim();
+  const resolvedTc = resolveComputerPlayLiveTimeControl({
+    platMode,
+    liveTimeControl: liveTimeControlRaw || null,
+  });
+  if (platMode && liveTimeControlRaw && !resolvedTc.ok) {
+    return json(
+      { error: 'invalid_time_control_for_mode', message: `Time control is not valid for ${platMode}.` },
+      400,
+    );
   }
-  const botUserId = configuredBotUserId(bot);
+  const liveTimeControl = resolvedTc.ok ? resolvedTc.liveTimeControl : null;
 
   let supabase;
   try {
@@ -88,7 +125,7 @@ export async function POST(request: Request): Promise<Response> {
         s.key.startsWith('BOT_IDENTITY_SET') ||
         s.key.startsWith('BOT_USER_ID_CARDI_') ||
         s.key.startsWith('BOT_USER_ID_AGGRO_') ||
-        s.key.startsWith('BOT_USER_ID_ENDGAME_'))
+        s.key.startsWith('BOT_USER_ID_ENDGAME_')),
   );
   if (botValidationErrors.length > 0) {
     const first = botValidationErrors[0];
@@ -100,7 +137,7 @@ export async function POST(request: Request): Promise<Response> {
         detail: first.detail,
         states: botValidationErrors,
       },
-      503
+      503,
     );
   }
 
@@ -108,23 +145,26 @@ export async function POST(request: Request): Promise<Response> {
   if (!botProfile?.id) {
     return json(
       {
-        error: `Bot identity is not provisioned for ${bot}.`,
+        error: `Bot identity is not provisioned for ${profileBot}.`,
         category: 'missing_profile',
-        key: `${bot}_PROFILE`,
+        key: `${profileBot}_PROFILE`,
         detail: `profile ${botUserId} not found`,
       },
-      503
+      503,
     );
   }
 
-  const { data, error } = await supabase
-    .from('games')
-    .insert(botGameInsert(userId, botUserId))
-    .select('id,source_type,white_player_id,black_player_id')
-    .single();
+  const insertRow = botGameInsert(userId, botUserId, {
+    difficulty,
+    personalityStyle,
+    opponentLabel,
+    liveTimeControl,
+  });
+
+  const { data, error } = await supabase.from('games').insert(insertRow).select('id,source_type,white_player_id,black_player_id').single();
 
   if (error) {
-    auditApiLog('bot_game_start', { result: 'db_error', user: shortId(userId), bot });
+    auditApiLog('bot_game_start', { result: 'db_error', user: shortId(userId), bot: profileBot });
     return json(
       { error: 'game_create_failed', message: 'Could not start the game. Try again in a moment.' },
       503,
@@ -133,8 +173,22 @@ export async function POST(request: Request): Promise<Response> {
   auditApiLog('bot_game_start', {
     result: 'ok',
     user: shortId(userId),
-    bot,
+    bot: profileBot,
+    difficulty,
+    personalityStyle,
     game_id: shortId(String(data?.id ?? '')),
   });
-  return json({ ok: true, bot, game: data }, 200);
+  return json(
+    {
+      ok: true,
+      bot: profileBot,
+      difficulty,
+      difficultyLabel: BOT_DIFFICULTY_LABELS[difficulty],
+      personalityStyle,
+      personalityLabel: BOT_PERSONALITY_LABELS[personalityStyle],
+      allowedPersonalityStyles: BOT_PERSONALITY_STYLES,
+      game: data,
+    },
+    200,
+  );
 }

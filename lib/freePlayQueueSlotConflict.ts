@@ -68,6 +68,12 @@ function slotBlocksAgainstGameRow(
     return false;
   }
 
+  // Live single-queue: only **seated live** games count. Daily/correspondence must not block a new live post/join.
+  const gTempo = normalizeGameTempo(g.tempo);
+  if (gTempo === 'daily' || gTempo === 'correspondence') {
+    return false;
+  }
+
   const gMode = platBucketForOpenSeat(g.tempo, g.live_time_control);
   if (gMode == null) return false;
   if (gMode === 'daily' || gMode !== target.mode) {
@@ -150,6 +156,13 @@ export function openSeatRowHostSeatedConflictsInSameSlot(
   if (hostSeatedRow.white_player_id !== w && hostSeatedRow.black_player_id !== w) return false;
   if (!isSeatedTwoPlayer(hostSeatedRow)) return false;
   if (!isActiveOrWaiting(hostSeatedRow)) return false;
+
+  // Do not map daily 30m/60m to the same PLAT “rapid” bucket as live 30m/60m for *host hidden* rules.
+  // A host may have a live game and a daily open; those must not be treated as the same slot here.
+  const openPaced = normalizeGameTempo(openRow.tempo);
+  if (openPaced === 'daily' || openPaced === 'correspondence') {
+    return false;
+  }
 
   const m = platBucketForOpenSeat(openRow.tempo, openRow.live_time_control);
   if (m == null) return false;

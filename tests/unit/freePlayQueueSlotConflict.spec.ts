@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-import { freePlayTargetSlot, freePlayUserBlockedForTargetSlot } from '../../lib/freePlayQueueSlotConflict';
+import {
+  freePlayTargetSlot,
+  freePlayUserBlockedForTargetSlot,
+  freePlayUserSeatedInConflictingSlot,
+} from '../../lib/freePlayQueueSlotConflict';
 
 test.describe('freePlayQueueSlotConflict', () => {
   test('same live mode+clock+rated blocks, different mode does not', () => {
@@ -49,5 +53,58 @@ test.describe('freePlayQueueSlotConflict', () => {
       freePlayTargetSlot('rapid', '10m', true)
     );
     expect(rapidWhileBlitz).toBe(false);
+  });
+
+  test('seated daily/correspondence does not block a live target slot', () => {
+    const uid = 'u1';
+    const target10m = freePlayTargetSlot('rapid', '10m', true);
+
+    expect(
+      freePlayUserBlockedForTargetSlot(
+        uid,
+        {
+          id: 'g-daily',
+          white_player_id: uid,
+          black_player_id: 'u2',
+          tempo: 'daily',
+          live_time_control: '1d',
+          rated: true,
+          status: 'active',
+        },
+        target10m
+      )
+    ).toBe(false);
+
+    expect(
+      freePlayUserSeatedInConflictingSlot(
+        uid,
+        {
+          id: 'g-daily',
+          white_player_id: uid,
+          black_player_id: 'u2',
+          tempo: 'daily',
+          live_time_control: '1d',
+          rated: true,
+          status: 'active',
+        },
+        target10m
+      )
+    ).toBe(false);
+
+    expect(
+      freePlayUserSeatedInConflictingSlot(
+        uid,
+        {
+          id: 'g-corr',
+          white_player_id: 'u2',
+          black_player_id: uid,
+          tempo: 'correspondence',
+          live_time_control: '3+2',
+          rated: true,
+          status: 'active',
+        },
+        target10m
+      )
+    ).toBe(false);
   });
 });

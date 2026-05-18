@@ -34,8 +34,19 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
     setClock((prev) => coercePlatTimeForMode(m, prev));
   }, []);
 
-  const { activity: openSeatActivity, loading: openSeatLoading } = useFreeOpenSeatActivity();
+  const { activity: openSeatActivity, counts: openSeatCounts, loading: openSeatLoading } = useFreeOpenSeatActivity();
   const watchList = useFreePlayWatchList("adult");
+
+  const watchCounts = useMemo(() => {
+    if (!watchList.data) return undefined;
+    return PLAT_MODE_ORDER.reduce(
+      (acc, m) => {
+        acc[m] = watchList.data!.byMode[m]?.length ?? 0;
+        return acc;
+      },
+      {} as Record<PlatMode, number>,
+    );
+  }, [watchList.data]);
 
   const watchClockHints = useMemo(() => {
     if (!watchList.data) return undefined;
@@ -61,8 +72,10 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
         />
         <FreePlayOpenPairingByMode
           activity={openSeatActivity}
+          openSeatCounts={openSeatCounts}
           loading={openSeatLoading}
           watchActivity={watchList.data?.watchActivity}
+          watchCounts={watchCounts}
           watchClockHints={watchClockHints}
         />
       </div>

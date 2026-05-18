@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { buildClientNotifications } from "@/lib/notifications/buildClientNotifications";
 import { getReadNotificationIds } from "@/lib/notifications/notificationReadState";
 import { supabase } from "@/lib/supabaseClient";
@@ -13,13 +14,17 @@ const navBtnSite =
  * Top-bar entry + unread badge (client read-state vs aggregated feed).
  */
 export function NotificationsNavLink() {
+  const pathname = usePathname() ?? "";
   const [userId, setUserId] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
 
-  const refresh = useCallback(async () => {
-    const { data } = await supabase.auth.getUser();
-    const uid = data.user?.id ?? null;
-    setUserId(uid);
+  const refresh = useCallback(async (knownUserId?: string | null) => {
+    let uid = knownUserId ?? userId;
+    if (!uid) {
+      const { data } = await supabase.auth.getUser();
+      uid = data.user?.id ?? null;
+      setUserId(uid);
+    }
     if (!uid) {
       setUnread(0);
       return;
@@ -32,21 +37,26 @@ export function NotificationsNavLink() {
     } catch {
       setUnread(0);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    void refresh();
+    void refresh(null);
   }, [refresh]);
 
   useEffect(() => {
-    const onRead = () => void refresh();
+    const onRead = () => void refresh(userId);
     window.addEventListener("accl-notifications-read", onRead);
-    const id = window.setInterval(() => void refresh(), 90_000);
+    const inHotPath = pathname.startsWith("/free/lobby") || pathname.startsWith("/game/");
+    const pollMs = inHotPath ? 300_000 : 90_000;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void refresh(userId);
+    }, pollMs);
     return () => {
       window.removeEventListener("accl-notifications-read", onRead);
       window.clearInterval(id);
     };
-  }, [refresh]);
+  }, [refresh, pathname, userId]);
 
   return (
     <Link href="/notifications" className={`${navBtnSite} whitespace-nowrap`} data-testid="nav-notifications-link">

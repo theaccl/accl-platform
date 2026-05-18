@@ -1,10 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { pathnameRequiresUsernameClaim } from "@/lib/middlewareUsernameGate";
-import {
-  fetchProfileUsernameGateStatus,
-  logUsernameGateFailClosed,
-} from "@/lib/middlewareUsernameLookup";
 
 function isNexusPath(pathname: string): boolean {
   return pathname === "/nexus" || pathname.startsWith("/nexus/");
@@ -56,27 +51,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && pathnameRequiresUsernameClaim(pathname)) {
-    const lookup = await fetchProfileUsernameGateStatus(user.id);
-
-    if (lookup.status === "unverified") {
-      logUsernameGateFailClosed(lookup);
-      const url = request.nextUrl.clone();
-      url.pathname = "/account/configuration-required";
-      const dest = `${pathname}${request.nextUrl.search}`;
-      url.searchParams.set("next", dest || "/tester/welcome");
-      return NextResponse.redirect(url);
-    }
-
-    if (lookup.needsUsernameClaim) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/onboarding/username";
-      const dest = `${pathname}${request.nextUrl.search}`;
-      url.searchParams.set("next", dest || "/tester/welcome");
-      return NextResponse.redirect(url);
-    }
-  }
-
   if (isNexusPath(pathname)) {
     supabaseResponse.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
   }
@@ -91,8 +65,6 @@ export const config = {
     "/modes/:path*",
     "/game",
     "/game/:path*",
-    "/free",
-    "/free/:path*",
     "/requests",
     "/requests/:path*",
     "/profile",

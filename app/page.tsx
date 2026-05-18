@@ -1,5 +1,7 @@
 import Link from "next/link";
 import NavigationBar from "@/components/NavigationBar";
+import { LeagueCard } from "@/components/ui/LeagueCard";
+import { StatusLight } from "@/components/ui/StatusLight";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
 import { NEXUS_LOGIN_ENTRY_HREF } from "@/lib/nexus/nexusRouteHelpers";
 
@@ -14,20 +16,22 @@ export default async function HomePage() {
   const enterNexusHref = user ? "/nexus" : NEXUS_LOGIN_ENTRY_HREF;
 
   return (
-    <div className="min-h-screen bg-[#0D1117] flex flex-col text-white">
+    <div className="min-h-screen bg-[var(--accl-bg-base)] flex flex-col text-[var(--accl-text-primary)]">
       <NavigationBar />
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-12 sm:py-16">
         <div className="w-full max-w-xl mx-auto space-y-10">
-          <section className="rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] px-6 py-10 sm:px-10 sm:py-12 text-center shadow-lg shadow-black/20">
-            <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 mb-3">ACCL</p>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-snug">
+          <LeagueCard padding="lg" className="text-center">
+            <p className="text-[length:var(--accl-text-xs)] uppercase tracking-[var(--accl-tracking-caps)] text-[var(--accl-text-faint)] mb-3">
+              ACCL
+            </p>
+            <h1 className="font-display text-[length:var(--accl-text-display)] font-bold text-white tracking-tight leading-[var(--accl-leading-tight)]">
               American Correspondence Chess League
             </h1>
-            <p className="mt-4 text-gray-400 text-sm sm:text-base leading-relaxed max-w-md mx-auto">
+            <p className="mt-4 text-[var(--accl-text-muted)] text-sm sm:text-base leading-[var(--accl-leading-normal)] max-w-md mx-auto">
               Structured play. Real progression. Live command center.
             </p>
-          </section>
+          </LeagueCard>
 
           <nav
             className="grid grid-cols-1 sm:grid-cols-2 gap-3"
@@ -54,12 +58,12 @@ export default async function HomePage() {
             ) : null}
           </nav>
 
-          <section className="border-t border-[#243244] pt-8">
-            <ul className="space-y-2.5 text-sm text-gray-500 max-w-md mx-auto">
+          <section className="border-t border-[var(--accl-border-muted)] pt-8">
+            <ul className="space-y-2.5 text-sm text-[var(--accl-text-muted)] max-w-md mx-auto">
               {secondaryBullets.map((line) => (
                 <li key={line} className="flex gap-3 items-start text-left">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500/70" aria-hidden />
-                  <span className="text-gray-400 leading-relaxed">{line}</span>
+                  <StatusLight tone="danger" size="sm" className="mt-1.5 opacity-80" aria-hidden />
+                  <span className="text-[var(--accl-text-secondary)] leading-[var(--accl-leading-normal)]">{line}</span>
                 </li>
               ))}
             </ul>

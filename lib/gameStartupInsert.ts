@@ -1,3 +1,7 @@
+import type { BotDifficultyLevel } from '@/lib/bot/botDifficulty';
+import { defaultBotGameConfig, encodeBotGameConfigRow } from '@/lib/bot/botGameConfig';
+import type { BotPersonalityStyle } from '@/lib/bot/botPersonalityStyle';
+import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { normalizeGameTempo, DEFAULT_GAME_TEMPO } from '@/lib/gameTempo';
 import { preStartGameTimingFields } from '@/lib/gameTiming';
 import { START_FEN } from '@/lib/startFen';
@@ -49,7 +53,24 @@ export function casualTwoPlayerGameInsert(
   };
 }
 
-export function botGameInsert(humanUserId: string, botUserId: string) {
+export type BotGameInsertOptions = {
+  difficulty?: BotDifficultyLevel;
+  personalityStyle?: BotPersonalityStyle;
+  opponentLabel?: string;
+  /** Optional PLAT clock token (3m, 5m, 10m, …). */
+  liveTimeControl?: string | null;
+};
+
+export function botGameInsert(humanUserId: string, botUserId: string, options?: BotGameInsertOptions) {
+  const difficulty = options?.difficulty ?? 3;
+  const personalityStyle = options?.personalityStyle ?? 'balanced';
+  const opponentLabel = options?.opponentLabel?.trim() || 'Computer';
+  const liveTcRaw = options?.liveTimeControl?.trim();
+  const live_time_control =
+    liveTcRaw && liveTcRaw.length > 0
+      ? canonicalLiveTimeControlForInsert(DEFAULT_GAME_TEMPO, liveTcRaw)
+      : null;
+
   return {
     white_player_id: humanUserId,
     black_player_id: botUserId,
@@ -60,7 +81,11 @@ export function botGameInsert(humanUserId: string, botUserId: string) {
     rated: false,
     source_type: 'bot_game' as const,
     tempo: normalizeGameTempo(DEFAULT_GAME_TEMPO),
-    live_time_control: null as string | null,
+    live_time_control,
+    ...encodeBotGameConfigRow(defaultBotGameConfig(difficulty, personalityStyle, opponentLabel), {
+      botProfileId: botUserId,
+      createdFrom: 'free_computer',
+    }),
     ...preStartGameTimingFields(),
   };
 }

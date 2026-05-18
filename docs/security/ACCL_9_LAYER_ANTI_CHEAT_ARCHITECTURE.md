@@ -397,6 +397,8 @@ Trainer requests follow **L7** first (`trainerAnalysisGuard`), then may call ove
 
 ## Related documentation
 
+- `docs/design/ACCL_DESIGN_DIRECTION_V1.md` — Phase 1A UI tokens / arena chrome (must not contradict Layer 7–8 teaching surfaces)
+- `docs/doctrine/ACCL_EMOTIONAL_INTELLIGENCE_DOCTRINE.md` — EI as modifier-only infrastructure; anti-pattern: Single-Event Emotional Inference (parallel to suspicion scoring; no build authorized)
 - `docs/security/SUPABASE_SECURITY_BASELINE.md` — RLS and service-role containment
 - `docs/ACCL-RUNTIME-AUDIT-AND-TEST-PLAN.md` — move authority and DB evidence gaps
 - `supabase/MODERATOR_GOVERNANCE_VALIDATION.sql` — manual moderator SQL checks

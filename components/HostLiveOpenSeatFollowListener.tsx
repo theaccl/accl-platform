@@ -11,6 +11,7 @@ import {
 } from "@/lib/hostLiveOpenSeatFollow";
 import { rowIndicatesLiveFreePlayPacing } from "@/lib/freePlayLiveSession";
 import { parseGameIdFromPath } from "@/lib/gameAcceptRedirectPriority";
+import { normalizeGameTempo } from "@/lib/gameTempo";
 import { supabase } from "@/lib/supabaseClient";
 
 type GameRowMin = {
@@ -32,6 +33,9 @@ function hostShouldPushToGame(pathname: string, gameId: string): boolean {
   const cur = parseGameIdFromPath(pathname);
   return cur !== gameId;
 }
+
+/** Poll + SUBSCRIBED re-check: catches races where the UPDATE happens before the channel is ready. */
+const HOST_FOLLOW_OPEN_POLL_MS = 2200;
 
 function removeChannelSafe(chRef: { current: ReturnType<typeof supabase.channel> | null }) {
   if (chRef.current) {
@@ -59,6 +63,17 @@ export function HostLiveOpenSeatFollowListener() {
   useEffect(() => {
     const stored = readStoredHostLiveOpenSeatGameId();
     if (stored) setWatchGameId(stored);
+  }, []);
+
+  useEffect(() => {
+    const onPageShow = () => {
+      const id = readStoredHostLiveOpenSeatGameId();
+      if (id) {
+        setWatchGameId((prev) => (prev === id ? prev : id));
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
   useEffect(() => {
@@ -98,6 +113,38 @@ export function HostLiveOpenSeatFollowListener() {
     };
   }, []);
 
+  /**
+   * Fallback arm: if registration was missed (tab restore/browser storage oddities),
+   * recover the host's newest waiting live open seat from DB and attach follow.
+   */
+  useEffect(() => {
+    if (!sessionUserId || watchGameId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from('games')
+        .select('id,white_player_id,black_player_id,tempo,live_time_control,status,play_context,tournament_id,updated_at')
+        .eq('play_context', 'free')
+        .is('tournament_id', null)
+        .eq('white_player_id', sessionUserId)
+        .is('black_player_id', null)
+        .in('status', ['active', 'waiting'])
+        .order('updated_at', { ascending: false })
+        .limit(6);
+      if (cancelled || error || !data?.length) return;
+      const hit = (data as GameRowMin[]).find((g) =>
+        rowIndicatesLiveFreePlayPacing({ tempo: g.tempo, live_time_control: g.live_time_control })
+      );
+      if (!hit?.id) return;
+      const gid = normId(hit.id);
+      if (!gid) return;
+      setWatchGameId(gid);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionUserId, watchGameId]);
+
   useEffect(() => {
     if (!watchGameId || !sessionUserId) {
       return;
@@ -106,13 +153,52 @@ export function HostLiveOpenSeatFollowListener() {
     const uid = sessionUserId;
     let cancelled = false;
     const chRef: { current: ReturnType<typeof supabase.channel> | null } = { current: null };
+    const intervalRef = { current: null as number | null };
+
+    const finishIfBlackSeated = (g: GameRowMin) => {
+      const blackNow = normId(g.black_player_id);
+      if (blackNow) {
+        if (hostShouldPushToGame(pathnameRef.current, gid)) {
+          router.push(`/game/${gid}`);
+        }
+        clearHostLiveOpenSeatFollow();
+        setWatchGameId(null);
+        removeChannelSafe(chRef);
+        return true;
+      }
+      return false;
+    };
+
+    const validateStillWaitingHost = (g: GameRowMin) => {
+      if (String(g.play_context ?? "") !== "free" || g.tournament_id) {
+        return false;
+      }
+      if (normId(g.white_player_id) !== uid) {
+        return false;
+      }
+      if (!["active", "waiting"].includes(String(g.status ?? ""))) {
+        return false;
+      }
+      // Prefer live-seated detection; do not drop follow on a single mis-tagged `live_time_control` row.
+      const t = normalizeGameTempo(g.tempo);
+      const looksLive =
+        t === "live" ||
+        rowIndicatesLiveFreePlayPacing({ tempo: g.tempo, live_time_control: g.live_time_control });
+      if (!looksLive) {
+        return false;
+      }
+      return true;
+    };
 
     void (async () => {
-      const { data: row, error } = await supabase
-        .from("games")
-        .select("id,white_player_id,black_player_id,tempo,live_time_control,status,play_context,tournament_id")
-        .eq("id", gid)
-        .maybeSingle();
+      const fetchRow = () =>
+        supabase
+          .from("games")
+          .select("id,white_player_id,black_player_id,tempo,live_time_control,status,play_context,tournament_id")
+          .eq("id", gid)
+          .maybeSingle();
+
+      const { data: row, error } = await fetchRow();
 
       if (cancelled) return;
 
@@ -123,38 +209,73 @@ export function HostLiveOpenSeatFollowListener() {
       }
 
       const g = row as GameRowMin;
-      if (String(g.play_context ?? "") !== "free" || g.tournament_id) {
+      if (!validateStillWaitingHost(g)) {
         clearHostLiveOpenSeatFollow();
         setWatchGameId(null);
         return;
       }
-      if (!rowIndicatesLiveFreePlayPacing({ tempo: g.tempo, live_time_control: g.live_time_control })) {
-        clearHostLiveOpenSeatFollow();
-        setWatchGameId(null);
-        return;
-      }
-      if (normId(g.white_player_id) !== uid) {
-        clearHostLiveOpenSeatFollow();
-        setWatchGameId(null);
-        return;
-      }
-      if (!["active", "waiting"].includes(String(g.status ?? ""))) {
-        clearHostLiveOpenSeatFollow();
-        setWatchGameId(null);
-        return;
-      }
-
-      const blackNow = normId(g.black_player_id);
-      if (blackNow) {
-        if (hostShouldPushToGame(pathnameRef.current, gid)) {
-          router.push(`/game/${gid}`);
-        }
-        clearHostLiveOpenSeatFollow();
-        setWatchGameId(null);
+      if (finishIfBlackSeated(g)) {
         return;
       }
 
       if (cancelled) return;
+
+      const onPayloadNew = (nw: Record<string, unknown>) => {
+        if (normId(nw.id) !== gid) return;
+
+        const b = nw.black_player_id;
+        if (b != null && String(b).trim() !== "") {
+          if (hostShouldPushToGame(pathnameRef.current, gid)) {
+            router.push(`/game/${gid}`);
+          }
+          clearHostLiveOpenSeatFollow();
+          setWatchGameId(null);
+          removeChannelSafe(chRef);
+          return;
+        }
+
+        const st = String(nw.status ?? "");
+        if (st === "finished") {
+          clearHostLiveOpenSeatFollow();
+          setWatchGameId(null);
+          removeChannelSafe(chRef);
+          return;
+        }
+        const nt = normalizeGameTempo(nw.tempo as string | null | undefined);
+        const liveish =
+          nt === "live" ||
+          rowIndicatesLiveFreePlayPacing({
+            tempo: nw.tempo as string | null | undefined,
+            live_time_control: nw.live_time_control as string | null | undefined,
+          });
+        const okWaitingHost =
+          String(nw.play_context ?? "") === "free" &&
+          !nw.tournament_id &&
+          liveish &&
+          normId(nw.white_player_id) === uid &&
+          (st === "active" || st === "waiting");
+
+        if (!okWaitingHost) {
+          clearHostLiveOpenSeatFollow();
+          setWatchGameId(null);
+          removeChannelSafe(chRef);
+        }
+      };
+
+      const recheck = async () => {
+        if (cancelled) return;
+        const { data: r2, error: e2 } = await fetchRow();
+        if (e2 || !r2) return;
+        const gr = r2 as GameRowMin;
+        if (finishIfBlackSeated(gr)) {
+          return;
+        }
+        if (!validateStillWaitingHost(gr)) {
+          clearHostLiveOpenSeatFollow();
+          setWatchGameId(null);
+          removeChannelSafe(chRef);
+        }
+      };
 
       const ch = supabase
         .channel(`host-live-open-seat-${gid}`)
@@ -167,55 +288,34 @@ export function HostLiveOpenSeatFollowListener() {
             filter: `id=eq.${gid}`,
           },
           (payload) => {
-            const nw = payload.new as Record<string, unknown>;
-            if (normId(nw.id) !== gid) return;
-
-            const b = nw.black_player_id;
-            if (b != null && String(b).trim() !== "") {
-              if (hostShouldPushToGame(pathnameRef.current, gid)) {
-                router.push(`/game/${gid}`);
-              }
-              clearHostLiveOpenSeatFollow();
-              setWatchGameId(null);
-              removeChannelSafe(chRef);
-              return;
-            }
-
-            const st = String(nw.status ?? "");
-            if (st === "finished") {
-              clearHostLiveOpenSeatFollow();
-              setWatchGameId(null);
-              removeChannelSafe(chRef);
-              return;
-            }
-            const okWaitingHost =
-              String(nw.play_context ?? "") === "free" &&
-              !nw.tournament_id &&
-              rowIndicatesLiveFreePlayPacing({
-                tempo: nw.tempo as string | null | undefined,
-                live_time_control: nw.live_time_control as string | null | undefined,
-              }) &&
-              normId(nw.white_player_id) === uid &&
-              (st === "active" || st === "waiting");
-
-            if (!okWaitingHost) {
-              clearHostLiveOpenSeatFollow();
-              setWatchGameId(null);
-              removeChannelSafe(chRef);
-            }
-          },
+            onPayloadNew(payload.new as Record<string, unknown>);
+          }
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            void recheck();
+          }
+        });
 
       if (cancelled) {
         void supabase.removeChannel(ch);
         return;
       }
       chRef.current = ch;
+      if (intervalRef.current != null) {
+        window.clearInterval(intervalRef.current);
+      }
+      intervalRef.current = window.setInterval(() => {
+        void recheck();
+      }, HOST_FOLLOW_OPEN_POLL_MS);
     })();
 
     return () => {
       cancelled = true;
+      if (intervalRef.current != null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       removeChannelSafe(chRef);
     };
   }, [watchGameId, sessionUserId, router]);

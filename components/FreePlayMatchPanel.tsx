@@ -6,7 +6,7 @@
  */
 
 import type { CSSProperties } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { FreePlayQueueResult } from '@/lib/freePlayFindMatch';
@@ -64,6 +64,8 @@ export function FreePlayMatchPanel({
   const router = useRouter();
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyFind, setBusyFind] = useState(false);
+  /** Prevents double-submit before React re-renders `busy` (same-slot duplicate create race). */
+  const queueActionLockRef = useRef(false);
   const [message, setMessage] = useState('');
   const [suggestCreate, setSuggestCreate] = useState(false);
 
@@ -92,11 +94,13 @@ export function FreePlayMatchPanel({
   );
 
   const createGame = useCallback(async () => {
-    if (busy) return;
+    if (busy || queueActionLockRef.current) return;
+    queueActionLockRef.current = true;
     setMessage('');
     setSuggestCreate(false);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
+      queueActionLockRef.current = false;
       setMessage('You must be logged in.');
       return;
     }
@@ -112,16 +116,19 @@ export function FreePlayMatchPanel({
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Something went wrong. Try again.');
     } finally {
+      queueActionLockRef.current = false;
       setBusyCreate(false);
     }
   }, [busy, mode, clock, rated, handleResult]);
 
   const findMatchAutomatic = useCallback(async () => {
-    if (busy) return;
+    if (busy || queueActionLockRef.current) return;
+    queueActionLockRef.current = true;
     setMessage('');
     setSuggestCreate(false);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
+      queueActionLockRef.current = false;
       setMessage('You must be logged in.');
       return;
     }
@@ -140,6 +147,7 @@ export function FreePlayMatchPanel({
       }
       setMessage(e instanceof Error ? e.message : 'Something went wrong. Try again.');
     } finally {
+      queueActionLockRef.current = false;
       setBusyFind(false);
     }
   }, [busy, mode, clock, rated, handleResult]);

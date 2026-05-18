@@ -1,10 +1,11 @@
 import type { NexusHubPayload } from "@/lib/nexus/types";
 import { UtcClock } from "@/components/UtcClock";
+import { leagueCardSurfaceClasses } from "@/components/ui/LeagueCard";
 import { formatRelativeTimeUtc } from "@/lib/nexus/nexusHubMapping";
 
 /** Shared with module titles — scan-aligned label style */
 export const nexusModuleHeadingClass =
-  "mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500";
+  "mb-3 text-[length:var(--accl-text-xs)] font-semibold uppercase tracking-[var(--accl-tracking-wide)] text-[var(--accl-text-faint)]";
 
 /**
  * Phase 4 — consistent interaction timing (120–180ms, ease-out).
@@ -35,12 +36,14 @@ export default function NexusHeader({ meta, className = "" }: Props) {
 
   return (
     <header
-      className={`rounded-2xl border border-[#2a3442] bg-gradient-to-br from-[#111723] to-[#1a2231] px-5 py-4 shadow-md shadow-black/20 ${nexusTransition} hover:shadow-lg hover:shadow-black/25 ${className}`.trim()}
+      className={`${leagueCardSurfaceClasses} px-5 py-4 ${nexusTransition} ${className}`.trim()}
     >
-      <p className="text-[10px] uppercase tracking-[0.22em] text-gray-500">ACCL</p>
+      <p className="text-[length:var(--accl-text-2xs)] uppercase tracking-[var(--accl-tracking-wider)] text-[var(--accl-text-faint)]">
+        ACCL
+      </p>
       <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">NEXUS</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-white">NEXUS</h1>
           <p className="mt-0.5 text-sm text-gray-500">Live command center</p>
         </div>
         <div className="text-right">

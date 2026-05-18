@@ -25,9 +25,19 @@ export default async function NexusPage({
   const sp = await searchParams;
   const ecosystem: NexusEcosystem = String(sp?.ecosystem ?? "").toLowerCase() === "k12" ? "k12" : "adult";
   const data = await getNexusHubData(ecosystem);
+  const nexusPendingMr = Number(data.nexusData.matchRequests.pendingCount) || 0;
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#07080c] text-white antialiased">
+    <div className="flex min-h-screen flex-col bg-[var(--accl-bg-arena)] text-white antialiased">
+      {/*
+        Inline: lets PendingMatchRequestsBanner read the hub-fetched count on /nexus before its first
+        client refresh, avoiding a duplicate match_requests round-trip. Cleared in the banner after use.
+      */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `try{window.__accl_nexusHub={pendingMatchRequestCount:${nexusPendingMr}}}catch(e){}`,
+        }}
+      />
       <NexusBfcacheAuthGuard />
       <NavigationBar variant="nexusShell" />
       <NexusShell data={data} />

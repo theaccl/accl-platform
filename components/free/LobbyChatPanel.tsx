@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 import { supabase } from '@/lib/supabaseClient';
@@ -27,6 +27,10 @@ export type LobbyChatPanelProps = {
   'data-testid'?: string;
   draftTestId?: string;
   sendButtonTestId?: string;
+  /** Optional pre-resolved auth token to avoid extra auth calls from this display-only panel. */
+  initialToken?: string | null;
+  /** Optional pre-resolved user id to avoid extra auth calls from this display-only panel. */
+  initialUserId?: string | null;
 };
 
 /**
@@ -40,23 +44,31 @@ export function LobbyChatPanel({
   'data-testid': dataTestId = 'lobby-chat-panel',
   draftTestId = 'lobby-chat-draft',
   sendButtonTestId = 'lobby-chat-send',
+  initialToken = null,
+  initialUserId = null,
 }: LobbyChatPanelProps) {
-  const [token, setToken] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(initialToken);
+  const [userId, setUserId] = useState<string | null>(initialUserId);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const lastRealtimeAtRef = useRef(0);
   const openIdentity = useOpenPublicIdentityCard();
+  const loadRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
+    if (initialToken != null || initialUserId != null) {
+      if (initialToken != null) setToken(initialToken);
+      if (initialUserId != null) setUserId(initialUserId);
+      return;
+    }
     void supabase.auth.getSession().then(({ data }) => {
-      setToken(data.session?.access_token ?? null);
+      const s = data.session;
+      setToken(s?.access_token ?? null);
+      setUserId(s?.user?.id ?? null);
     });
-    void supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
-    });
-  }, []);
+  }, [initialToken, initialUserId]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -81,15 +93,25 @@ export function LobbyChatPanel({
   }, [token, lobbyRoom]);
 
   useEffect(() => {
-    void load();
+    loadRef.current = load;
   }, [load]);
+
+  useEffect(() => {
+    if (!loadRef.current) return;
+    void loadRef.current();
+  }, [lobbyRoom, token]);
 
   /** Supabase Realtime (RLS-scoped) + light polling if a delivery is missed. */
   useEffect(() => {
     if (!userId || !token || !lobbyRoom.trim()) return;
 
-    const pollMs = 12_000;
-    const pollId = window.setInterval(() => void load(), pollMs);
+    const pollMs = 30_000;
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      if (Date.now() - lastRealtimeAtRef.current < 45_000) return;
+      if (!loadRef.current) return;
+      void loadRef.current();
+    }, pollMs);
 
     const filterRoom = lobbyRoom.replace(/"/g, '');
     const channel = supabase
@@ -102,7 +124,11 @@ export function LobbyChatPanel({
           table: 'tester_chat_messages',
           filter: `lobby_room=eq.${filterRoom}`,
         },
-        () => void load(),
+        () => {
+          lastRealtimeAtRef.current = Date.now();
+          if (!loadRef.current) return;
+          void loadRef.current();
+        },
       )
       .subscribe();
 
@@ -110,7 +136,7 @@ export function LobbyChatPanel({
       window.clearInterval(pollId);
       void supabase.removeChannel(channel);
     };
-  }, [userId, token, lobbyRoom, load]);
+  }, [userId, token, lobbyRoom]);
 
   const send = async () => {
     if (!token || !draft.trim()) return;
@@ -133,7 +159,8 @@ export function LobbyChatPanel({
       return;
     }
     setDraft('');
-    void load();
+    if (!loadRef.current) return;
+    void loadRef.current();
   };
 
   return (

@@ -11,6 +11,12 @@ import { supabase } from "@/lib/supabaseClient";
 import { nexusPrestigeCard } from "@/components/nexus/nexusShellTheme";
 import { nexusModuleHeadingClass } from "@/components/nexus/NexusHeader";
 
+type Props = {
+  /** From hub server load; avoids a duplicate get_public_profile_snapshot for the same user. */
+  initialP1: PublicP1Read | null;
+  initialUserId: string | null;
+};
+
 function rowLabel(r: { rating: number; games_played: number } | null | undefined): string {
   if (!r || typeof r.rating !== "number") return "—";
   return `${formatRatingDisplay(r.rating)} · ${r.games_played} gp`;
@@ -18,8 +24,9 @@ function rowLabel(r: { rating: number; games_played: number } | null | undefined
 
 /**
  * P1 snapshot from existing RPC — display only; no rating logic changes.
+ * When `initialUserId` matches the session user, uses `initialP1` from the hub load (no extra RPC).
  */
-export default function NexusPlayerSnapshotCard() {
+export default function NexusPlayerSnapshotCard({ initialP1, initialUserId }: Props) {
   const [user, setUser] = useState<User | null>(null);
   const [p1, setP1] = useState<PublicP1Read | null>(null);
 
@@ -38,9 +45,13 @@ export default function NexusPlayerSnapshotCard() {
   }, []);
 
   useEffect(() => {
-    const uid = user?.id?.trim();
+    const uid = user?.id?.trim() ?? null;
     if (!uid) {
       setP1(null);
+      return;
+    }
+    if (initialUserId && uid === initialUserId) {
+      setP1(initialP1);
       return;
     }
     let cancelled = false;
@@ -54,7 +65,7 @@ export default function NexusPlayerSnapshotCard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, initialUserId, initialP1]);
 
   return (
     <section

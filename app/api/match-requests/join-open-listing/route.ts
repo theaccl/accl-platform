@@ -10,6 +10,7 @@ import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
+import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export const runtime = 'nodejs';
 
@@ -182,14 +183,18 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const hostId = String(claimedRow.from_user_id ?? '').trim();
-  try {
-    await invalidateLiveQueueAvailabilityForUsers({
-      userIds: [...new Set([hostId, userId].filter(Boolean))],
-      excludeGameId: rawId,
-      excludeRequestId: requestId,
-    });
-  } catch (e) {
-    console.warn('[match-requests.join-open-listing] live queue invalidation failed', e);
+  // Only **live** activations void other live open seats + cancel pending live match_requests.
+  // Daily/correspondence acceptance must not call `invalidate` (it runs `supersede` server-side).
+  if (normalizeGameTempo(claimedRow.tempo) === 'live') {
+    try {
+      await invalidateLiveQueueAvailabilityForUsers({
+        userIds: [...new Set([hostId, userId].filter(Boolean))],
+        excludeGameId: rawId,
+        excludeRequestId: requestId,
+      });
+    } catch (e) {
+      console.warn('[match-requests.join-open-listing] live queue invalidation failed', e);
+    }
   }
 
   return jsonResponse({ ok: true, gameId: rawId });

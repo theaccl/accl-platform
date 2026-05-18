@@ -18,6 +18,16 @@ export function PendingMatchRequestsBanner() {
 
   const refresh = useCallback(async (uid: string) => {
     const t = acclPerfTime('PendingMatchRequestsBanner.refresh');
+    if (typeof window !== 'undefined' && pathname === '/nexus') {
+      const w = window as Window & { __accl_nexusHub?: { pendingMatchRequestCount: number } };
+      const hub = w.__accl_nexusHub;
+      if (hub && typeof hub.pendingMatchRequestCount === 'number') {
+        setCount(hub.pendingMatchRequestCount);
+        delete w.__accl_nexusHub;
+        t.end({ count: hub.pendingMatchRequestCount, source: 'nexus_hub_preload' });
+        return;
+      }
+    }
     const { count: c, error } = await supabase
       .from('match_requests')
       .select('id', { count: 'exact', head: true })
@@ -32,14 +42,14 @@ export function PendingMatchRequestsBanner() {
     }
     setCount(c ?? 0);
     t.end({ count: c ?? 0 });
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { data } = await supabase.auth.getUser();
+      const { data } = await supabase.auth.getSession();
       if (cancelled) return;
-      const id = data.user?.id ?? null;
+      const id = data.session?.user?.id ?? null;
       setUserId(id);
       setResolved(true);
       if (id) await refresh(id);
@@ -76,14 +86,17 @@ export function PendingMatchRequestsBanner() {
       )
       .subscribe();
     /** Backup poll only — realtime handles inbox changes. */
+    const inHotPath = pathname.startsWith('/free/lobby') || pathname.startsWith('/game/');
+    const pollMs = inHotPath ? 120_000 : 30_000;
     const poll = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       void refresh(userId);
-    }, 30_000);
+    }, pollMs);
     return () => {
       void supabase.removeChannel(channel);
       window.clearInterval(poll);
     };
-  }, [userId, refresh]);
+  }, [userId, refresh, pathname]);
 
   if (!resolved || !userId || pathname === '/login') return null;
   if (count <= 0) return null;

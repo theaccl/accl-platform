@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo } from 'react';
 
+import { FreeLobbyCurrentGamesPanel } from '@/components/free/FreeLobbyCurrentGamesPanel';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayOpenPairingByMode } from '@/components/free/FreePlayOpenPairingByMode';
 import { FreePlayWatchSpectatorByMode } from '@/components/free/FreePlayWatchSpectatorByMode';
@@ -25,8 +26,19 @@ const focusRing =
  * Lobby Chat hub: optional general chat + mode room entry (navigation to `/free/lobby/[mode]`).
  */
 export function FreeLobbyHubContent() {
-  const { activity, loading } = useFreeOpenSeatActivity();
+  const { activity, counts: openSeatCounts, loading } = useFreeOpenSeatActivity();
   const watchList = useFreePlayWatchList('adult');
+
+  const watchCounts = useMemo(() => {
+    if (!watchList.data) return undefined;
+    return PLAT_MODE_ORDER.reduce(
+      (acc, m) => {
+        acc[m] = watchList.data!.byMode[m]?.length ?? 0;
+        return acc;
+      },
+      {} as Record<PlatMode, number>,
+    );
+  }, [watchList.data]);
 
   const watchClockHints = useMemo(() => {
     if (!watchList.data) return undefined;
@@ -61,10 +73,13 @@ export function FreeLobbyHubContent() {
 
         <FreePlayOpenPairingByMode
           activity={activity}
+          openSeatCounts={openSeatCounts}
           loading={loading}
           watchActivity={watchList.data?.watchActivity}
+          watchCounts={watchCounts}
           watchClockHints={watchClockHints}
         />
+        <FreeLobbyCurrentGamesPanel />
 
         <p className="mt-3 text-xs text-gray-500">
           <span className="font-medium text-violet-400/90">Violet</span> = live game to watch (tiles or bottom{' '}

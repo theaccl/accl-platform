@@ -7,8 +7,11 @@ type InvalidateLiveQueueAvailabilityArgs = {
 };
 
 /**
- * Once a player enters a live seated game, they are no longer available in other live queues/open listings.
- * Best-effort cleanup: stale free open seats + pending open live listings.
+ * Once a player enters a **live** seated free game, void their other live open `games` rows (via `supersede_*` RPC)
+ * and cancel their pending **live** `match_requests` (open + direct).
+ *
+ * Do **not** call this for daily/correspondence activations — that would clear live queues incorrectly.
+ * Call sites: match accept (live only), join-open-listing (live only), client `createSeatedGameGuard` follow-up (live only).
  */
 export async function invalidateLiveQueueAvailabilityForUsers(
   args: InvalidateLiveQueueAvailabilityArgs
@@ -37,7 +40,7 @@ export async function invalidateLiveQueueAvailabilityForUsers(
       responded_at: new Date().toISOString(),
     })
     .eq('status', 'pending')
-    .eq('visibility', 'open')
+    .in('visibility', ['open', 'direct'])
     .eq('tempo', 'live')
     .in('from_user_id', uniqueIds);
   if (excludeRequestId) {

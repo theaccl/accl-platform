@@ -202,7 +202,6 @@ begin
   set
     black_player_id = v_uid,
     status = 'active',
-    started_at = coalesce(gg.started_at, now()),
     updated_at = now()
   where gg.id = open_row.id
     and gg.black_player_id is null

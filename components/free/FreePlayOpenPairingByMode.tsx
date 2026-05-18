@@ -1,6 +1,7 @@
 'use client';
 
 import { PLAT_MODE_LABELS, PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
+import { formatLobbyCountLabel } from '@/lib/formatLobbyCountLabel';
 import { forceDomNavigation } from '@/lib/forceDomNavigation';
 
 const focusRing =
@@ -8,9 +9,13 @@ const focusRing =
 
 type Props = {
   activity: Record<PlatMode, boolean>;
+  /** Per-mode open-seat counts for hub badges (cap display in labels via formatLobbyCountLabel). */
+  openSeatCounts?: Record<PlatMode, number>;
   loading: boolean;
   /** When set (hub), show a second link to that mode’s “Watch live” list when lit. */
   watchActivity?: Record<PlatMode, boolean>;
+  /** Per-mode spectatable live game counts (optional; falls back to watchActivity boolean). */
+  watchCounts?: Record<PlatMode, number>;
   /** Distinct spectatable clock tokens per mode (for deep-linking the mode room watch list). */
   watchClockHints?: Record<PlatMode, string[]>;
 };
@@ -18,7 +23,14 @@ type Props = {
 /**
  * Hub shortcuts: native anchors + forced assign on primary click (Lit = hash to Open Games).
  */
-export function FreePlayOpenPairingByMode({ activity, loading, watchActivity, watchClockHints }: Props) {
+export function FreePlayOpenPairingByMode({
+  activity,
+  openSeatCounts,
+  loading,
+  watchActivity,
+  watchCounts,
+  watchClockHints,
+}: Props) {
   return (
     <section
       className="relative z-[100] mb-4 rounded-xl border border-[#243244] bg-[#0f141c] px-4 py-3 sm:px-5"
@@ -37,7 +49,11 @@ export function FreePlayOpenPairingByMode({ activity, loading, watchActivity, wa
       <ul className="relative z-[101] mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {PLAT_MODE_ORDER.map((mode) => {
           const on = activity[mode];
+          const openN = openSeatCounts?.[mode] ?? 0;
+          const openLabel = formatLobbyCountLabel(openN > 0 ? openN : on ? 1 : 0);
           const watchOn = watchActivity?.[mode] === true;
+          const wn = watchCounts?.[mode] ?? 0;
+          const watchNLabel = formatLobbyCountLabel(wn > 0 ? wn : watchOn ? 1 : 0);
           const watchClocks = watchClockHints?.[mode];
           const watchQs =
             watchClocks?.length === 1 ? `?clock=${encodeURIComponent(watchClocks[0]!)}` : '';
@@ -80,14 +96,14 @@ export function FreePlayOpenPairingByMode({ activity, loading, watchActivity, wa
                 </span>
                 {on ? (
                   <span className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300/95">
-                    Open games →
+                    Open games ({openLabel}) →
                   </span>
                 ) : (
                   <span className="mt-1 text-[10px] font-medium text-gray-500">Enter room</span>
                 )}
               </a>
               {watchActivity ? (
-                watchOn ? (
+                watchOn || wn > 0 ? (
                   <a
                     href={`/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`}
                     onClick={(e) =>
@@ -101,7 +117,7 @@ export function FreePlayOpenPairingByMode({ activity, loading, watchActivity, wa
                     className={`mt-1 block touch-manipulation rounded-md py-1 text-center text-[10px] font-semibold leading-tight text-violet-300 underline-offset-2 hover:text-violet-100 hover:underline ${focusRing}`}
                     data-testid={`free-open-pairing-watch-${mode}`}
                   >
-                    Watch live →
+                    Watch ({watchNLabel}) →
                   </a>
                 ) : (
                   <span

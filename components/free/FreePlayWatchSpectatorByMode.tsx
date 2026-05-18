@@ -1,6 +1,7 @@
 'use client';
 
 import { PLAT_MODE_LABELS, PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
+import { formatLobbyCountLabel } from '@/lib/formatLobbyCountLabel';
 import { forceDomNavigation } from '@/lib/forceDomNavigation';
 import type { FreePlayWatchListRow } from '@/lib/server/freePlayWatchList';
 
@@ -43,7 +44,9 @@ export function FreePlayWatchSpectatorByMode({ loading, error, data }: Props) {
       <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {PLAT_MODE_ORDER.map((mode) => {
           const rows = data?.byMode[mode] ?? [];
-          const on = rows.length > 0;
+          const n = rows.length;
+          const on = n > 0;
+          const countLabel = formatLobbyCountLabel(n);
           const clockKeys = [...new Set(rows.map((r) => r.liveTimeControlKey).filter(Boolean))].sort();
           const clockQs = clockKeys.length === 1 ? `?clock=${encodeURIComponent(clockKeys[0]!)}` : '';
           const href = `/free/lobby/${mode}${clockQs}#watch-as-spectator-anchor`;
@@ -54,7 +57,7 @@ export function FreePlayWatchSpectatorByMode({ loading, error, data }: Props) {
                 onClick={(e) => forceDomNavigation(e, href)}
                 aria-label={
                   on
-                    ? `${PLAT_MODE_LABELS[mode]}: ${rows.length} live game(s) — open watch list`
+                    ? `${PLAT_MODE_LABELS[mode]}: ${countLabel} live game(s) — open watch list`
                     : `${PLAT_MODE_LABELS[mode]} mode — open watch / spectate area`
                 }
                 className={`flex min-h-[52px] w-full touch-manipulation flex-col justify-between gap-1 rounded-lg border px-2.5 py-2 text-left no-underline transition active:opacity-95 [-webkit-tap-highlight-color:rgba(167,139,250,0.25)] ${focusRing} ${
@@ -72,7 +75,7 @@ export function FreePlayWatchSpectatorByMode({ loading, error, data }: Props) {
                   <span className="min-w-0 text-[13px] font-semibold text-gray-100">{PLAT_MODE_LABELS[mode]}</span>
                 </div>
                 <span className={`text-center text-[11px] font-semibold ${on ? 'text-violet-200/95' : 'text-gray-500'}`}>
-                  {on ? `Watch (${rows.length})` : 'Open watch'}
+                  {on ? `Watch (${countLabel})` : 'Open watch'}
                 </span>
               </a>
             </li>

@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
 import { FreeLobbyOpenGamesList } from '@/components/free/FreeLobbyOpenGamesList';
+import { FreeLobbyPlayComputerPanel } from '@/components/free/FreeLobbyPlayComputerPanel';
 import { FreePlayWatchSpectatorForMode } from '@/components/free/FreePlayWatchSpectatorForMode';
+import { platModeExposesComputerPlay } from '@/lib/freePlayComputerEntry';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayMatchPanel } from '@/components/FreePlayMatchPanel';
 import NexusLobbyActionsBar from '@/components/nexus/NexusLobbyActionsBar';
@@ -27,7 +29,7 @@ const noopMode = (_m: PlatMode) => {
 };
 
 /**
- * Mode room hierarchy: (1) Open Games + Watch live row → (2) Create/Find → (3) chat.
+ * Mode room hierarchy: Play Computer (live modes) → Open Games → Watch → Create/Find → chat.
  */
 export function FreeLobbyModeRoomContent({ mode }: Props) {
   const [clock, setClock] = useState<string>(() => defaultPlatTimeControl(mode));
@@ -44,23 +46,41 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
   const onModeChange = useCallback(noopMode, []);
   const lobbyRoom = FREE_PLAY_LOBBY_ROOM_BY_MODE[mode];
   const label = lobbyModeLabel(mode);
+  const showPlayComputer = platModeExposesComputerPlay(mode);
 
   return (
-    <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
+    <div
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}
+      data-testid={`free-lobby-mode-room-${mode}`}
+      data-computer-play-enabled={showPlayComputer ? 'true' : 'false'}
+    >
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-5 sm:py-6">
-        <nav className="mb-3 text-sm">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <Link
             href="/free/lobby"
-            className="font-medium text-sky-400 underline-offset-2 hover:text-sky-300 hover:underline"
+            prefetch
             data-testid="free-lobby-mode-back-hub"
+            className="inline-flex min-h-[48px] w-full max-w-md touch-manipulation items-center justify-center gap-2 rounded-xl border-2 border-sky-500/50 bg-gradient-to-r from-sky-950/80 to-[#0c141c] px-4 py-3 text-center text-sm font-bold tracking-tight text-sky-100 shadow-[0_0_0_1px_rgba(56,189,248,0.2)] transition hover:border-sky-400/70 hover:from-sky-900/90 hover:to-[#101820] hover:text-white sm:w-auto sm:px-5"
           >
-            ← Lobby Chat hub
+            <span aria-hidden className="text-lg leading-none">
+              ←
+            </span>
+            <span>Lobby Chat Hub</span>
           </Link>
-        </nav>
+          <p className="text-[11px] leading-snug text-gray-500 sm:max-w-xs sm:text-right">
+            General chat, mode tiles, open-seat lights, and watch discovery live here.
+          </p>
+        </div>
 
         <h1 className="mb-4 text-2xl font-bold tracking-tight text-white sm:text-3xl">
           {PLAT_MODE_LABELS[mode]} <span className="text-gray-500">room</span>
         </h1>
+
+        {showPlayComputer ? (
+          <div id="free-lobby-play-computer-anchor" className="mb-6 min-w-0 scroll-mt-24">
+            <FreeLobbyPlayComputerPanel mode={mode} initialClock={clock} />
+          </div>
+        ) : null}
 
         {/* Primary: Open Games should be the first visible priority panel. */}
         <div data-accl-layout="mode-room-open-games-primary" className="min-w-0">

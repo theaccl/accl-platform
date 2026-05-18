@@ -24,7 +24,10 @@ export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
       </div>
 
       <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
-        <NexusPlayerSnapshotCard />
+        <NexusPlayerSnapshotCard
+          initialP1={data.nexusData.playerP1Snapshot}
+          initialUserId={data.nexusData.profiles.self?.userId ?? null}
+        />
       </div>
 
       <div className="min-w-0 border-t border-white/[0.06] pt-4 sm:pt-5">
@@ -38,7 +41,7 @@ export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
       <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
         <div className="grid min-w-0 grid-cols-1 gap-4 gap-y-5 lg:grid-cols-12 lg:gap-6 lg:gap-y-6">
           <div className="min-w-0 lg:col-span-12">
-            <NexusOpenGamesColumn />
+            <NexusOpenGamesColumn games={data.nexusData.games} />
           </div>
           <div className="min-w-0 lg:col-span-12">
             <NexusActiveTournaments state={data.activeTournaments} />

@@ -832,6 +832,12 @@ export default function GamePage() {
   const [nextGameWithMyMoveId, setNextGameWithMyMoveId] = useState<string | null>(null);
 
   const spectateGrowthTracked = useRef(false);
+  /** Deduplicate overlapping `loadGameSnapshot` (poll + realtime + focus); keyed by game + auth + spectate flag. */
+  const snapshotInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  /** Deduplicate overlapping `game_move_logs` fetches for the same game viewer context. */
+  const moveLogsInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  /** When public spectate RPC returned `snap.move_logs` as an array; matches bootstrap key to skip redundant `loadMoveLogs('bootstrap')`. */
+  const spectateRpcBootstrapMoveLogsHydratedKeyRef = useRef<string | null>(null);
   /** Prevents duplicate join RPC (e.g. React Strict Mode). */
   const joinOpenSeatInFlightRef = useRef(false);
 
@@ -842,6 +848,9 @@ export default function GamePage() {
   useEffect(() => {
     liveTimeoutInFlightRef.current = false;
     lastMoveCountRef.current = null;
+    spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
+    snapshotInFlightRef.current = null;
+    moveLogsInFlightRef.current = null;
   }, [gameId]);
 
   useEffect(() => {
@@ -1211,6 +1220,16 @@ export default function GamePage() {
   const loadMoveLogs = useCallback(async (reason: MoveLogLoadReason) => {
     if (!gameId) return;
     if (!publicSpectate && !userId) return;
+    if (reason === 'bootstrap') {
+      const usePublicRpc = shouldUsePublicSpectateRpc({
+        publicSpectateUrlFlag: publicSpectate,
+        userId: userId || null,
+      });
+      const bootstrapKey = `${gameId}|${userId || 'anon'}|${publicSpectate ? 'public' : 'private'}`;
+      if (usePublicRpc && spectateRpcBootstrapMoveLogsHydratedKeyRef.current === bootstrapKey) {
+        return;
+      }
+    }
     /** Always-on counters + trace (runs even when move-count guard returns early). */
     if (typeof window !== 'undefined') {
       const w = window as Window & { __accl_debug?: Record<string, unknown> };
@@ -1254,6 +1273,13 @@ export default function GamePage() {
         stack,
       });
     }
+    const moveLogsFetchKey = `${gameId}|${publicSpectate ? '1' : '0'}|${userId || 'anon'}`;
+    const mlWait = moveLogsInFlightRef.current;
+    if (mlWait && mlWait.key === moveLogsFetchKey) {
+      await mlWait.promise;
+      return;
+    }
+    const runMoveLogsFetch = async (): Promise<void> => {
     const started = Date.now();
     const { data } = await supabase
       .from('game_move_logs')
@@ -1285,12 +1311,29 @@ export default function GamePage() {
     } else if ((data ?? []).length > 0) {
       lastMoveCountRef.current = (data ?? []).length;
     }
+    };
+    const mlOuter = runMoveLogsFetch();
+    moveLogsInFlightRef.current = { key: moveLogsFetchKey, promise: mlOuter };
+    try {
+      await mlOuter;
+    } finally {
+      if (moveLogsInFlightRef.current?.promise === mlOuter) {
+        moveLogsInFlightRef.current = null;
+      }
+    }
   }, [gameId, publicSpectate, userId, setMoveLogs]);
 
   const loadGameSnapshot = useCallback(
     async (authUid?: string | null) => {
       if (!gameId) return;
       const uid = authUid !== undefined ? authUid : userId;
+      const snapshotKey = `${gameId}|${publicSpectate ? 'pub' : 'priv'}|${uid || 'anon'}`;
+      const snapshotWait = snapshotInFlightRef.current;
+      if (snapshotWait && snapshotWait.key === snapshotKey) {
+        await snapshotWait.promise;
+        return;
+      }
+      const runSnapshot = async (): Promise<void> => {
       const usePublicRpc = shouldUsePublicSpectateRpc({ publicSpectateUrlFlag: publicSpectate, userId: uid });
 
       if (usePublicRpc) {
@@ -1299,6 +1342,7 @@ export default function GamePage() {
           p_viewer_ecosystem: viewerEcosystem,
         });
         if (error) {
+          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
           setMessage(`Spectate unavailable: ${error.message}`);
           setGame(null);
           setMoveLogs([]);
@@ -1325,11 +1369,13 @@ export default function GamePage() {
           }
           setGame(null);
           setMoveLogs([]);
+          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
           return;
         }
         const snap = data as Record<string, unknown>;
         const gamePayload = snap.game as GameRow | undefined;
         if (!gamePayload) {
+          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
           setMessage('Spectate payload incomplete.');
           setGame(null);
           setMoveLogs([]);
@@ -1337,7 +1383,24 @@ export default function GamePage() {
           return;
         }
         setGame(gamePayload);
-        setMoveLogs((Array.isArray(snap.move_logs) ? snap.move_logs : []) as MoveLogRow[]);
+        const rpcMoveLogs = (Array.isArray(snap.move_logs) ? snap.move_logs : []) as MoveLogRow[];
+        setMoveLogs(rpcMoveLogs);
+        if (Array.isArray(snap.move_logs)) {
+          const mcLog =
+            typeof gamePayload.move_count === 'number' && Number.isFinite(gamePayload.move_count)
+              ? gamePayload.move_count
+              : null;
+          if (mcLog !== null) {
+            lastMoveCountRef.current = mcLog;
+          } else if (rpcMoveLogs.length > 0) {
+            lastMoveCountRef.current = rpcMoveLogs.length;
+          }
+          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = `${gameId}|${uid || 'anon'}|${
+            publicSpectate ? 'public' : 'private'
+          }`;
+        } else {
+          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
+        }
         const labels = snap.spectate_labels as { white?: string; black?: string } | undefined;
         if (labels && typeof labels === 'object') {
           setDisplayNameById((prev) => {
@@ -1380,6 +1443,17 @@ export default function GamePage() {
       }
       setGame(data as GameRow);
       setGameAccess('ok');
+      spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
+      };
+      const snapshotOuterPromise = runSnapshot();
+      snapshotInFlightRef.current = { key: snapshotKey, promise: snapshotOuterPromise };
+      try {
+        await snapshotOuterPromise;
+      } finally {
+        if (snapshotInFlightRef.current?.promise === snapshotOuterPromise) {
+          snapshotInFlightRef.current = null;
+        }
+      }
     },
     [gameId, publicSpectate, userId, viewerEcosystem, setMoveLogs]
   );
@@ -1856,6 +1930,10 @@ export default function GamePage() {
 
     setSavingMove(true);
     setMessage('');
+    const clientMoveId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const startedAt = Date.now();
 
     const tempo = normalizeGameTempo(game!.tempo);
@@ -1879,6 +1957,7 @@ export default function GamePage() {
       },
       body: JSON.stringify({
         gameId: game!.id,
+        clientMoveId,
         fenBefore,
         nextFen,
         nextTurn,
@@ -1901,17 +1980,62 @@ export default function GamePage() {
     });
     const moveSubmitPayload = (await moveSubmitRes.json().catch(() => ({}))) as {
       row?: GameRow;
-      error?: string;
+      error?: string | { code?: string; message?: string };
+      human_move_applied?: boolean;
+      bot_move_applied?: boolean;
+      move_applied?: boolean;
+      move_log_failed?: boolean;
+      idempotent_duplicate?: boolean;
+      think_ms?: number | null;
     };
-    if (!moveSubmitRes.ok || !moveSubmitPayload.row) {
+    const submitErrorMessage =
+      typeof moveSubmitPayload.error === 'object' && moveSubmitPayload.error?.message
+        ? moveSubmitPayload.error.message
+        : typeof moveSubmitPayload.error === 'string'
+          ? moveSubmitPayload.error
+          : 'Move submit failed.';
+
+    if (!moveSubmitRes.ok) {
+      const partialStateCommitted =
+        moveSubmitPayload.row &&
+        (moveSubmitPayload.human_move_applied ||
+          moveSubmitPayload.move_applied ||
+          moveSubmitPayload.move_log_failed);
+      if (partialStateCommitted && moveSubmitPayload.row) {
+        setGame(moveSubmitPayload.row);
+        setReplayStep(null);
+        setSavingMove(false);
+        setSelectedSquare(null);
+        setMessage(submitErrorMessage);
+        void loadMoveLogs('post_move');
+        window.setTimeout(() => {
+          void loadGameSnapshot();
+        }, 600);
+        return;
+      }
       chessRef.current?.undo();
       setLiveChessVersion((v) => v + 1);
       setSavingMove(false);
       setSelectedSquare(null);
-      setMessage(moveSubmitPayload.error || 'Move submit failed.');
+      setMessage(submitErrorMessage);
+      return;
+    }
+    if (!moveSubmitPayload.row) {
+      chessRef.current?.undo();
+      setLiveChessVersion((v) => v + 1);
+      setSavingMove(false);
+      setSelectedSquare(null);
+      setMessage(submitErrorMessage);
       return;
     }
     const finalRow = moveSubmitPayload.row;
+    const thinkDelayMs =
+      moveSubmitPayload.bot_move_applied && typeof moveSubmitPayload.think_ms === 'number'
+        ? Math.max(0, moveSubmitPayload.think_ms)
+        : 0;
+    if (thinkDelayMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, thinkDelayMs));
+    }
     setGame(finalRow);
 
     setReplayStep(null);
@@ -2523,7 +2647,7 @@ export default function GamePage() {
   const maxReplayStep = moveLogs.length;
 
   return (
-    <div style={{ padding: 24, color: 'white', background: 'black', minHeight: '100vh' }}>
+    <div className="accl-game-shell">
       <h1 style={{ marginBottom: 6 }}>Game Board</h1>
       <p
         role="status"

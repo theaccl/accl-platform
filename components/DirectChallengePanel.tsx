@@ -366,6 +366,11 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
       challengeTempo = stored.tempo;
       const t = challengeTempo === 'daily' ? 'daily' : 'live';
       challengeLtc = canonicalLiveTimeControlForInsert(t, stored.live_time_control) ?? stored.live_time_control;
+      /** Enforce exact CHECK tokens (e.g. `5+5` not `5 m + 5`); btrim+lower in DB, client must match. */
+      challengeLtc = String(challengeLtc)
+        .replace(/\u00a0/g, ' ')
+        .trim()
+        .toLowerCase();
     } catch {
       setMessage('Invalid mode and time control. Pick a valid combination.');
       return;

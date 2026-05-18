@@ -6,6 +6,10 @@ import { PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
 import { buildLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { notFound, redirect } from 'next/navigation';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
 const VALID = new Set<string>(PLAT_MODE_ORDER);
 
 export default async function FreeLobbyModePage({ params }: { params: { mode: string } }) {

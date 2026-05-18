@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   isLobbyNonFinishedGame,
@@ -45,6 +45,7 @@ export function HomePlaySection({
   const router = useRouter();
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyFind, setBusyFind] = useState(false);
+  const queueActionLockRef = useRef(false);
   const [recovery, setRecovery] = useState<{ id: string } | null>(null);
   const [message, setMessage] = useState('');
   const [suggestCreate, setSuggestCreate] = useState(false);
@@ -101,11 +102,13 @@ export function HomePlaySection({
   );
 
   const createGame = useCallback(async () => {
-    if (busy) return;
+    if (busy || queueActionLockRef.current) return;
+    queueActionLockRef.current = true;
     setMessage('');
     setSuggestCreate(false);
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) {
+      queueActionLockRef.current = false;
       setMessage('Sign in to use the queue.');
       return;
     }
@@ -121,16 +124,19 @@ export function HomePlaySection({
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Something went wrong. Try again.');
     } finally {
+      queueActionLockRef.current = false;
       setBusyCreate(false);
     }
   }, [busy, mode, effectiveClock, rated, handleQueueResult]);
 
   const findMatchAutomatic = useCallback(async () => {
-    if (busy) return;
+    if (busy || queueActionLockRef.current) return;
+    queueActionLockRef.current = true;
     setMessage('');
     setSuggestCreate(false);
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) {
+      queueActionLockRef.current = false;
       setMessage('Sign in to use the queue.');
       return;
     }
@@ -146,6 +152,7 @@ export function HomePlaySection({
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Something went wrong. Try again.');
     } finally {
+      queueActionLockRef.current = false;
       setBusyFind(false);
     }
   }, [busy, mode, effectiveClock, rated, handleQueueResult]);

@@ -30,24 +30,31 @@ function maskK12(id: string): string {
 /**
  * Free-play live games with both players seated — for lobby “Watch as spectator” discovery.
  * Uses service role (same family as Nexus live games); do not expose raw SQL to the client.
+ *
+ * @param options.excludeUserId — seated players do not see their own game in spectate discovery (use resume instead).
  */
-export async function fetchFreePlaySpectatableLobby(ecosystem: 'adult' | 'k12'): Promise<{
+export async function fetchFreePlaySpectatableLobby(
+  ecosystem: 'adult' | 'k12',
+  options?: { excludeUserId?: string | null }
+): Promise<{
   byMode: Record<PlatMode, FreePlayWatchListRow[]>;
   watchActivity: Record<PlatMode, boolean>;
 }> {
+  const ex = String(options?.excludeUserId ?? '').trim().toLowerCase();
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from('games')
     .select('id,tempo,live_time_control,white_player_id,black_player_id,updated_at')
     .eq('play_context', 'free')
     .is('tournament_id', null)
-    .eq('status', 'active')
+    // Align with getActiveFreePlayGameForUser / free lobby: live rows can be active or waiting while playable.
+    .in('status', ['active', 'waiting'])
     .eq('ecosystem_scope', ecosystem)
     .eq('tempo', 'live')
     .not('white_player_id', 'is', null)
     .not('black_player_id', 'is', null)
     .order('updated_at', { ascending: false })
-    .limit(100);
+    .limit(200);
 
   if (error) {
     console.error('[fetchFreePlaySpectatableLobby]', error.message);
@@ -87,18 +94,20 @@ export async function fetchFreePlaySpectatableLobby(ecosystem: 'adult' | 'k12'):
   };
 
   const byMode = emptyByMode();
-  const perModeCap = 5;
+  /** How many live boards to show per PLAT mode (larger = fewer “missing” in busy lobbies; still cheap). */
+  const perModeCap = 15;
 
   for (const r of dataRows) {
+    const wid = String(r.white_player_id ?? '');
+    const bid = String(r.black_player_id ?? '');
+    if (!wid || !bid) continue;
+    if (ex && (wid.trim().toLowerCase() === ex || bid.trim().toLowerCase() === ex)) continue;
     let mode = platBucketForOpenSeat(r.tempo as string | null, r.live_time_control as string | null);
     if (!mode && normalizeGameTempo(r.tempo as string | null) === 'live') {
       mode = 'rapid';
     }
     if (!mode) continue;
     if (byMode[mode].length >= perModeCap) continue;
-    const wid = String(r.white_player_id ?? '');
-    const bid = String(r.black_player_id ?? '');
-    if (!wid || !bid) continue;
     const tempo = r.tempo as string | null;
     const ltcKey =
       canonicalLiveTimeControlForInsert(tempo, r.live_time_control as string | null) ??

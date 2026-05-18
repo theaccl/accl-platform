@@ -3,7 +3,14 @@ import fetchPolyfill from 'cross-fetch';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import { buildAuthoritativeMovePatch } from '@/lib/gameStateSourceOfTruth';
 import { Chess } from 'chess.js';
-import { selectBotMove, type BotCandidateLine, type BotName } from '@/lib/bot/botPersonality';
+import { terminalStateFromBoard, type BotMoveFailureCode } from '@/lib/bot/botMoveCommit';
+import {
+  committedLogMatchesPayload,
+  findCommittedMoveLogByKey,
+} from '@/lib/replay/idempotentMoveRecovery';
+import { buildMoveIdempotencyKey } from '@/lib/replay/moveIdempotencyKey';
+import { validateRpcMoveLogPayload } from '@/lib/replay/rpcMoveLogPayload';
+import { commitBotGameTurn } from '@/lib/server/submitMoveBotGameCommit';
 import { auditApiLog, logSlowRequest, shortId } from '@/lib/server/prodLog';
 import { guardRequest } from '@/lib/server/requestGuard';
 
@@ -11,7 +18,11 @@ type Body = {
   gameId?: unknown;
   fenBefore?: unknown;
   move?: unknown;
+  clientMoveId?: unknown;
 };
+
+const GAME_ROW_SELECT =
+  'id,fen,turn,status,tempo,live_time_control,last_move_at,white_clock_ms,black_clock_ms,white_player_id,black_player_id,source_type,bot_settings,rating_last_update';
 
 type AuthenticatedRequest = {
   userId: string;
@@ -65,29 +76,68 @@ function conflictJson(details: {
   );
 }
 
-const BOT_USER_IDS: Record<BotName, string> = {
-  'Cardi Bot': '10000000-0000-0000-0000-000000000001',
-  'Aggro Bot': '10000000-0000-0000-0000-000000000002',
-  'Endgame Bot': '10000000-0000-0000-0000-000000000003',
-};
-
-function configuredBotUserIds(): Record<BotName, string> {
-  return {
-    'Cardi Bot': process.env.BOT_USER_ID_CARDI?.trim() || BOT_USER_IDS['Cardi Bot'],
-    'Aggro Bot': process.env.BOT_USER_ID_AGGRO?.trim() || BOT_USER_IDS['Aggro Bot'],
-    'Endgame Bot': process.env.BOT_USER_ID_ENDGAME?.trim() || BOT_USER_IDS['Endgame Bot'],
-  };
+function idempotencyConflictJson(message: string): Response {
+  auditApiLog('submit_move', { result: 'idempotency_key_conflict' });
+  return json(
+    {
+      error: {
+        code: 'idempotency_key_conflict',
+        message,
+        retryable: false,
+      },
+    },
+    409,
+  );
 }
 
-function botNameFromUserId(userId: string): BotName | null {
-  const hit = (Object.entries(configuredBotUserIds()) as Array<[BotName, string]>).find(([, id]) => id === userId);
-  return hit?.[0] ?? null;
+function idempotentSuccessJson(row: unknown, extras?: { botMoveApplied?: boolean; thinkMs?: number | null }) {
+  return json(
+    {
+      ok: true,
+      idempotent_duplicate: true,
+      row,
+      bot_move_applied: extras?.botMoveApplied ?? false,
+      think_ms: extras?.thinkMs ?? null,
+    },
+    200,
+  );
 }
 
-function sanitizeUciMove(move: string): string {
-  const m = /^([a-h][1-8])([a-h][1-8])([qrbn]?)/i.exec(move.trim());
-  if (!m) return '';
-  return `${m[1]}${m[2]}${(m[3] ?? '').toLowerCase()}`;
+function moveLogInvalidPayloadJson(message: string): Response {
+  auditApiLog('submit_move', { result: 'move_log_invalid_payload' });
+  return json(
+    {
+      error: {
+        code: 'move_log_invalid_payload',
+        message,
+        retryable: false,
+      },
+    },
+    400,
+  );
+}
+
+function botMoveFailedJson(
+  code: BotMoveFailureCode,
+  message: string,
+  humanRow: unknown,
+  extra?: { thinkMs?: number; expectedFen?: string | null; actualFen?: string | null },
+): Response {
+  return json(
+    {
+      error: {
+        code,
+        message,
+        retryable: true,
+        ...extra,
+      },
+      human_move_applied: true,
+      bot_move_applied: false,
+      think_ms: extra?.thinkMs ?? null,
+      row: humanRow,
+    },
+    409,
+  );
 }
 
 function sanitizeSquare(raw: unknown): string {
@@ -101,43 +151,51 @@ function sanitizePromotion(raw: unknown): 'q' | 'r' | 'b' | 'n' | undefined {
   return undefined;
 }
 
-function terminalStateFromBoard(board: Chess, moverColor: 'white' | 'black'): { result: string; endReason: string } | null {
-  if (board.isCheckmate()) {
-    return { result: moverColor === 'white' ? 'white_win' : 'black_win', endReason: 'checkmate' };
-  }
-  if (board.isStalemate()) {
-    return { result: 'draw', endReason: 'stalemate' };
-  }
-  if (board.isThreefoldRepetition()) {
-    return { result: 'draw', endReason: 'threefold_repetition' };
-  }
-  if (board.isInsufficientMaterial()) {
-    return { result: 'draw', endReason: 'insufficient_material' };
-  }
-  if (board.isDrawByFiftyMoves()) {
-    return { result: 'draw', endReason: 'fifty_move_rule' };
-  }
-  if (board.isDraw()) {
-    return { result: 'draw', endReason: 'draw' };
-  }
-  return null;
+function dbMessage(err: unknown): string {
+  return String((err as { message?: string } | null)?.message ?? '').toLowerCase();
 }
 
-function buildBotCandidatesFromFen(fen: string): BotCandidateLine[] {
-  const board = new Chess(fen);
-  const legal = board.moves({ verbose: true });
-  return legal.slice(0, 12).map((mv) => {
-    const uciSeed = `${mv.from}${mv.to}${mv.promotion ?? ''}`.toLowerCase();
-    const uci = /[+#x]/i.test(mv.san) ? `${uciSeed}x` : uciSeed;
-    const check = mv.san.includes('+') || mv.san.includes('#');
-    const capture = mv.flags.includes('c') || mv.flags.includes('e');
-    const promotion = Boolean(mv.promotion);
-    const scoreCp = (capture ? 60 : 0) + (check ? 45 : 0) + (promotion ? 25 : 0);
-    return {
-      move: uci,
-      scoreCp,
-    };
+async function loadGameRow(supabase: ReturnType<typeof createServiceRoleClient>, gameId: string) {
+  return supabase.from('games').select(GAME_ROW_SELECT).eq('id', gameId).single();
+}
+
+async function tryRecoverIdempotentHumanMove(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  details: {
+    gameId: string;
+    idempotencyKey: string;
+    playerId: string;
+    fromSquare: string;
+    toSquare: string;
+    fenBefore: string | null;
+    fenAfter: string;
+  },
+): Promise<{ ok: true; row: Record<string, unknown> } | { ok: false; conflictMessage?: string }> {
+  const lookup = await findCommittedMoveLogByKey(supabase, details.gameId, details.idempotencyKey);
+  if (!lookup.found) return { ok: false };
+
+  const match = committedLogMatchesPayload(lookup.log, {
+    playerId: details.playerId,
+    fromSq: details.fromSquare,
+    toSq: details.toSquare,
+    fenBefore: details.fenBefore,
+    fenAfter: details.fenAfter,
   });
+  if (!match.ok) {
+    return { ok: false, conflictMessage: match.message };
+  }
+
+  const current = await loadGameRow(supabase, details.gameId);
+  if (current.error || !current.data) return { ok: false };
+
+  const actualFen = String(current.data.fen ?? '').trim();
+  const expectedAfter = String(details.fenAfter).trim();
+  if (actualFen !== expectedAfter) {
+    return { ok: false };
+  }
+
+  auditApiLog('submit_move', { result: 'idempotent_duplicate', game_id: shortId(details.gameId) });
+  return { ok: true, row: current.data as Record<string, unknown> };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -174,14 +232,10 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { data: gameRow, error: gameErr } = await supabase
-    .from('games')
-    .select(
-      'id,fen,turn,status,tempo,live_time_control,last_move_at,white_clock_ms,black_clock_ms,white_player_id,black_player_id,source_type'
-    )
-    .eq('id', gameId)
-    .single();
-  if (gameErr || !gameRow) {
+  const clientMoveId = String(body.clientMoveId ?? '').trim() || null;
+
+  const initialGame = await supabase.from('games').select(GAME_ROW_SELECT).eq('id', gameId).single();
+  if (initialGame.error || !initialGame.data) {
     auditApiLog('submit_move', {
       result: 'game_not_found',
       game_id: shortId(gameId),
@@ -192,6 +246,7 @@ export async function POST(request: Request): Promise<Response> {
       404,
     );
   }
+  let gameRow = initialGame.data;
   if (gameRow.white_player_id !== userId && gameRow.black_player_id !== userId) {
     auditApiLog('submit_move', { result: 'forbidden', game_id: shortId(gameId), user: shortId(userId) });
     return json(
@@ -209,26 +264,6 @@ export async function POST(request: Request): Promise<Response> {
     return badMoveJson('Game is not in a playable state.');
   }
   const actorColor: 'white' | 'black' = gameRow.white_player_id === userId ? 'white' : 'black';
-  const currentTurn = String(gameRow.turn ?? '').trim().toLowerCase();
-  if (currentTurn !== actorColor) {
-    auditApiLog('submit_move', { result: 'out_of_turn', game_id: shortId(gameId), user: shortId(userId) });
-    return badMoveJson('It is not your turn.');
-  }
-  if (fenBefore && fenBefore !== String(gameRow.fen ?? '').trim()) {
-    const actualFen = String(gameRow.fen ?? '').trim() || null;
-    auditApiLog('submit_move', {
-      result: 'optimistic_conflict',
-      game_id: shortId(gameId),
-      user: shortId(userId),
-      ms: typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0,
-    });
-    return conflictJson({
-      gameId,
-      expectedFen: fenBefore || null,
-      actualFen,
-    });
-  }
-
   const inputMove = (body.move ?? {}) as {
     from_sq?: unknown;
     to_sq?: unknown;
@@ -243,53 +278,290 @@ export async function POST(request: Request): Promise<Response> {
     return badMoveJson('Move coordinates are required.');
   }
 
+  const humanIdempotencyKey = buildMoveIdempotencyKey({
+    gameId,
+    fenBefore: fenBefore || String(gameRow.fen ?? '').trim(),
+    playerId: userId,
+    fromSq: fromSquare,
+    toSq: toSquare,
+    promotion,
+    clientMoveId,
+  });
+
+  let humanAlreadyCommitted = false;
+
+  if (fenBefore && fenBefore !== String(gameRow.fen ?? '').trim()) {
+    const actualFen = String(gameRow.fen ?? '').trim() || null;
+    let boardProbe: Chess;
+    try {
+      boardProbe = new Chess(fenBefore);
+    } catch {
+      auditApiLog('submit_move', {
+        result: 'optimistic_conflict',
+        game_id: shortId(gameId),
+        user: shortId(userId),
+      });
+      return conflictJson({ gameId, expectedFen: fenBefore || null, actualFen });
+    }
+    const probeMove = boardProbe.move({ from: fromSquare, to: toSquare, promotion });
+    if (!probeMove) {
+      return badMoveJson('Illegal move.');
+    }
+    const probeNextFen = boardProbe.fen();
+    const recoveredStale = await tryRecoverIdempotentHumanMove(supabase, {
+      gameId,
+      idempotencyKey: humanIdempotencyKey,
+      playerId: userId,
+      fromSquare,
+      toSquare,
+      fenBefore: fenBefore || null,
+      fenAfter: probeNextFen,
+    });
+    if (!recoveredStale.ok) {
+      auditApiLog('submit_move', {
+        result: 'optimistic_conflict',
+        game_id: shortId(gameId),
+        user: shortId(userId),
+        ms: typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0,
+      });
+      return conflictJson({ gameId, expectedFen: fenBefore || null, actualFen });
+    }
+    gameRow = recoveredStale.row as typeof initialGame.data;
+    humanAlreadyCommitted = true;
+  }
+
+  if (!humanAlreadyCommitted) {
+    const currentTurn = String(gameRow.turn ?? '').trim().toLowerCase();
+    if (currentTurn !== actorColor) {
+      auditApiLog('submit_move', { result: 'out_of_turn', game_id: shortId(gameId), user: shortId(userId) });
+      return badMoveJson('It is not your turn.');
+    }
+  }
+
   let board: Chess;
-  try {
-    board = new Chess(String(gameRow.fen ?? '').trim());
-  } catch {
-    auditApiLog('submit_move', { result: 'invalid_server_fen', game_id: shortId(gameId), user: shortId(userId) });
-    return json({ error: 'game_unavailable', message: 'Game position is invalid. Please refresh.' }, 409);
+  let nextFen = '';
+  let terminal: ReturnType<typeof terminalStateFromBoard> = null;
+  let movePatch: ReturnType<typeof buildAuthoritativeMovePatch> | null = null;
+
+  if (humanAlreadyCommitted) {
+    nextFen = String(gameRow.fen ?? '').trim();
+    try {
+      board = new Chess(nextFen);
+    } catch {
+      return json({ error: 'game_unavailable', message: 'Game position is invalid. Please refresh.' }, 409);
+    }
+    terminal = terminalStateFromBoard(board, actorColor);
+  } else {
+    try {
+      board = new Chess(String(gameRow.fen ?? '').trim());
+    } catch {
+      auditApiLog('submit_move', { result: 'invalid_server_fen', game_id: shortId(gameId), user: shortId(userId) });
+      return json({ error: 'game_unavailable', message: 'Game position is invalid. Please refresh.' }, 409);
+    }
+    const moved = board.move({ from: fromSquare, to: toSquare, promotion });
+    if (!moved) {
+      auditApiLog('submit_move', { result: 'illegal_move', game_id: shortId(gameId), user: shortId(userId) });
+      return badMoveJson('Illegal move.');
+    }
+
+    nextFen = board.fen();
+    const nextTurn = board.turn() === 'w' ? 'white' : 'black';
+    terminal = terminalStateFromBoard(board, actorColor);
+
+    movePatch = buildAuthoritativeMovePatch({
+      nextFen,
+      nextTurn,
+      statusBefore: String(gameRow.status ?? 'active'),
+      tempo: gameRow.tempo == null ? null : String(gameRow.tempo),
+      liveTimeControl: gameRow.live_time_control == null ? null : String(gameRow.live_time_control),
+      currentTurn: String(gameRow.turn ?? 'white'),
+      whiteClockMs: typeof gameRow.white_clock_ms === 'number' ? gameRow.white_clock_ms : null,
+      blackClockMs: typeof gameRow.black_clock_ms === 'number' ? gameRow.black_clock_ms : null,
+      lastMoveAt: gameRow.last_move_at == null ? null : String(gameRow.last_move_at),
+    });
   }
-  const moved = board.move({ from: fromSquare, to: toSquare, promotion });
-  if (!moved) {
-    auditApiLog('submit_move', { result: 'illegal_move', game_id: shortId(gameId), user: shortId(userId) });
-    return badMoveJson('Illegal move.');
+
+  const preMoveFen = fenBefore || String(initialGame.data.fen ?? '').trim();
+  const isBotGame = String(initialGame.data.source_type ?? '').trim() === 'bot_game';
+
+  if (isBotGame) {
+    const botResult = await commitBotGameTurn({
+      gameId,
+      userId,
+      preMoveFen,
+      nextFen,
+      fromSquare,
+      toSquare,
+      moveDurationMs: Number(inputMove.move_duration_ms ?? 0),
+      humanIdempotencyKey,
+      initialGameRow: initialGame.data as Record<string, unknown>,
+      gameRow: gameRow as Record<string, unknown>,
+      humanAlreadyCommitted,
+      movePatch: movePatch
+        ? {
+            fen: movePatch.fen,
+            turn: movePatch.turn,
+            last_move_at: movePatch.last_move_at,
+            move_deadline_at: movePatch.move_deadline_at,
+            white_clock_ms: movePatch.white_clock_ms ?? null,
+            black_clock_ms: movePatch.black_clock_ms ?? null,
+            status: String(movePatch.status ?? 'active'),
+          }
+        : null,
+      terminal,
+      board,
+    });
+
+    if (!botResult.ok) {
+      if (botResult.kind === 'move_log_invalid') {
+        return moveLogInvalidPayloadJson(botResult.message);
+      }
+      if (botResult.kind === 'idempotency_conflict') {
+        return idempotencyConflictJson(botResult.message);
+      }
+      if (botResult.kind === 'optimistic_conflict') {
+        auditApiLog('submit_move', {
+          result: 'optimistic_conflict',
+          game_id: shortId(gameId),
+          user: shortId(userId),
+        });
+        return conflictJson({
+          gameId,
+          expectedFen: botResult.expectedFen ?? null,
+          actualFen: botResult.actualFen ?? null,
+        });
+      }
+      if (
+        botResult.kind === 'bot_precondition' ||
+        botResult.kind === 'bot_no_candidates' ||
+        botResult.kind === 'bot_invalid_uci'
+      ) {
+        const code =
+          botResult.kind === 'bot_precondition'
+            ? (botResult.botCode as BotMoveFailureCode)
+            : botResult.kind === 'bot_no_candidates'
+              ? 'bot_no_candidates'
+              : 'bot_move_invalid_uci';
+        auditApiLog('submit_move', {
+          result: code,
+          game_id: shortId(gameId),
+          user: shortId(userId),
+        });
+        return botMoveFailedJson(code, botResult.message, botResult.humanRow, {
+          thinkMs: botResult.thinkMs ?? undefined,
+          expectedFen: botResult.expectedFen,
+          actualFen: botResult.actualFen,
+        });
+      }
+      auditApiLog('submit_move', { result: 'move_commit_failed', game_id: shortId(gameId), user: shortId(userId) });
+      return json(
+        { error: 'move_commit_failed', message: botResult.message },
+        409,
+      );
+    }
+
+    const elapsedBot =
+      typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
+    logSlowRequest('submit_move', elapsedBot, { user: shortId(userId) });
+    auditApiLog('submit_move', {
+      result: 'ok',
+      game_id: shortId(gameId),
+      user: shortId(userId),
+      ms: elapsedBot,
+      bot_move_applied: botResult.botMoveApplied,
+      bot_composite_rpc: true,
+    });
+    if (botResult.humanWasIdempotentDuplicate && !botResult.botMoveApplied) {
+      return idempotentSuccessJson(botResult.finalRow, {
+        botMoveApplied: botResult.botMoveApplied,
+        thinkMs: botResult.thinkMs,
+      });
+    }
+    return json(
+      {
+        ok: true,
+        idempotent_duplicate: botResult.humanWasIdempotentDuplicate,
+        row: botResult.finalRow,
+        bot_move_applied: botResult.botMoveApplied,
+        think_ms: botResult.thinkMs,
+      },
+      200,
+    );
   }
 
-  const nextFen = board.fen();
-  const nextTurn = board.turn() === 'w' ? 'white' : 'black';
-  const terminal = terminalStateFromBoard(board, actorColor);
+  let committedHumanRow: Record<string, unknown> | null = humanAlreadyCommitted
+    ? (gameRow as Record<string, unknown>)
+    : null;
+  let humanWasIdempotentDuplicate = humanAlreadyCommitted;
 
-  const movePatch = buildAuthoritativeMovePatch({
-    nextFen,
-    nextTurn,
-    statusBefore: String(gameRow.status ?? 'active'),
-    tempo: gameRow.tempo == null ? null : String(gameRow.tempo),
-    liveTimeControl: gameRow.live_time_control == null ? null : String(gameRow.live_time_control),
-    currentTurn: String(gameRow.turn ?? 'white'),
-    whiteClockMs: typeof gameRow.white_clock_ms === 'number' ? gameRow.white_clock_ms : null,
-    blackClockMs: typeof gameRow.black_clock_ms === 'number' ? gameRow.black_clock_ms : null,
-    lastMoveAt: gameRow.last_move_at == null ? null : String(gameRow.last_move_at),
-  });
+  if (!humanAlreadyCommitted && movePatch) {
+    const moved = board.history({ verbose: true }).at(-1);
+    const humanLogRow = {
+      game_id: gameId,
+      player_id: userId,
+      san: moved?.san ?? '',
+      from_sq: fromSquare,
+      to_sq: toSquare,
+      fen_before: String(initialGame.data.fen ?? '').trim() || null,
+      fen_after: nextFen,
+      move_duration_ms: Number(inputMove.move_duration_ms ?? 0),
+    };
 
-  const { data: updatedRow, error: updateErr } = await supabase.rpc('apply_move_and_maybe_finish_system', {
-    p_game_id: gameId,
-    p_expected_fen: String(gameRow.fen ?? '').trim(),
-    p_next_fen: movePatch.fen,
-    p_next_turn: movePatch.turn,
-    p_last_move_at: movePatch.last_move_at,
-    p_move_deadline_at: movePatch.move_deadline_at,
-    p_white_clock_ms: movePatch.white_clock_ms ?? null,
-    p_black_clock_ms: movePatch.black_clock_ms ?? null,
-    p_promote_waiting_to_active: movePatch.status === 'active',
-    p_result: terminal?.result ?? null,
-    p_end_reason: terminal?.endReason ?? null,
-  });
-  if (updateErr || !updatedRow) {
+    const humanLogPayload = validateRpcMoveLogPayload(gameId, humanLogRow, {
+      idempotencyKey: humanIdempotencyKey,
+    });
+    if (!humanLogPayload.ok) {
+      return moveLogInvalidPayloadJson(humanLogPayload.message);
+    }
+
+    const { data: rpcHumanRow, error: updateErr } = await supabase.rpc('apply_move_and_maybe_finish_system', {
+      p_game_id: gameId,
+      p_expected_fen: String(gameRow.fen ?? '').trim(),
+      p_next_fen: movePatch.fen,
+      p_next_turn: movePatch.turn,
+      p_last_move_at: movePatch.last_move_at,
+      p_move_deadline_at: movePatch.move_deadline_at,
+      p_white_clock_ms: movePatch.white_clock_ms ?? null,
+      p_black_clock_ms: movePatch.black_clock_ms ?? null,
+      p_promote_waiting_to_active: movePatch.status === 'active',
+      p_result: terminal?.result ?? null,
+      p_end_reason: terminal?.endReason ?? null,
+      p_move_log: humanLogPayload.payload,
+    });
+
+    committedHumanRow = rpcHumanRow as Record<string, unknown> | null;
+
+    if (updateErr || !committedHumanRow) {
     const current = await supabase.from('games').select('fen').eq('id', gameId).maybeSingle();
     const actualFen = String(current.data?.fen ?? '').trim() || null;
-    const dbMsg = String(updateErr?.message ?? '').toLowerCase();
-    if (dbMsg.includes('optimistic_conflict')) {
+    const dbMsg = dbMessage(updateErr);
+    if (dbMsg.includes('move_log_invalid_payload')) {
+      auditApiLog('submit_move', {
+        result: 'move_log_invalid_payload',
+        game_id: shortId(gameId),
+        user: shortId(userId),
+      });
+      return moveLogInvalidPayloadJson('Move history payload was rejected.');
+    }
+    if (dbMsg.includes('idempotency_key_conflict')) {
+      return idempotencyConflictJson('This move idempotency key was already used for a different move.');
+    }
+
+    const recovered = await tryRecoverIdempotentHumanMove(supabase, {
+      gameId,
+      idempotencyKey: humanIdempotencyKey,
+      playerId: userId,
+      fromSquare,
+      toSquare,
+      fenBefore: preMoveFen || null,
+      fenAfter: nextFen,
+    });
+    if (recovered.ok) {
+      committedHumanRow = recovered.row;
+      humanWasIdempotentDuplicate = true;
+    } else if (recovered.conflictMessage) {
+      return idempotencyConflictJson(recovered.conflictMessage);
+    } else if (dbMsg.includes('optimistic_conflict')) {
       auditApiLog('submit_move', {
         result: 'optimistic_conflict',
         game_id: shortId(gameId),
@@ -301,7 +573,17 @@ export async function POST(request: Request): Promise<Response> {
         expectedFen: String(gameRow.fen ?? '').trim() || null,
         actualFen,
       });
+    } else {
+      auditApiLog('submit_move', { result: 'move_commit_failed', game_id: shortId(gameId), user: shortId(userId) });
+      return json(
+        { error: 'move_commit_failed', message: 'Move could not be committed. Refresh and try again.' },
+        409,
+      );
     }
+    }
+  }
+
+  if (!committedHumanRow) {
     auditApiLog('submit_move', { result: 'move_commit_failed', game_id: shortId(gameId), user: shortId(userId) });
     return json(
       { error: 'move_commit_failed', message: 'Move could not be committed. Refresh and try again.' },
@@ -309,99 +591,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  await supabase.from('game_move_logs').insert({
-    game_id: gameId,
-    player_id: userId,
-    san: moved.san,
-    from_sq: moved.from,
-    to_sq: moved.to,
-    fen_before: String(gameRow.fen ?? '').trim() || null,
-    fen_after: nextFen,
-    move_duration_ms: Number(inputMove.move_duration_ms ?? 0),
-  });
-
-  let finalRow = updatedRow;
-
-  // Auto bot response for active bot games after the human move is committed.
-  if (
-    !terminal &&
-    String(finalRow?.status ?? '') === 'active' &&
-    String(finalRow?.source_type ?? '') === 'bot_game'
-  ) {
-    const isWhiteTurn = String(finalRow.turn ?? '') === 'white';
-    const sideToMoveUserId = isWhiteTurn ? String(finalRow.white_player_id ?? '') : String(finalRow.black_player_id ?? '');
-    const botName = botNameFromUserId(sideToMoveUserId);
-    if (botName) {
-      const fenNow = String(finalRow.fen ?? '').trim();
-      const candidates = buildBotCandidatesFromFen(fenNow);
-      const selected = selectBotMove(botName, candidates);
-      if (selected) {
-        const board = new Chess(fenNow);
-        const selectedUci = sanitizeUciMove(selected.move);
-        if (!selectedUci) {
-          auditApiLog('submit_move', {
-            result: 'ok',
-            game_id: shortId(gameId),
-            user: shortId(userId),
-            ms: typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0,
-          });
-          return json({ ok: true, row: finalRow }, 200);
-        }
-        const moved = board.move({
-          from: selectedUci.slice(0, 2),
-          to: selectedUci.slice(2, 4),
-          promotion: (selectedUci[4] as 'q' | 'r' | 'b' | 'n' | undefined) ?? undefined,
-        });
-        if (moved) {
-          const botNextFen = board.fen();
-          const botNextTurn = board.turn() === 'w' ? 'white' : 'black';
-          const botPatch = buildAuthoritativeMovePatch({
-            nextFen: botNextFen,
-            nextTurn: botNextTurn,
-            statusBefore: String(finalRow.status ?? 'active'),
-            tempo: finalRow.tempo == null ? null : String(finalRow.tempo),
-            liveTimeControl: finalRow.live_time_control == null ? null : String(finalRow.live_time_control),
-            currentTurn: String(finalRow.turn ?? 'white'),
-            whiteClockMs: typeof finalRow.white_clock_ms === 'number' ? finalRow.white_clock_ms : null,
-            blackClockMs: typeof finalRow.black_clock_ms === 'number' ? finalRow.black_clock_ms : null,
-            lastMoveAt: finalRow.last_move_at == null ? null : String(finalRow.last_move_at),
-          });
-          const { data: botUpdated } = await supabase
-            .from('games')
-            .update(botPatch)
-            .eq('id', gameId)
-            .eq('fen', fenNow)
-            .select('*')
-            .single();
-          if (botUpdated) {
-            await supabase.from('game_move_logs').insert({
-              game_id: gameId,
-              player_id: sideToMoveUserId,
-              san: moved.san,
-              from_sq: moved.from,
-              to_sq: moved.to,
-              fen_before: fenNow,
-              fen_after: botNextFen,
-              move_duration_ms: 0,
-            });
-            finalRow = botUpdated;
-            const botMoverColor: 'white' | 'black' = isWhiteTurn ? 'white' : 'black';
-            const botTerminal = terminalStateFromBoard(board, botMoverColor);
-            if (botTerminal) {
-              const { data: finishedAfterBot, error: botFinishErr } = await supabase.rpc('finish_game_system', {
-                p_game_id: gameId,
-                p_result: botTerminal.result,
-                p_end_reason: botTerminal.endReason,
-              });
-              if (!botFinishErr && finishedAfterBot) {
-                finalRow = finishedAfterBot;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  const finalRow = committedHumanRow as typeof initialGame.data;
 
   const elapsed =
     typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : 0;
@@ -411,8 +601,22 @@ export async function POST(request: Request): Promise<Response> {
     game_id: shortId(gameId),
     user: shortId(userId),
     ms: elapsed,
+    bot_move_applied: false,
   });
-  return json({ ok: true, row: finalRow }, 200);
+  if (humanWasIdempotentDuplicate) {
+    return idempotentSuccessJson(finalRow, { botMoveApplied: false, thinkMs: null });
+  }
+
+  return json(
+    {
+      ok: true,
+      idempotent_duplicate: humanWasIdempotentDuplicate,
+      row: finalRow,
+      bot_move_applied: false,
+      think_ms: null,
+    },
+    200,
+  );
   } finally {
     guard.release();
   }
