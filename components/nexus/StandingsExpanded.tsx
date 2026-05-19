@@ -121,7 +121,7 @@ function StandingsExpanded({
         )}
       </div>
       <p className="text-[11px] text-gray-500 mb-3 leading-relaxed break-words">
-        <Link href="/free/play" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
+        <Link href="/free/lobby" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
           Free play
         </Link>
         <span className="text-gray-600"> → </span>

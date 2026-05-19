@@ -78,7 +78,7 @@ function LiveGamesModule({
   const collapsed = (
     <div className="space-y-3 sm:space-y-2 max-h-56 overflow-y-auto overflow-x-hidden touch-pan-y pr-1 -mr-1">
       <p className="text-[11px] text-gray-500 leading-relaxed">
-        <Link href="/free/play" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
+        <Link href="/free/lobby" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
           Free play
         </Link>
         <span className="text-gray-600"> · </span>
@@ -184,7 +184,7 @@ function LiveGamesModule({
     ) : (
       <div className="space-y-3">
         <p className="text-[11px] text-gray-500">
-          Path: <Link href="/free/play" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>free play</Link>
+          Path: <Link href="/free/lobby" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>Lobby Chat</Link>
           {" → "}
           <Link href="/tournaments/join" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>tournament</Link>
           {" → "}

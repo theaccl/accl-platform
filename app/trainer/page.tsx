@@ -69,7 +69,7 @@ export default function TrainerPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0D1117] text-white flex flex-col">
+    <div className="flex min-h-screen flex-col bg-[var(--accl-bg-base)] text-[var(--accl-text-primary)]">
       <NavigationBar />
 
       <div className="max-w-3xl mx-auto w-full flex flex-1 flex-col px-6 py-8 gap-8" data-testid="trainer-home-page">
@@ -120,12 +120,43 @@ export default function TrainerPage() {
           ) : null}
         </section>
 
+        <section
+          className="rounded-2xl border border-[var(--accl-border-muted)] bg-[var(--accl-bg-elevated)]/40 p-5"
+          aria-labelledby="trainer-arena-heading"
+          data-testid="trainer-arena-handoffs"
+        >
+          <h2 id="trainer-arena-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--accl-text-muted)]">
+            Arena handoffs
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--accl-text-muted)]">
+            Live pairing and the command center live in Nexus and Lobby Chat. Mode rooms (Bullet, Blitz, Rapid) include
+            in-room <span className="text-[var(--accl-text-secondary)]">Play computer</span> for unrated practice.
+          </p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Link
+              href="/nexus"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3 text-sm font-semibold text-red-100 transition hover:bg-red-900/40"
+              data-testid="trainer-hub-nexus-link"
+            >
+              Open Nexus
+            </Link>
+            <Link
+              href="/free/lobby"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-sky-500/40 bg-sky-950/30 px-4 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-900/40"
+              data-testid="trainer-hub-lobby-link"
+            >
+              Lobby Chat
+            </Link>
+          </div>
+        </section>
+
         <section className="flex flex-col gap-3" aria-labelledby="trainer-practice-heading">
           <h2 id="trainer-practice-heading" className="text-sm font-semibold uppercase tracking-wide text-gray-500">
             Practice &amp; lab
           </h2>
           <p className="text-xs text-gray-500 -mt-1">
-            Sandbox positions, pattern sets, and computer practice — separate from per-game review.
+            Sandbox positions, pattern sets, and trainer computer practice — separate from per-game review and from live
+            mode-room computer games in Lobby Chat.
           </p>
           <div className="flex flex-col items-center gap-3">
             <HomeButton label="TRAINER LAB (POSITIONS)" route="/trainer/lab" />

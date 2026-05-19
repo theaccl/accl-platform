@@ -90,7 +90,7 @@ export default function PersonalHook({
         <p className="text-[10px] uppercase tracking-wide text-gray-500">Suggested next step</p>
         {!k12 && (standingsGames == null || standingsGames === 0) ? (
           <p className="text-xs text-gray-300">
-            <Link href="/free/play" className="text-red-200 font-medium underline">
+            <Link href="/free/lobby" className="text-red-200 font-medium underline">
               Play your first game
             </Link>
             <span className="text-gray-500"> — free play, same integrity rules.</span>
@@ -274,8 +274,8 @@ export default function PersonalHook({
         ) : null}
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-        <Link href="/free/play" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
-          Free play
+        <Link href="/free/lobby" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
+          Lobby Chat
         </Link>
         <span className="text-gray-600">·</span>
         <Link href="/tournaments/join" className={k12 ? "text-cyan-200 underline" : "text-red-200 underline"}>
