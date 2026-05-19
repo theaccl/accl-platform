@@ -2376,7 +2376,9 @@ export default function GamePage() {
             justifyContent: 'center',
           }}
         >
-          <p style={{ fontSize: 18, marginBottom: 16 }}>Game not found</p>
+          <p style={{ fontSize: 18, marginBottom: 16 }}>
+            This game is not available (removed, private, or invalid link).
+          </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
             <button
               type="button"

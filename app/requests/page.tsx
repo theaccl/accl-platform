@@ -43,6 +43,7 @@ import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
+import { formatUserFacingQueueError } from '@/lib/userFacingQueueError';
 
 type MatchRequestRow = {
   id: string;
@@ -178,7 +179,7 @@ export default function RequestsPage() {
       )
       .order('created_at', { ascending: false });
     if (error) {
-      setMessage(error.message);
+      setMessage(formatUserFacingQueueError(error.message));
       t.end({ error: error.message });
       return;
     }
@@ -326,7 +327,7 @@ export default function RequestsPage() {
             typeof payload.error === 'string' && payload.error.trim()
               ? payload.error.trim()
               : `Accept failed (${httpRes.status})`;
-          setMessage(err);
+          setMessage(formatUserFacingQueueError(err));
           return;
         }
         const gid = typeof payload.gameId === 'string' ? payload.gameId.trim() : '';
@@ -383,7 +384,7 @@ export default function RequestsPage() {
             typeof payload.error === 'string' && payload.error.trim()
               ? payload.error.trim()
               : `Join failed (${httpRes.status})`;
-          setMessage(err);
+          setMessage(formatUserFacingQueueError(err));
           return;
         }
         const gid = typeof payload.gameId === 'string' ? payload.gameId.trim() : '';
@@ -419,7 +420,7 @@ export default function RequestsPage() {
           .eq('status', 'pending')
           .eq('to_user_id', authUserId);
         if (error) {
-          setMessage(error.message);
+          setMessage(formatUserFacingQueueError(error.message));
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
@@ -449,7 +450,7 @@ export default function RequestsPage() {
           .eq('status', 'pending')
           .eq('from_user_id', authUserId);
         if (error) {
-          setMessage(error.message);
+          setMessage(formatUserFacingQueueError(error.message));
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));

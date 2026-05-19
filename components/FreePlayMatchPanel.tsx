@@ -20,6 +20,7 @@ import {
   platTimeOptionsForMode,
 } from '@/lib/freePlayModeTimeControl';
 import { supabase } from '@/lib/supabaseClient';
+import { USER_FACING_RESUME_HINT } from '@/lib/userFacingQueueError';
 
 function chipStyle(active: boolean, disabled: boolean, compactChips?: boolean): CSSProperties {
   return {
@@ -67,6 +68,7 @@ export function FreePlayMatchPanel({
   /** Prevents double-submit before React re-renders `busy` (same-slot duplicate create race). */
   const queueActionLockRef = useRef(false);
   const [message, setMessage] = useState('');
+  const [resumeGameId, setResumeGameId] = useState<string | null>(null);
   const [suggestCreate, setSuggestCreate] = useState(false);
 
   const busy = busyCreate || busyFind;
@@ -77,13 +79,17 @@ export function FreePlayMatchPanel({
     (res: FreePlayQueueResult) => {
       if ('error' in res) {
         if ('resumeGameId' in res && res.resumeGameId) {
-          router.push(`/game/${res.resumeGameId}`);
+          setResumeGameId(res.resumeGameId);
+          setMessage(`${res.error}${USER_FACING_RESUME_HINT}`);
+          setSuggestCreate(false);
           return;
         }
+        setResumeGameId(null);
         setSuggestCreate(Boolean(res.suggestCreate));
         setMessage(res.error);
         return;
       }
+      setResumeGameId(null);
       setSuggestCreate(false);
       if (res.hostLiveOpenSeat) {
         registerHostLiveOpenSeatFollow(res.gameId);
@@ -97,6 +103,7 @@ export function FreePlayMatchPanel({
     if (busy || queueActionLockRef.current) return;
     queueActionLockRef.current = true;
     setMessage('');
+    setResumeGameId(null);
     setSuggestCreate(false);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
@@ -125,6 +132,7 @@ export function FreePlayMatchPanel({
     if (busy || queueActionLockRef.current) return;
     queueActionLockRef.current = true;
     setMessage('');
+    setResumeGameId(null);
     setSuggestCreate(false);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
@@ -222,6 +230,17 @@ export function FreePlayMatchPanel({
         {message ? (
           <div data-testid="free-plat-play-message" className="space-y-1">
             <p className={`text-sm ${suggestCreate ? 'text-amber-200/95' : 'text-red-300'}`}>{message}</p>
+            {resumeGameId ? (
+              <p className="text-xs">
+                <Link
+                  href={`/game/${resumeGameId}`}
+                  className="font-medium text-sky-300 underline hover:text-sky-200"
+                  data-testid="free-plat-resume-game-link"
+                >
+                  Resume your active game
+                </Link>
+              </p>
+            ) : null}
             {suggestCreate ? (
               <p className="text-xs text-gray-500">
                 Post an open seat with <span className="font-medium text-gray-400">Create game</span> so others (or Find

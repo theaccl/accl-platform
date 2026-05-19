@@ -12,6 +12,7 @@ import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
+import { formatMatchRequestApiError } from '@/lib/userFacingQueueError';
 
 export const runtime = 'nodejs';
 
@@ -94,7 +95,10 @@ export async function POST(request: Request): Promise<Response> {
     .eq('id', requestId)
     .maybeSingle();
 
-  if (fetchErr) return jsonResponse({ error: fetchErr.message }, 503);
+  if (fetchErr) {
+    console.warn('[match-requests.accept] fetch failed', fetchErr.message);
+    return jsonResponse({ error: formatMatchRequestApiError(fetchErr.message) }, 503);
+  }
   if (!row) return jsonResponse({ error: 'Match request not found' }, 404);
 
   const r = row as MatchRequestRow;
@@ -129,7 +133,8 @@ export async function POST(request: Request): Promise<Response> {
   const { data: newGame, error: insErr } = await supabase.from('games').insert(challengeRow).select('id').single();
 
   if (insErr) {
-    return jsonResponse({ error: insErr.message }, 400);
+    console.warn('[match-requests.accept] game insert failed', insErr.message);
+    return jsonResponse({ error: formatMatchRequestApiError(insErr.message) }, 400);
   }
 
   const gid =
@@ -152,9 +157,10 @@ export async function POST(request: Request): Promise<Response> {
     .select('id');
 
   if (uErr) {
+    console.warn('[match-requests.accept] match_requests update failed', uErr.message);
     return jsonResponse(
       {
-        error: uErr.message,
+        error: formatMatchRequestApiError(uErr.message),
         gameId: gid,
         detail: 'Game may have been created but the match request could not be marked accepted.',
       },

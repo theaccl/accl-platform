@@ -15,6 +15,7 @@ import ProfileActionSlot from '@/components/profile/ProfileActionSlot';
 import ProfileBio from '@/components/profile/ProfileBio';
 import ProfileHeader from '@/components/profile/ProfileHeader';
 import ProfileLogOutButton from '@/components/profile/ProfileLogOutButton';
+import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 import { ProfileRatings } from '@/components/profile/ProfileRatings';
 import { ProfileStats } from '@/components/profile/ProfileStats';
 import { ProfileVaultButton } from '@/components/profile/ProfileVaultButton';
@@ -222,7 +223,11 @@ export default function PublicProfilePage() {
         ) : null}
 
         {isSelf ? (
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3" data-testid="profile-self-actions">
+            <TesterBugReportTrigger
+              label="Report issue"
+              className="rounded-md border border-amber-500/35 bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-100 hover:bg-amber-950/35"
+            />
             <ProfileLogOutButton />
           </div>
         ) : null}

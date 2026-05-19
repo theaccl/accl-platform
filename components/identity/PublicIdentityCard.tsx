@@ -327,6 +327,7 @@ export function PublicIdentityCard({ playerId, onClose }: { playerId: string; on
         open={reportOpen}
         onClose={() => setReportOpen(false)}
         initialMessage={reportSeed}
+        initialCategory="cheating_concern"
       />
     </div>
   );

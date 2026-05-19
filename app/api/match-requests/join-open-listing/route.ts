@@ -10,6 +10,7 @@ import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
+import { formatMatchRequestApiError } from '@/lib/userFacingQueueError';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export const runtime = 'nodejs';
@@ -89,7 +90,10 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const { data: row, error: fetchErr } = await supabase.from('match_requests').select('*').eq('id', requestId).maybeSingle();
-  if (fetchErr) return jsonResponse({ error: fetchErr.message }, 503);
+  if (fetchErr) {
+    console.warn('[match-requests.join-open-listing] fetch failed', fetchErr.message);
+    return jsonResponse({ error: formatMatchRequestApiError(fetchErr.message) }, 503);
+  }
   if (!row) return jsonResponse({ error: 'Match request not found' }, 404);
 
   const r = row as MatchRequestRow;
@@ -131,7 +135,8 @@ export async function POST(request: Request): Promise<Response> {
     .single();
 
   if (claimError) {
-    return jsonResponse({ error: claimError.message }, 400);
+    console.warn('[match-requests.join-open-listing] claim failed', claimError.message);
+    return jsonResponse({ error: formatMatchRequestApiError(claimError.message) }, 400);
   }
 
   const claimedRow = claimed as MatchRequestRow;
@@ -140,7 +145,8 @@ export async function POST(request: Request): Promise<Response> {
   const newGame = gameCreateRes.data;
   const gErr = gameCreateRes.error;
   if (gErr) {
-    return jsonResponse({ error: gErr.message }, 400);
+    console.warn('[match-requests.join-open-listing] game insert failed', gErr.message);
+    return jsonResponse({ error: formatMatchRequestApiError(gErr.message) }, 400);
   }
   const rawId =
     newGame && typeof newGame === 'object' && 'id' in newGame
@@ -162,9 +168,10 @@ export async function POST(request: Request): Promise<Response> {
     .select('id');
 
   if (uErr) {
+    console.warn('[match-requests.join-open-listing] match_requests update failed', uErr.message);
     return jsonResponse(
       {
-        error: uErr.message,
+        error: formatMatchRequestApiError(uErr.message),
         gameId: rawId,
         detail: 'Game may have been created but the match request could not be marked accepted.',
       },
