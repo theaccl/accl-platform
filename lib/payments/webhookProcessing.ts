@@ -6,6 +6,10 @@ import type { FinancialWebhookResult } from '@/lib/payments/paymentProvider';
 import { recordFailedEntryPayment } from '@/lib/payments/fraudSignals';
 import { recordRefundFromProviderWebhook } from '@/lib/payments/refundService';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
+import {
+  checkTournamentRegistrationOpen,
+  TOURNAMENT_REGISTRATION_CLOSED_CODE,
+} from '@/lib/server/tournamentRegistrationGate';
 
 function eventTypeLabel(parsed: FinancialWebhookResult): string {
   switch (parsed.kind) {
@@ -118,6 +122,17 @@ async function executePaymentSucceeded(
     return;
   }
 
+  const registration = await checkTournamentRegistrationOpen(supabase, tx.tournament_id);
+  if (!registration.open && registration.code !== TOURNAMENT_REGISTRATION_CLOSED_CODE) {
+    auditApiLog('payment_webhook', {
+      result: 'registration_gate_failed',
+      code: registration.code,
+      transaction: shortId(tx.id),
+    });
+    throw new Error(registration.message);
+  }
+  const registrationClosed = !registration.open;
+
   if (tx.status === 'completed') {
     const { data: entry } = await supabase
       .from('tournament_entries')
@@ -126,6 +141,14 @@ async function executePaymentSucceeded(
       .eq('user_id', tx.user_id)
       .maybeSingle();
     if (!entry) {
+      if (registrationClosed) {
+        auditApiLog('payment_webhook', {
+          result: 'registration_closed_repair_skipped',
+          transaction: shortId(tx.id),
+          tournament_id: shortId(tx.tournament_id),
+        });
+        return;
+      }
       await supabase.from('tournament_entries').insert({
         tournament_id: tx.tournament_id,
         user_id: tx.user_id,
@@ -149,6 +172,7 @@ async function executePaymentSucceeded(
         ...prevMeta,
         completed_via: 'webhook',
         provider_event_id: eventId,
+        ...(registrationClosed ? { registration_closed: true } : {}),
       },
     })
     .eq('id', tx.id)
@@ -157,6 +181,16 @@ async function executePaymentSucceeded(
   if (updErr) {
     auditApiLog('payment_webhook', { result: 'update_failed', detail: updErr.message });
     throw new Error(updErr.message);
+  }
+
+  if (registrationClosed) {
+    auditApiLog('payment_webhook', {
+      result: 'registration_closed_no_entry',
+      transaction: shortId(tx.id),
+      tournament_id: shortId(tx.tournament_id),
+      user: shortId(tx.user_id),
+    });
+    return;
   }
 
   const { error: entryErr } = await supabase.from('tournament_entries').insert({

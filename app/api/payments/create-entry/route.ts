@@ -10,6 +10,8 @@ import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { guardRequest } from '@/lib/server/requestGuard';
 import { evaluateAbnormalEntryPattern } from '@/lib/payments/fraudSignals';
 import { isPaidEntryDisabled } from '@/lib/server/deployReadiness';
+import { checkTournamentRegistrationOpen } from '@/lib/server/tournamentRegistrationGate';
+import { tournamentApiErrorPayload } from '@/lib/server/tournamentUserFacingError';
 
 export const runtime = 'nodejs';
 
@@ -30,7 +32,7 @@ export async function POST(request: Request): Promise<Response> {
   const userId = await resolveAuthenticatedUserId(request);
   if (!userId) {
     auditApiLog('payment_create_entry', { result: 'unauthorized' });
-    return json({ error: 'Unauthorized' }, 401);
+    return json(tournamentApiErrorPayload('UNAUTHORIZED'), 401);
   }
 
   if (isPaidEntryDisabled()) {
@@ -45,12 +47,12 @@ export async function POST(request: Request): Promise<Response> {
   try {
     body = (await request.json()) as Body;
   } catch {
-    return json({ error: 'Invalid JSON body' }, 400);
+    return json(tournamentApiErrorPayload('INVALID_JSON'), 400);
   }
 
   const tournamentId = String(body.tournament_id ?? '').trim();
   if (!tournamentId) {
-    return json({ error: 'tournament_id is required' }, 400);
+    return json(tournamentApiErrorPayload('TOURNAMENT_ID_REQUIRED'), 400);
   }
 
   const supabase = createServiceRoleClient();
@@ -67,25 +69,36 @@ export async function POST(request: Request): Promise<Response> {
 
     if (tErr || !tournament) {
       auditApiLog('payment_create_entry', { result: 'tournament_not_found', tournament_id: shortId(tournamentId) });
-      return json({ error: 'Tournament not found' }, 404);
+      return json(tournamentApiErrorPayload('TOURNAMENT_NOT_FOUND'), 404);
     }
 
     if (String(tournament.ecosystem_scope ?? 'adult') === 'k12') {
       auditApiLog('payment_create_entry', { result: 'k12_blocked', tournament_id: shortId(tournamentId) });
-      return json({ error: 'Paid entry is not available in the K–12 ecosystem.' }, 403);
+      return json(tournamentApiErrorPayload('TOURNAMENT_ENTRY_NOT_ALLOWED'), 403);
     }
 
     const fee = tournament.entry_fee_cents;
     if (fee == null || fee <= 0) {
-      return json({ error: 'This tournament has no entry fee — use standard registration.' }, 400);
+      return json(tournamentApiErrorPayload('TOURNAMENT_NOT_JOINABLE'), 400);
     }
 
     const st = String(tournament.status ?? '').toLowerCase();
     if (st === 'completed') {
-      return json({ error: 'Tournament is already completed.' }, 400);
+      return json(tournamentApiErrorPayload('TOURNAMENT_NOT_JOINABLE'), 400);
     }
-    if (st !== 'pending' && st !== 'active') {
-      return json({ error: 'Tournament is not open for entry.' }, 400);
+    if (st !== 'pending') {
+      return json(tournamentApiErrorPayload('TOURNAMENT_NOT_JOINABLE'), 400);
+    }
+
+    const registration = await checkTournamentRegistrationOpen(supabase, tournamentId);
+    if (!registration.open) {
+      const status = registration.code === 'MATCH_COUNT_FAILED' ? 502 : 400;
+      auditApiLog('payment_create_entry', {
+        result: 'registration_closed',
+        tournament_id: shortId(tournamentId),
+        code: registration.code,
+      });
+      return json(tournamentApiErrorPayload(registration.code), status);
     }
 
     const { data: existingEntry } = await supabase
@@ -199,11 +212,11 @@ export async function POST(request: Request): Promise<Response> {
         code: e.code,
         user: shortId(userId),
       });
-      return json({ error: e.message, code: e.code, eligibility: e.decision }, 403);
+      return json({ ...tournamentApiErrorPayload(e.code, e.message), eligibility: e.decision }, 403);
     }
     const message = e instanceof Error ? e.message : 'Payment creation failed';
     auditApiLog('payment_create_entry', { result: 'error', detail: message });
-    return json({ error: message }, 503);
+    return json(tournamentApiErrorPayload('UNEXPECTED_ERROR', message), 503);
   }
   } finally {
     guard.release();

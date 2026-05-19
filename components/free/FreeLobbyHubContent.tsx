@@ -18,6 +18,7 @@ import {
   type PlatMode,
 } from '@/lib/freePlayModeTimeControl';
 import { FREE_PLAY_LOBBY_GENERAL_ROOM } from '@/lib/lobbyChatRooms';
+import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
 
 const focusRing =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0e12]';
@@ -64,6 +65,8 @@ export function FreeLobbyHubContent() {
             <strong className="text-gray-300">mode room</strong> — time controls there only filter open games, not chat.
           </p>
         </header>
+
+        <TournamentCoexistenceNotice mode="lobby_reminder" />
 
         <FreePlayWatchSpectatorByMode
           loading={watchList.loading}

@@ -1,6 +1,8 @@
 import type { EligibilityDecision } from '@/lib/eligibilityPolicy';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NexusEcosystem } from '@/lib/nexus/getNexusData';
+import { checkTournamentRegistrationOpen } from '@/lib/server/tournamentRegistrationGate';
+import { tournamentApiErrorPayload } from '@/lib/server/tournamentUserFacingError';
 import {
   EligibilityEnforcementError,
   enforceFreeTournamentJoin,
@@ -44,7 +46,7 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 400,
-      payload: { error: 'tournamentId must be a UUID', code: 'INVALID_TOURNAMENT_ID' },
+      payload: tournamentApiErrorPayload('INVALID_TOURNAMENT_ID'),
     };
   }
 
@@ -56,7 +58,7 @@ export async function executeFreePendingTournamentJoin(params: {
       return {
         ok: false,
         status: 403,
-        payload: { error: e.message, code: e.code, eligibility: e.decision },
+        payload: { ...tournamentApiErrorPayload(e.code, e.message), eligibility: e.decision },
       };
     }
     throw e;
@@ -71,14 +73,14 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 502,
-      payload: { error: pErr.message, code: 'PROFILE_LOOKUP_FAILED' },
+      payload: tournamentApiErrorPayload('PROFILE_LOOKUP_FAILED', pErr.message),
     };
   }
   if (!profile) {
     return {
       ok: false,
       status: 404,
-      payload: { error: 'Profile not found for this account.', code: 'PROFILE_NOT_FOUND' },
+      payload: tournamentApiErrorPayload('PROFILE_NOT_FOUND'),
     };
   }
 
@@ -92,14 +94,14 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 502,
-      payload: { error: tErr.message, code: 'TOURNAMENT_LOOKUP_FAILED' },
+      payload: tournamentApiErrorPayload('TOURNAMENT_LOOKUP_FAILED', tErr.message),
     };
   }
   if (!tournament) {
     return {
       ok: false,
       status: 404,
-      payload: { error: 'Tournament not found.', code: 'TOURNAMENT_NOT_FOUND' },
+      payload: tournamentApiErrorPayload('TOURNAMENT_NOT_FOUND'),
     };
   }
 
@@ -108,11 +110,9 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 400,
-      payload: {
-        error: 'Tournament is not open for self-serve join (must be pending).',
-        code: 'TOURNAMENT_NOT_JOINABLE',
+      payload: tournamentApiErrorPayload('TOURNAMENT_NOT_JOINABLE', null, {
         tournamentStatus: tournament.status ?? null,
-      },
+      }),
     };
   }
 
@@ -121,11 +121,7 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 400,
-      payload: {
-        error:
-          'This tournament requires a paid entry. Complete payment checkout when that flow is available for your account.',
-        code: 'PAID_ENTRY_REQUIRED',
-      },
+      payload: tournamentApiErrorPayload('PAID_ENTRY_REQUIRED'),
     };
   }
 
@@ -134,34 +130,19 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 403,
-      payload: {
-        error: 'This tournament is not available in your ecosystem.',
-        code: 'ECOSYSTEM_MISMATCH',
+      payload: tournamentApiErrorPayload('ECOSYSTEM_MISMATCH', null, {
         tournamentEcosystem: tEco,
         userEcosystem,
-      },
+      }),
     };
   }
 
-  const { count: matchCount, error: mcErr } = await supabase
-    .from('tournament_matches')
-    .select('id', { count: 'exact', head: true })
-    .eq('tournament_id', tournamentId);
-  if (mcErr) {
+  const registration = await checkTournamentRegistrationOpen(supabase, tournamentId);
+  if (!registration.open) {
     return {
       ok: false,
-      status: 502,
-      payload: { error: mcErr.message, code: 'MATCH_COUNT_FAILED' },
-    };
-  }
-  if ((matchCount ?? 0) > 0) {
-    return {
-      ok: false,
-      status: 400,
-      payload: {
-        error: 'Bracket matches already exist for this tournament; registration is closed.',
-        code: 'REGISTRATION_CLOSED',
-      },
+      status: registration.code === 'MATCH_COUNT_FAILED' ? 502 : 400,
+      payload: tournamentApiErrorPayload(registration.code),
     };
   }
 
@@ -174,18 +155,14 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 502,
-      payload: { error: ecErr.message, code: 'ENTRANT_COUNT_FAILED' },
+      payload: tournamentApiErrorPayload('ENTRANT_COUNT_FAILED', ecErr.message),
     };
   }
   if ((entrantCount ?? 0) >= maxEntrants) {
     return {
       ok: false,
       status: 400,
-      payload: {
-        error: 'Tournament is full.',
-        code: 'TOURNAMENT_FULL',
-        maxEntrants,
-      },
+      payload: tournamentApiErrorPayload('TOURNAMENT_FULL', null, { maxEntrants }),
     };
   }
 
@@ -199,7 +176,7 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 502,
-      payload: { error: exErr.message, code: 'ENTRY_LOOKUP_FAILED' },
+      payload: tournamentApiErrorPayload('ENTRY_LOOKUP_FAILED', exErr.message),
     };
   }
   if (existing) {
@@ -217,7 +194,7 @@ export async function executeFreePendingTournamentJoin(params: {
     return {
       ok: false,
       status: 502,
-      payload: { error: insErr.message, code: 'ENTRY_INSERT_FAILED' },
+      payload: tournamentApiErrorPayload('ENTRY_INSERT_FAILED', insErr.message),
     };
   }
 

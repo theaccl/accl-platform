@@ -7,6 +7,7 @@ import {
 } from '@/lib/server/tournamentSnapshotReadModel';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { guardRequest } from '@/lib/server/requestGuard';
+import { tournamentApiErrorPayload, tournamentUserFacingMessage } from '@/lib/server/tournamentUserFacingError';
 
 export const runtime = 'nodejs';
 
@@ -43,7 +44,7 @@ export async function GET(request: Request, context: { params: { id: string } })
     const id = String(context.params?.id ?? '').trim();
     if (!isTournamentSnapshotId(id)) {
       auditApiLog('tournament_snapshot', { result: 'bad_request', reason: 'invalid_id' });
-      return json({ ok: false, error: 'Invalid tournament id.', code: 'INVALID_TOURNAMENT_ID' }, 400);
+      return json({ ok: false, ...tournamentApiErrorPayload('INVALID_TOURNAMENT_ID') }, 400);
     }
 
     const sessionUser = await getSupabaseUserFromCookies();
@@ -64,8 +65,13 @@ export async function GET(request: Request, context: { params: { id: string } })
         tournament_id: shortId(id),
         user: shortId(viewer.userId ?? ''),
       });
+      const code = snap.code ?? snap.reason;
       return json(
-        { ok: false, error: snap.message, code: snap.code ?? snap.reason },
+        {
+          ok: false,
+          code,
+          error: tournamentUserFacingMessage(code, snap.message),
+        },
         snap.httpStatus,
       );
     }
@@ -81,7 +87,7 @@ export async function GET(request: Request, context: { params: { id: string } })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Snapshot failed';
     auditApiLog('tournament_snapshot', { result: 'error', detail: message });
-    return json({ ok: false, error: message, code: 'UNEXPECTED_ERROR' }, 503);
+    return json({ ok: false, ...tournamentApiErrorPayload('UNEXPECTED_ERROR', message) }, 503);
   } finally {
     guard.release();
   }

@@ -37,6 +37,7 @@ import {
   correspondenceMoveDeadlineMs,
 } from '@/lib/gameTimeControl';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
+import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
 import { canPickPieceForMove } from '@/lib/boardInteraction';
 import {
@@ -2726,6 +2727,13 @@ export default function GamePage() {
       <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#777', lineHeight: 1.45 }}>
         {gameTimingRuleSummaryLine(normalizeGameTempo(game.tempo))}
       </p>
+      {game.tournament_id ? (
+        <TournamentCoexistenceNotice
+          mode="on_tournament_board"
+          tournamentId={String(game.tournament_id)}
+          excludeGameId={game.id}
+        />
+      ) : null}
       {!isPublicViewer ? (
         <div
           style={{

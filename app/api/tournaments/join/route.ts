@@ -3,6 +3,10 @@ import { resolveTournamentJoinActorCookieOnly } from '@/lib/auth/resolveTourname
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { guardRequest } from '@/lib/server/requestGuard';
 import { executeFreePendingTournamentJoin } from '@/lib/server/tournamentFreeJoin';
+import {
+  tournamentApiErrorPayload,
+  withTournamentUserFacingError,
+} from '@/lib/server/tournamentUserFacingError';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 
 export const runtime = 'nodejs';
@@ -26,20 +30,20 @@ export async function POST(request: Request): Promise<Response> {
     const actor = await resolveTournamentJoinActorCookieOnly();
     if (!actor) {
       auditApiLog('tournament_join', { result: 'unauthorized' });
-      return json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
+      return json(tournamentApiErrorPayload('UNAUTHORIZED'), 401);
     }
 
     let body: JoinBody;
     try {
       body = (await request.json()) as JoinBody;
     } catch {
-      return json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400);
+      return json(tournamentApiErrorPayload('INVALID_JSON'), 400);
     }
 
     const tournamentId = String(body.tournamentId ?? '').trim();
     if (!tournamentId) {
       auditApiLog('tournament_join', { result: 'bad_request', user: shortId(actor.id) });
-      return json({ error: 'tournamentId is required', code: 'TOURNAMENT_ID_REQUIRED' }, 400);
+      return json(tournamentApiErrorPayload('TOURNAMENT_ID_REQUIRED'), 400);
     }
 
     let supabase;
@@ -66,7 +70,7 @@ export async function POST(request: Request): Promise<Response> {
         user: shortId(actor.id),
         tournament_id: shortId(tournamentId),
       });
-      return json(result.payload, result.status);
+      return json(withTournamentUserFacingError(result.payload), result.status);
     }
 
     auditApiLog('tournament_join', {
@@ -83,7 +87,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Join failed';
     auditApiLog('tournament_join', { result: 'error', detail: message });
-    return json({ error: message, code: 'UNEXPECTED_ERROR' }, 503);
+    return json(tournamentApiErrorPayload('UNEXPECTED_ERROR', message), 503);
   } finally {
     guard.release();
   }
