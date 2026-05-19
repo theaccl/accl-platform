@@ -1,9 +1,17 @@
+import {
+  DAILY_QUEUE_BUSY_HINT,
+  LIVE_QUEUE_BUSY_HINT,
+} from '@/lib/gameContinuityPresentation';
 import { FREE_PLAY_QUEUE_BUSY_MESSAGE } from '@/lib/freePlayFindMatch';
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 
-/** Appended when the user already has a resumable active/waiting game. */
-export const USER_FACING_RESUME_HINT =
-  ' Resume your active game from Lobby Chat or open /free/active.';
+/** Appended when a live queue action is blocked by an existing live seat. */
+export const USER_FACING_LIVE_RESUME_HINT = LIVE_QUEUE_BUSY_HINT;
+
+/** @deprecated Use USER_FACING_LIVE_RESUME_HINT for live queue paths. */
+export const USER_FACING_RESUME_HINT = USER_FACING_LIVE_RESUME_HINT;
+
+export { DAILY_QUEUE_BUSY_HINT };
 
 const STABLE_MESSAGES = new Set<string>([
   FREE_PLAY_QUEUE_BUSY_MESSAGE,
@@ -44,7 +52,7 @@ export function formatUserFacingQueueError(raw: string | null | undefined): stri
     return 'One player in this match is already in another active or waiting free-play game. Wait until they finish or leave that game, then try again.';
   }
   if (/free_play_joiner_busy/i.test(m)) {
-    return FREE_PLAY_QUEUE_BUSY_MESSAGE + USER_FACING_RESUME_HINT;
+    return FREE_PLAY_QUEUE_BUSY_MESSAGE + USER_FACING_LIVE_RESUME_HINT;
   }
   if (/free_play_host_busy/i.test(m)) {
     return 'That host is already in another game. Pick a different open seat or try Find match.';

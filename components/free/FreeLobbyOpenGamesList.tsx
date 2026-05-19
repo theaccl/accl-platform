@@ -178,7 +178,7 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
                   <Link href={`/game/${preJoinResumeId}`} className="font-semibold text-sky-300 underline hover:text-sky-200">
                     Go to your game
                   </Link>{' '}
-                  to resume or leave your waiting seat first.
+                  to return to your live seat or leave it before joining another.
                 </p>
               ) : null}
             </div>

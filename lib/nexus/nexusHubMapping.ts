@@ -367,8 +367,9 @@ export function buildNexusHubActionCards(params: HubActionCardsParams): NexusAct
   } else {
     push({
       id: "current-games",
-      title: "Resume game",
-      description: "Open your full active and waiting games list — always /free/active, never a single-game deep link.",
+      title: "Your games",
+      description:
+        "Live boards and daily games in separate lists at /free/active — reconnect live games; resume daily games when ready.",
       href: "/free/active",
       priority: 1,
       urgency: 100,

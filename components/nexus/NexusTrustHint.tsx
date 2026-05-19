@@ -26,7 +26,7 @@ export default function NexusTrustHint({ message }: NexusTrustHintProps) {
 export function trustMessageForTopActionCard(cardId: string): string | null {
   switch (cardId) {
     case "current-games":
-      return "Lists every game where you still have a seat — not a single-game shortcut.";
+      return "Live and daily games are listed separately — live boards expect reconnect, not open-ended parking.";
     case "continue-game":
       return "You have an active game in progress.";
     case "tournament-status":

@@ -8,7 +8,7 @@ import {
 
 test.describe('userFacingQueueError', () => {
   test('maps guard RPC errors to stable copy', () => {
-    expect(formatUserFacingQueueError('free_play_joiner_busy')).toContain('active or waiting game');
+    expect(formatUserFacingQueueError('free_play_joiner_busy')).toContain('live game');
     expect(formatCreateSeatedGameGuardError('seat already taken')).toContain('just taken');
     expect(formatMatchRequestApiError('free_play_host_busy')).toContain('host is already');
   });

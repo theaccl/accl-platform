@@ -61,7 +61,7 @@ test.describe("NEXUS action cards prioritization", () => {
     expect(cards[0]?.href).toBe("/free/active");
     expect(cards.find((c) => c.id === "trainer-review")?.href).toBe("/trainer/review");
     expect(cards.find((c) => c.id === "tournaments-area")?.href).toBe("/tournaments");
-    expect(cards.find((c) => c.id === "nexus-free-play")?.href).toBe("/free");
+    expect(cards.find((c) => c.id === "nexus-free-play")?.href).toBe("/free/lobby");
   });
 
   test("logged-in: live games do not change resume card (always list href)", () => {

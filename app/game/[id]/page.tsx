@@ -74,6 +74,7 @@ import { buildGameLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
 import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
+import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
 const MOVE_LOG_LOAD_REASONS = [
@@ -2296,6 +2297,17 @@ export default function GamePage() {
   }, [effectiveAnalysis]);
 
   /** Must run before any conditional returns — hooks order must not depend on `loading` / `game`. */
+  const continuityHubLink = useMemo(
+    () =>
+      game
+        ? inGameContinuityHubLink({
+            tempo: game.tempo ?? null,
+            live_time_control: game.live_time_control ?? null,
+          })
+        : inGameContinuityHubLink({ tempo: null, live_time_control: null }),
+    [game],
+  );
+
   const lobbyReturnHref = useMemo(() => {
     if (!game) return '/free/lobby';
     const free =
@@ -2750,7 +2762,7 @@ export default function GamePage() {
             Mode Chat Room
           </Link>
           <Link
-            href="/free/active"
+            href={continuityHubLink.href}
             style={{
               padding: '8px 12px',
               border: '1px solid #334155',
@@ -2760,7 +2772,7 @@ export default function GamePage() {
               fontWeight: 600,
             }}
           >
-            Review / Resume games
+            {continuityHubLink.label}
           </Link>
         </div>
       ) : null}
@@ -2936,7 +2948,7 @@ export default function GamePage() {
             href="/free/active"
             style={{ color: '#93c5fd', textDecoration: 'underline', fontSize: 13, fontWeight: 600 }}
           >
-            View all current games
+            Your games
           </Link>
         </div>
       ) : null}
@@ -3008,10 +3020,10 @@ export default function GamePage() {
                   Mode Chat Room
                 </Link>
                 <Link
-                  href="/free/active"
+                  href={continuityHubLink.href}
                   style={{ color: '#93c5fd', fontSize: 14, fontWeight: 600, textDecoration: 'underline' }}
                 >
-                  Review / Resume games
+                  {continuityHubLink.label}
                 </Link>
               </div>
             )}

@@ -17,7 +17,7 @@ const secondaryActionSurface =
 /** Short contextual hints for native tooltip */
 const CARD_HINT: Partial<Record<string, string>> = {
   login: "Sign in for personalized standings and saves",
-  "current-games": "Opens /free/active — every active or waiting seat for your account",
+  "current-games": "Opens /free/active — LIVE NOW and DAILY / ASYNC sections, not a single-game shortcut",
 };
 
 /** Display titles — optional overrides when mapping titles need a shorter banner label */
@@ -37,7 +37,7 @@ export default function NexusActionCards({ cards }: { cards: NexusActionCard[] }
     >
       <h2 className={`${nexusModuleHeadingClass} mb-0`}>Next actions</h2>
       {ordered.length === 0 ? (
-        <NexusRecoveryHint message="Use the top bar to sign in, then return here for Resume game and other handoffs." />
+        <NexusRecoveryHint message="Use the top bar to sign in, then return here for Your games and other handoffs." />
       ) : null}
       <div className="grid flex-1 grid-cols-1 content-start gap-3 sm:grid-cols-2 sm:gap-3.5">
         {ordered.map((c, i) => {

@@ -20,7 +20,9 @@ test.describe('lobby visibility (authenticated)', () => {
     await page.goto(ROUTES.free);
     await expect(page.getByTestId('free-lobby-root')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('free-lobby-ready')).toBeAttached();
-    await expect(page.getByTestId('free-active-games-section')).toBeVisible();
+    await expect(page.getByTestId('free-lobby-current-games')).toBeVisible();
+    await expect(page.getByTestId('free-lobby-live-now')).toBeVisible();
+    await expect(page.getByTestId('free-lobby-daily-async')).toBeVisible();
     await expect(page.getByTestId('direct-challenge-panel')).toBeVisible();
     await expect(page.getByTestId('free-find-match').first()).toBeVisible();
   });

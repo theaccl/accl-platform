@@ -1,37 +1,63 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
+import { GameContinuityGameRows } from '@/components/free/GameContinuityGameRows';
+import {
+  DAILY_ASYNC_SECTION_HINT,
+  DAILY_ASYNC_SECTION_TITLE,
+  freeActiveGamesHref,
+  LIVE_NOW_SECTION_HINT,
+  LIVE_NOW_SECTION_TITLE,
+  partitionGamesByContinuity,
+  type GameContinuityRow,
+} from '@/lib/gameContinuityPresentation';
 import { supabase } from '@/lib/supabaseClient';
 
-type Row = {
-  id: string;
-  status: string;
-  tempo: string | null;
-  live_time_control: string | null;
-  turn: string | null;
-  white_player_id: string;
-  black_player_id: string | null;
-  updated_at?: string | null;
-};
+function ContinuitySectionHeader({
+  title,
+  hint,
+  viewAllHref,
+  titleClassName,
+}: {
+  title: string;
+  hint: string;
+  viewAllHref: string;
+  titleClassName: string;
+}) {
+  return (
+    <>
+      <SectionTitleRow title={title} viewAllHref={viewAllHref} titleClassName={titleClassName} />
+      <p className="mt-1 text-[11px] leading-snug text-gray-500">{hint}</p>
+    </>
+  );
+}
 
-function isYourMove(g: Row, uid: string): boolean {
-  const t = String(g.turn ?? '').trim().toLowerCase();
-  if (t !== 'white' && t !== 'black') return false;
-  if (!g.black_player_id) return false;
-  if (t === 'white' && g.white_player_id === uid) return true;
-  if (t === 'black' && g.black_player_id === uid) return true;
-  return false;
+function SectionTitleRow({
+  title,
+  viewAllHref,
+  titleClassName,
+}: {
+  title: string;
+  viewAllHref: string;
+  titleClassName: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <h2 className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${titleClassName}`}>{title}</h2>
+      <Link href={viewAllHref} className="text-[11px] font-semibold text-sky-300 underline-offset-2 hover:underline">
+        View all
+      </Link>
+    </div>
+  );
 }
 
 /**
- * Lightweight hub panel: active/waiting free games for this user.
- * Client-side only so lobby shell/realtime mount is not blocked.
+ * Lobby hub: live reconnect vs daily/async continuity, shown in separate sections.
  */
 export function FreeLobbyCurrentGamesPanel() {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [rows, setRows] = useState<GameContinuityRow[] | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,102 +85,93 @@ export function FreeLobbyCurrentGamesPanel() {
 
       if (cancelled) return;
       if (qErr) {
-        setError('Could not load your current games.');
+        setError('Could not load your games.');
         setRows([]);
         return;
       }
-      setRows((data ?? []) as Row[]);
+      setRows((data ?? []) as GameContinuityRow[]);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const queuedRows = (rows ?? []).filter((g) => !g.black_player_id);
-  const currentRows = (rows ?? []).filter((g) => Boolean(g.black_player_id));
+  const { live, dailyAsync } = useMemo(() => partitionGamesByContinuity(rows ?? []), [rows]);
 
   return (
     <section
-      className="relative z-20 mb-4 rounded-xl border border-sky-500/35 bg-[#0f141c] px-4 py-3 sm:px-5"
+      className="relative z-20 mb-4 space-y-4"
       data-testid="free-lobby-current-games"
-      aria-label="Your current games"
+      aria-label="Your games"
     >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300/90">Review / Resume games</h2>
-        <Link href="/free/active" className="text-[11px] font-semibold text-sky-300 underline-offset-2 hover:underline">
-          View all
-        </Link>
-      </div>
-      {rows === null ? <p className="mt-2 text-xs text-gray-500">Loading your games…</p> : null}
-      {error ? <p className="mt-2 text-xs text-red-400">{error}</p> : null}
-      {rows && rows.length === 0 ? (
-        <p className="mt-2 text-xs text-gray-500">No active or waiting games yet.</p>
+      {rows === null ? (
+        <p className="rounded-xl border border-sky-500/35 bg-[#0f141c] px-4 py-3 text-xs text-gray-500">
+          Loading your games…
+        </p>
       ) : null}
-      {rows && rows.length > 0 ? (
-        <div className="mt-3 space-y-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-300/80">Queued games</p>
-            {queuedRows.length === 0 ? <p className="mt-1 text-xs text-gray-500">No open seats waiting for opponent.</p> : null}
-            {queuedRows.length > 0 ? (
-              <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {queuedRows.slice(0, 4).map((g) => (
-                  <li key={g.id}>
-                    <Link
-                      href={`/game/${g.id}`}
-                      className="flex min-h-[48px] items-center justify-between rounded-lg border border-cyan-500/25 bg-[#0f1a24] px-3 py-2 text-sm text-gray-200 transition hover:border-cyan-400/45 hover:bg-[#122131]"
-                      data-testid={`free-lobby-queued-game-${g.id}`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-semibold text-white">
-                          {gameDisplayTempoLabel({ tempo: g.tempo, liveTimeControl: g.live_time_control })}
-                        </span>
-                        <span className="block text-[11px] text-cyan-300/70">Open seat</span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
+      {error ? (
+        <p className="rounded-xl border border-red-500/35 bg-[#0f141c] px-4 py-3 text-xs text-red-400">{error}</p>
+      ) : null}
 
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300/85">Current games</p>
-            {currentRows.length === 0 ? <p className="mt-1 text-xs text-gray-500">No seated in-progress games.</p> : null}
-            {currentRows.length > 0 ? (
-              <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {currentRows.slice(0, 6).map((g) => {
-                  const mine = uid ? isYourMove(g, uid) : false;
-                  return (
-                    <li key={g.id}>
-                      <Link
-                        href={`/game/${g.id}`}
-                        className="flex min-h-[48px] items-center justify-between rounded-lg border border-white/[0.1] bg-[#111723] px-3 py-2 text-sm text-gray-200 transition hover:border-sky-500/45 hover:bg-[#141c2a]"
-                        data-testid={`free-lobby-current-game-${g.id}`}
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate font-semibold text-white">
-                            {gameDisplayTempoLabel({ tempo: g.tempo, liveTimeControl: g.live_time_control })}
-                          </span>
-                          <span className="block text-[11px] text-gray-500">{g.status}</span>
-                        </span>
-                        {mine ? (
-                          <span className="ml-2 shrink-0 rounded-full border border-emerald-500/40 bg-emerald-950/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
-                            Your move
-                          </span>
-                        ) : (
-                          <span className="ml-2 shrink-0 rounded-full border border-white/10 bg-[#0d131c] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                            Waiting
-                          </span>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <div
+        className="rounded-xl border border-sky-500/35 bg-[#0f141c] px-4 py-3 sm:px-5"
+        data-testid="free-lobby-live-now"
+      >
+        <ContinuitySectionHeader
+          title={LIVE_NOW_SECTION_TITLE}
+          hint={LIVE_NOW_SECTION_HINT}
+          viewAllHref={freeActiveGamesHref('live')}
+          titleClassName="text-sky-300/90"
+        />
+        {rows && live.length === 0 ? (
+          <p className="mt-2 text-xs text-gray-500">No live boards right now.</p>
+        ) : null}
+        {rows && live.length > 0 ? (
+          <GameContinuityGameRows rows={live} uid={uid} variant="live" testIdPrefix="free-lobby-live" compact />
+        ) : null}
+      </div>
+
+      <DailyAsyncSection
+        rows={rows}
+        dailyAsync={dailyAsync}
+        uid={uid}
+      />
     </section>
+  );
+}
+
+function DailyAsyncSection({
+  rows,
+  dailyAsync,
+  uid,
+}: {
+  rows: GameContinuityRow[] | null;
+  dailyAsync: GameContinuityRow[];
+  uid: string | null;
+}) {
+  return (
+    <div
+      className="rounded-xl border border-violet-500/30 bg-[#0f141c] px-4 py-3 sm:px-5"
+      data-testid="free-lobby-daily-async"
+    >
+      <ContinuitySectionHeader
+        title={DAILY_ASYNC_SECTION_TITLE}
+        hint={DAILY_ASYNC_SECTION_HINT}
+        viewAllHref={freeActiveGamesHref('async')}
+        titleClassName="text-violet-300/90"
+      />
+      {rows && dailyAsync.length === 0 ? (
+        <p className="mt-2 text-xs text-gray-500">No daily or correspondence games waiting.</p>
+      ) : null}
+      {rows && dailyAsync.length > 0 ? (
+        <GameContinuityGameRows
+          rows={dailyAsync}
+          uid={uid}
+          variant="async"
+          testIdPrefix="free-lobby-async"
+          compact
+        />
+      ) : null}
+    </div>
   );
 }

@@ -16,11 +16,14 @@ import {
   defaultPlatTimeControl,
   type PlatMode,
 } from '@/lib/freePlayModeTimeControl';
+import { continuityRowActionLabel } from '@/lib/gameContinuityPresentation';
 import { supabase } from '@/lib/supabaseClient';
 
 type LobbyRow = {
   id: string;
   status: string;
+  tempo: string | null;
+  live_time_control: string | null;
   white_player_id: string;
   black_player_id: string | null;
   created_at?: string;
@@ -46,7 +49,7 @@ export function HomePlaySection({
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyFind, setBusyFind] = useState(false);
   const queueActionLockRef = useRef(false);
-  const [recovery, setRecovery] = useState<{ id: string } | null>(null);
+  const [recovery, setRecovery] = useState<{ id: string; label: string } | null>(null);
   const [message, setMessage] = useState('');
   const [suggestCreate, setSuggestCreate] = useState(false);
   const busy = busyCreate || busyFind;
@@ -62,7 +65,7 @@ export function HomePlaySection({
       if (!uid) return;
       const { data: rows } = await supabase
         .from('games')
-        .select('id,status,white_player_id,black_player_id,created_at')
+        .select('id,status,tempo,live_time_control,white_player_id,black_player_id,created_at')
         .or(`white_player_id.eq.${uid},black_player_id.eq.${uid}`)
         .order('created_at', { ascending: false })
         .limit(30);
@@ -71,7 +74,14 @@ export function HomePlaySection({
       const nonFin = games.filter(isLobbyNonFinishedGame);
       const p = partitionNonFinishedLobbyGames(nonFin);
       if (p.canonicalSeated) {
-        setRecovery({ id: p.canonicalSeated.id });
+        setRecovery({
+          id: p.canonicalSeated.id,
+          label: continuityRowActionLabel({
+            tempo: p.canonicalSeated.tempo,
+            live_time_control: p.canonicalSeated.live_time_control,
+            black_player_id: p.canonicalSeated.black_player_id,
+          }),
+        });
       } else {
         setRecovery(null);
       }
@@ -193,7 +203,7 @@ export function HomePlaySection({
             href={`/game/${recovery.id}`}
             className="text-sm font-medium text-sky-400 underline underline-offset-2 hover:text-sky-300"
           >
-            Resume active game
+            {recovery.label}
           </Link>
         </div>
       ) : null}

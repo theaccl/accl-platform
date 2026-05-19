@@ -46,7 +46,7 @@ type OpenSeatCandidate = {
 
 /** Shown when Create / Find / manual accept would violate one-active-or-waiting rule. */
 export const FREE_PLAY_QUEUE_BUSY_MESSAGE =
-  'You already have an active or waiting game. Leave that seat or resume that game before joining another.';
+  'You already have an active or waiting live game. Return to that board or leave the seat before joining another.';
 
 function buildOpenSeatRow(
   userId: string,

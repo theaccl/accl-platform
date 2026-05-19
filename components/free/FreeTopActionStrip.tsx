@@ -51,9 +51,9 @@ export function FreeTopActionStrip() {
             aria-current={activeGamesActive ? "page" : undefined}
             data-testid="free-top-active-games"
           >
-            <span className="text-sm font-semibold sm:text-base">Active games</span>
+            <span className="text-sm font-semibold sm:text-base">Your games</span>
             <span className="max-w-[14rem] text-[11px] font-normal leading-snug text-gray-500 group-hover:text-gray-400 sm:text-xs">
-              Resume games in progress
+              Live boards and daily games
             </span>
           </Link>
           <Link

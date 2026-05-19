@@ -237,7 +237,7 @@ export function FreePlayMatchPanel({
                   className="font-medium text-sky-300 underline hover:text-sky-200"
                   data-testid="free-plat-resume-game-link"
                 >
-                  Resume your active game
+                  Return to live game
                 </Link>
               </p>
             ) : null}
