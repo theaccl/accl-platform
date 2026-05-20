@@ -257,6 +257,18 @@ PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test --project=integration-db tests/i
 
 ---
 
+## Controlled real-user ops (documentation)
+
+Operator and tester playbooks derived from this audit (no new product features):
+
+| Doc | Audience |
+|-----|----------|
+| [TOURNAMENT_OPERATOR_RUNBOOK.md](../ops/TOURNAMENT_OPERATOR_RUNBOOK.md) | Moderators — create, run, no-show, recovery, rollback, bug triage |
+| [TESTER_ONBOARDING_CHECKLIST.md](../ops/TESTER_ONBOARDING_CHECKLIST.md) | Testers — registration, play, spectate, report |
+| [KNOWN_PHASE1_BOUNDARIES.md](../ops/KNOWN_PHASE1_BOUNDARIES.md) | Quick reference — risks, spectator, coexistence, do-not-touch |
+
+---
+
 ## Out of scope for Phase 1 freeze (locked)
 
 Architecture redesign, new migrations, standings UI redesign, Swiss, tournament bots in bracket, async bot queue authority, payout logic, distributed recovery, realtime optimization, new spectator features.
