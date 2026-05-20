@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { partitionGamesByContinuity } from '@/lib/gameContinuityPresentation';
-import { countYourMoveByPlatMode, type LobbyObligationRow } from '@/lib/lobbyObligationPresentation';
+import { countYourMoveByPlatMode } from '@/lib/lobbyModeFilter';
+import type { LobbyObligationRow } from '@/lib/lobbyObligationPresentation';
 import { supabase } from '@/lib/supabaseClient';
 
 const GAME_SELECT =
