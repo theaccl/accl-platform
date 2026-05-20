@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "gate:operational-core": "node scripts/operational-core-gate.mjs",
+    "verify:tournament-4p-ko": "node scripts/tournament-4p-ko-verification.mjs",
     "e2e:audit-auth-metadata": "node scripts/e2e-audit-auth-app-metadata.mjs",
     "e2e:audit-auth-metadata:fix": "node scripts/e2e-audit-auth-app-metadata.mjs --fix",
     "audit:testers": "node scripts/audit-tester-readiness.mjs",
