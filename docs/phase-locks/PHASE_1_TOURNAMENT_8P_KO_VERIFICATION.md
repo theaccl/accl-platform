@@ -73,4 +73,5 @@ Swiss, tournament bots, async bot queue, auto-forfeit, payouts, registration-gat
 ## Related
 
 - Prior slice: [PHASE_1_TOURNAMENT_4P_KO_VERIFICATION.md](./PHASE_1_TOURNAMENT_4P_KO_VERIFICATION.md)
+- No-show / manual ops: [PHASE_1_TOURNAMENT_NOSHOW_OPS.md](./PHASE_1_TOURNAMENT_NOSHOW_OPS.md)
 - Unit planner: `tests/unit/tournamentFoundation.spec.ts` (N=8 match count)
