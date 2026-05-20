@@ -62,7 +62,7 @@ Does **not** replace the integration script above.
 ## Out of scope (Phase 1)
 
 - Paid entry / webhook registration races (separate registration gate work)
-- Tournament + free-play coexistence banners
+- Tournament + free-play coexistence banners (verified in [PHASE_1_TOURNAMENT_FREEPLAY_COEXISTENCE.md](./PHASE_1_TOURNAMENT_FREEPLAY_COEXISTENCE.md))
 - Swiss format
 - Bot/tournament automation
 
@@ -80,3 +80,4 @@ Does **not** replace the integration script above.
 
 - Next slice: [PHASE_1_TOURNAMENT_8P_KO_VERIFICATION.md](./PHASE_1_TOURNAMENT_8P_KO_VERIFICATION.md)
 - No-show / manual ops: [PHASE_1_TOURNAMENT_NOSHOW_OPS.md](./PHASE_1_TOURNAMENT_NOSHOW_OPS.md)
+- Free-play coexistence: [PHASE_1_TOURNAMENT_FREEPLAY_COEXISTENCE.md](./PHASE_1_TOURNAMENT_FREEPLAY_COEXISTENCE.md)

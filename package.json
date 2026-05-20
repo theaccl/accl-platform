@@ -12,6 +12,7 @@
     "verify:tournament-4p-ko": "node scripts/tournament-4p-ko-verification.mjs",
     "verify:tournament-8p-ko": "node scripts/tournament-8p-ko-verification.mjs",
     "verify:tournament-noshow-ops": "node scripts/tournament-noshow-ops-verification.mjs",
+    "verify:tournament-freeplay-coexistence": "node scripts/tournament-freeplay-coexistence-verification.mjs",
     "e2e:audit-auth-metadata": "node scripts/e2e-audit-auth-app-metadata.mjs",
     "e2e:audit-auth-metadata:fix": "node scripts/e2e-audit-auth-app-metadata.mjs --fix",
     "audit:testers": "node scripts/audit-tester-readiness.mjs",
