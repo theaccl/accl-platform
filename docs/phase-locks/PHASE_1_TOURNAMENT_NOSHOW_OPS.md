@@ -96,3 +96,4 @@ Auto-forfeit, Swiss, tournament bots, async bot queue, payout logic, reconnect a
 - [PHASE_1_TOURNAMENT_8P_KO_VERIFICATION.md](./PHASE_1_TOURNAMENT_8P_KO_VERIFICATION.md)
 - [PHASE_1_TOURNAMENT_SCHEDULED_START_NOSHOW.md](./PHASE_1_TOURNAMENT_SCHEDULED_START_NOSHOW.md) — `starts_at` + grace boundary
 - [PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md](./PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md) — spectator + reconnect churn
+- [PHASE_1_TOURNAMENT_RECOVERY.md](./PHASE_1_TOURNAMENT_RECOVERY.md) — interrupted flow recovery

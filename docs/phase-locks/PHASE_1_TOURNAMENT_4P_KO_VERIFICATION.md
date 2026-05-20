@@ -82,3 +82,4 @@ Does **not** replace the integration script above.
 - No-show / manual ops: [PHASE_1_TOURNAMENT_NOSHOW_OPS.md](./PHASE_1_TOURNAMENT_NOSHOW_OPS.md)
 - Free-play coexistence: [PHASE_1_TOURNAMENT_FREEPLAY_COEXISTENCE.md](./PHASE_1_TOURNAMENT_FREEPLAY_COEXISTENCE.md)
 - Spectator + reconnect: [PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md](./PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md)
+- Recovery / interrupted flow: [PHASE_1_TOURNAMENT_RECOVERY.md](./PHASE_1_TOURNAMENT_RECOVERY.md)
