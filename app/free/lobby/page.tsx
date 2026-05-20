@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+
 import NavigationBar from '@/components/NavigationBar';
 import { FreeLobbyHubContent } from '@/components/free/FreeLobbyHubContent';
 import { FreePlayLobbyClient } from '@/components/FreePlayLobbyClient';
@@ -20,7 +22,9 @@ export default async function FreeLobbyHubPage() {
       <NavigationBar />
 
       <FreePlayLobbyClient>
-        <FreeLobbyHubContent />
+        <Suspense fallback={<p className="px-4 py-8 text-sm text-gray-500">Loading lobby…</p>}>
+          <FreeLobbyHubContent />
+        </Suspense>
       </FreePlayLobbyClient>
     </div>
   );

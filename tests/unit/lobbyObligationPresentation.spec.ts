@@ -38,13 +38,13 @@ test.describe('lobby obligation presentation (unit)', () => {
     expect(isLobbyYourMove(sorted[0]!, uid)).toBe(true);
   });
 
-  test('hub removes sticky lobby actions bar and orders obligations first', () => {
+  test('hub removes sticky bar and orders obligations before mode filter feeds', () => {
     const hub = readFileSync(join(process.cwd(), 'components', 'free', 'FreeLobbyHubContent.tsx'), 'utf8');
     const panel = readFileSync(join(process.cwd(), 'components', 'free', 'FreeLobbyCurrentGamesPanel.tsx'), 'utf8');
     expect(hub).not.toContain('NexusLobbyActionsBar');
-    expect(hub.indexOf('FreeLobbyCurrentGamesPanel')).toBeLessThan(hub.indexOf('FreePlayOpenPairingByMode'));
-    expect(hub).toContain('activeSeatsOnly');
-    expect(hub).toContain('liveBoardsOnly');
+    expect(hub.indexOf('FreeLobbyCurrentGamesPanel')).toBeLessThan(hub.indexOf('FreeLobbyModeFilterStrip'));
+    expect(hub.indexOf('FreeLobbyModeFilterStrip')).toBeLessThan(hub.indexOf('FreeLobbySpectatorFeed'));
+    expect(hub).toContain('FreeLobbyModeFilterStrip');
     expect(panel).toContain('free-lobby-your-move-heading');
     expect(panel).toContain('free-lobby-tournament-live');
   });

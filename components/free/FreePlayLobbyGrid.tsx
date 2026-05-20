@@ -7,6 +7,7 @@ import { FreePlayMatchPanel } from "@/components/FreePlayMatchPanel";
 import { HomePlaySection } from "@/components/HomePlaySection";
 import { FreeLobbyOpenGamesList } from "@/components/free/FreeLobbyOpenGamesList";
 import NexusLobbyChatColumn, { type LobbyPlatMode } from "@/components/nexus/NexusLobbyChatColumn";
+import { FreeLobbySpectatorFeed } from "@/components/free/FreeLobbySpectatorFeed";
 import { FreePlayOpenPairingByMode } from "@/components/free/FreePlayOpenPairingByMode";
 import {
   coercePlatTimeForMode,
@@ -15,7 +16,6 @@ import {
 } from "@/lib/freePlayModeTimeControl";
 import { useFreeOpenSeatActivity } from "@/hooks/useFreeOpenSeatActivity";
 import { useFreePlayWatchList } from "@/hooks/useFreePlayWatchList";
-import { FreePlayWatchSpectatorByMode } from "@/components/free/FreePlayWatchSpectatorByMode";
 import { nexusPrestigeRoot } from "@/components/nexus/nexusShellTheme";
 
 /**
@@ -42,13 +42,13 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
           activity={openSeatActivity}
           openSeatCounts={openSeatCounts}
           loading={openSeatLoading}
-          activeSeatsOnly
+          modeFilter={null}
         />
-        <FreePlayWatchSpectatorByMode
+        <FreeLobbySpectatorFeed
           loading={watchList.loading}
           error={watchList.error}
-          data={watchList.data}
-          liveBoardsOnly
+          byMode={watchList.data?.byMode ?? null}
+          modeFilter={null}
         />
       </div>
       <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-1 items-start gap-5 px-4 py-5 sm:gap-6 sm:px-5 sm:py-6 lg:grid-cols-2 lg:gap-8 lg:py-6">

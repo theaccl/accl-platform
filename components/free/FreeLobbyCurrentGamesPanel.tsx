@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { GameContinuityGameRows } from '@/components/free/GameContinuityGameRows';
+import type { useLobbyUserObligations } from '@/hooks/useLobbyUserObligations';
 import {
   DAILY_ASYNC_SECTION_HINT,
   freeActiveGamesHref,
   LIVE_NOW_SECTION_HINT,
-  partitionGamesByContinuity,
 } from '@/lib/gameContinuityPresentation';
 import {
   DAILY_ASYNC_YOUR_MOVE_TITLE,
@@ -17,9 +17,9 @@ import {
   TOURNAMENT_LIVE_SECTION_HINT,
   TOURNAMENT_LIVE_SECTION_TITLE,
   YOUR_MOVE_SECTION_TITLE,
-  type LobbyObligationRow,
 } from '@/lib/lobbyObligationPresentation';
-import { supabase } from '@/lib/supabaseClient';
+import { filterRowsByLobbyMode, type LobbyHubModeFilter } from '@/lib/lobbyModeFilter';
+import { PLAT_MODE_LABELS } from '@/lib/freePlayModeTimeControl';
 
 function ObligationSubsection({
   title,
@@ -54,99 +54,32 @@ function ObligationSubsection({
   );
 }
 
+export type LobbyObligationsSnapshot = ReturnType<typeof useLobbyUserObligations>;
+
+type Props = {
+  modeFilter?: LobbyHubModeFilter;
+  obligations: LobbyObligationsSnapshot;
+};
+
 /**
- * Lobby hub: obligations first — tournament live, free live, then daily/async (separate).
+ * Lobby hub: obligations first — tournament live (always), free live + daily/async respect mode filter.
  */
-export function FreeLobbyCurrentGamesPanel() {
-  const [freeRows, setFreeRows] = useState<LobbyObligationRow[] | null>(null);
-  const [tournamentRows, setTournamentRows] = useState<LobbyObligationRow[] | null>(null);
-  const [tournamentNames, setTournamentNames] = useState<Record<string, string>>({});
-  const [uid, setUid] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const { data: s } = await supabase.auth.getSession();
-      const me = s.session?.user?.id ?? null;
-      if (cancelled) return;
-      setUid(me);
-      if (!me) {
-        setFreeRows([]);
-        setTournamentRows([]);
-        return;
-      }
-
-      const gameSelect =
-        'id,status,tempo,live_time_control,turn,white_player_id,black_player_id,updated_at,tournament_id,white_clock_ms,black_clock_ms';
-
-      const [freeRes, tRes] = await Promise.all([
-        supabase
-          .from('games')
-          .select(gameSelect)
-          .eq('play_context', 'free')
-          .is('tournament_id', null)
-          .in('status', ['active', 'waiting'])
-          .or(`white_player_id.eq.${me},black_player_id.eq.${me}`)
-          .order('updated_at', { ascending: false })
-          .limit(24),
-        supabase
-          .from('games')
-          .select(gameSelect)
-          .eq('play_context', 'tournament')
-          .not('tournament_id', 'is', null)
-          .in('status', ['active', 'waiting'])
-          .or(`white_player_id.eq.${me},black_player_id.eq.${me}`)
-          .order('updated_at', { ascending: false })
-          .limit(12),
-      ]);
-
-      if (cancelled) return;
-      if (freeRes.error || tRes.error) {
-        setError('Could not load your games.');
-        setFreeRows([]);
-        setTournamentRows([]);
-        return;
-      }
-
-      const free = (freeRes.data ?? []) as LobbyObligationRow[];
-      const tournament = (tRes.data ?? []) as LobbyObligationRow[];
-      setFreeRows(free);
-      setTournamentRows(tournament);
-
-      const tids = [...new Set(tournament.map((r) => String(r.tournament_id ?? '').trim()).filter(Boolean))];
-      if (tids.length === 0) {
-        setTournamentNames({});
-        return;
-      }
-      const { data: tMeta } = await supabase.from('tournaments').select('id,name').in('id', tids);
-      if (cancelled) return;
-      const names: Record<string, string> = {};
-      for (const row of tMeta ?? []) {
-        const id = String((row as { id: string }).id ?? '').trim();
-        const name = String((row as { name: string }).name ?? '').trim();
-        if (id) names[id] = name || 'Tournament';
-      }
-      setTournamentNames(names);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const { live: freeLiveRaw, dailyAsync: dailyAsyncRaw } = useMemo(
-    () => partitionGamesByContinuity(freeRows ?? []),
-    [freeRows],
-  );
+export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: Props) {
+  const { uid, error, loading, freeLiveRaw, dailyAsyncRaw, tournamentRows, tournamentNames } = obligations;
+  const filterLabel = modeFilter ? PLAT_MODE_LABELS[modeFilter] : null;
 
   const tournamentLive = useMemo(
     () => sortLobbyObligationRows(tournamentRows ?? [], uid),
     [tournamentRows, uid],
   );
-  const freeLive = useMemo(() => sortLobbyObligationRows(freeLiveRaw, uid), [freeLiveRaw, uid]);
-  const dailyAsync = useMemo(() => sortLobbyObligationRows(dailyAsyncRaw, uid), [dailyAsyncRaw, uid]);
-
-  const loading = freeRows === null || tournamentRows === null;
+  const freeLive = useMemo(
+    () => sortLobbyObligationRows(filterRowsByLobbyMode(freeLiveRaw, modeFilter), uid),
+    [freeLiveRaw, modeFilter, uid],
+  );
+  const dailyAsync = useMemo(
+    () => sortLobbyObligationRows(filterRowsByLobbyMode(dailyAsyncRaw, modeFilter), uid),
+    [dailyAsyncRaw, modeFilter, uid],
+  );
 
   return (
     <section
@@ -221,14 +154,20 @@ export function FreeLobbyCurrentGamesPanel() {
 
       <ObligationSubsection
         title={FREE_LIVE_SECTION_TITLE}
-        hint={LIVE_NOW_SECTION_HINT}
+        hint={
+          filterLabel
+            ? `${LIVE_NOW_SECTION_HINT} Filtered to ${filterLabel} — clear mode filter to see all live boards.`
+            : LIVE_NOW_SECTION_HINT
+        }
         viewAllHref={freeActiveGamesHref('live')}
         testId="free-lobby-live-now"
         titleClassName="text-sky-300/90"
         borderClassName="border-sky-500/35 bg-[#0f141c]"
       >
         {!loading && freeLive.length === 0 ? (
-          <p className="text-xs text-gray-500">No free-play live boards right now.</p>
+          <p className="text-xs text-gray-500">
+            {modeFilter ? 'No free-play live boards in this mode.' : 'No free-play live boards right now.'}
+          </p>
         ) : null}
         {freeLive.length > 0 ? (
           <GameContinuityGameRows rows={freeLive} uid={uid} variant="live" testIdPrefix="free-lobby-live" compact />
@@ -237,14 +176,20 @@ export function FreeLobbyCurrentGamesPanel() {
 
       <ObligationSubsection
         title={DAILY_ASYNC_YOUR_MOVE_TITLE}
-        hint={DAILY_ASYNC_SECTION_HINT}
+        hint={
+          filterLabel
+            ? `${DAILY_ASYNC_SECTION_HINT} Filtered to ${filterLabel}.`
+            : DAILY_ASYNC_SECTION_HINT
+        }
         viewAllHref={freeActiveGamesHref('async')}
         testId="free-lobby-daily-async"
         titleClassName="text-violet-300/90"
         borderClassName="border-violet-500/30 bg-[#0f141c]"
       >
         {!loading && dailyAsync.length === 0 ? (
-          <p className="text-xs text-gray-500">No daily or correspondence games waiting.</p>
+          <p className="text-xs text-gray-500">
+            {modeFilter ? 'No daily/async games in this mode.' : 'No daily or correspondence games waiting.'}
+          </p>
         ) : null}
         {dailyAsync.length > 0 ? (
           <GameContinuityGameRows
