@@ -71,4 +71,5 @@ Swiss, tournament bots, async bot queue, reconnect authority redesign, auto-forf
 
 - Registration gate (separate): `lib/server/tournamentRegistrationGate.ts`
 - [PHASE_1_TOURNAMENT_NOSHOW_OPS.md](./PHASE_1_TOURNAMENT_NOSHOW_OPS.md)
+- [PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md](./PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md) — refresh/reconnect + spectator churn
 - [PHASE_1_TOURNAMENT_4P_KO_VERIFICATION.md](./PHASE_1_TOURNAMENT_4P_KO_VERIFICATION.md)

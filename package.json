@@ -14,6 +14,7 @@
     "verify:tournament-noshow-ops": "node scripts/tournament-noshow-ops-verification.mjs",
     "verify:tournament-freeplay-coexistence": "node scripts/tournament-freeplay-coexistence-verification.mjs",
     "verify:tournament-scheduled-start-noshow": "node scripts/tournament-scheduled-start-noshow-verification.mjs",
+    "verify:tournament-spectator-reconnect": "node scripts/tournament-spectator-reconnect-verification.mjs",
     "e2e:audit-auth-metadata": "node scripts/e2e-audit-auth-app-metadata.mjs",
     "e2e:audit-auth-metadata:fix": "node scripts/e2e-audit-auth-app-metadata.mjs --fix",
     "audit:testers": "node scripts/audit-tester-readiness.mjs",
