@@ -17,6 +17,7 @@
     "verify:tournament-spectator-reconnect": "node scripts/tournament-spectator-reconnect-verification.mjs",
     "verify:tournament-recovery": "node scripts/tournament-recovery-verification.mjs",
     "verify:tournament-multi-concurrency": "node scripts/tournament-multi-concurrency-verification.mjs",
+    "verify:tournament-standings-champion": "node scripts/tournament-standings-champion-verification.mjs",
     "e2e:audit-auth-metadata": "node scripts/e2e-audit-auth-app-metadata.mjs",
     "e2e:audit-auth-metadata:fix": "node scripts/e2e-audit-auth-app-metadata.mjs --fix",
     "audit:testers": "node scripts/audit-tester-readiness.mjs",

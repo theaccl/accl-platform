@@ -84,3 +84,4 @@ Does **not** replace the integration script above.
 - Spectator + reconnect: [PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md](./PHASE_1_TOURNAMENT_SPECTATOR_RECONNECT.md)
 - Recovery / interrupted flow: [PHASE_1_TOURNAMENT_RECOVERY.md](./PHASE_1_TOURNAMENT_RECOVERY.md)
 - Multi-tournament concurrency: [PHASE_1_TOURNAMENT_MULTI_CONCURRENCY.md](./PHASE_1_TOURNAMENT_MULTI_CONCURRENCY.md)
+- Standings + champion snapshot: [PHASE_1_TOURNAMENT_STANDINGS_CHAMPION.md](./PHASE_1_TOURNAMENT_STANDINGS_CHAMPION.md)
