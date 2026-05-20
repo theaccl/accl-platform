@@ -19,8 +19,12 @@ import {
   normalizeComputerPlayPlatMode,
   resolveComputerPlayLiveTimeControl,
 } from '@/lib/freePlayComputerEntry';
+import {
+  playComputerBotEnvFailures,
+  playComputerMissingProfileBody,
+  playComputerProvisioningErrorBody,
+} from '@/lib/bot/botStartProvisioning';
 import { botGameInsert } from '@/lib/gameStartupInsert';
-import { getRuntimeConfigValidationReport } from '@/lib/runtimeConfigValidation';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { tooManyRequests } from '@/lib/server/httpJson';
@@ -117,41 +121,26 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const validation = await getRuntimeConfigValidationReport();
-  const botValidationErrors = validation.states.filter(
-    (s) =>
-      !s.ok &&
-      (s.key.startsWith('BOT_USER_ID_') ||
-        s.key.startsWith('BOT_IDENTITY_SET') ||
-        s.key.startsWith('BOT_USER_ID_CARDI_') ||
-        s.key.startsWith('BOT_USER_ID_AGGRO_') ||
-        s.key.startsWith('BOT_USER_ID_ENDGAME_')),
-  );
-  if (botValidationErrors.length > 0) {
-    const first = botValidationErrors[0];
-    return json(
-      {
-        error: 'Bot provisioning invalid',
-        category: first.category,
-        key: first.key,
-        detail: first.detail,
-        states: botValidationErrors,
-      },
-      503,
-    );
+  const envFailures = playComputerBotEnvFailures();
+  if (envFailures.length > 0) {
+    auditApiLog('bot_game_start', {
+      result: 'provisioning_invalid',
+      user: shortId(userId),
+      key: envFailures[0]?.key,
+      category: envFailures[0]?.category,
+    });
+    return json(playComputerProvisioningErrorBody(envFailures), 503);
   }
 
   const { data: botProfile } = await supabase.from('profiles').select('id').eq('id', botUserId).maybeSingle();
   if (!botProfile?.id) {
-    return json(
-      {
-        error: `Bot identity is not provisioned for ${profileBot}.`,
-        category: 'missing_profile',
-        key: `${profileBot}_PROFILE`,
-        detail: `profile ${botUserId} not found`,
-      },
-      503,
-    );
+    auditApiLog('bot_game_start', {
+      result: 'provisioning_invalid',
+      user: shortId(userId),
+      bot: profileBot,
+      category: 'missing_profile',
+    });
+    return json(playComputerMissingProfileBody(profileBot, botUserId), 503);
   }
 
   const insertRow = botGameInsert(userId, botUserId, {

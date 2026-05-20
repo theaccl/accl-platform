@@ -63,6 +63,8 @@ test.describe('Free lobby Play Computer entry (static)', () => {
     expect(src).not.toContain('BOT_MOVE_QUEUE_ENABLED');
     expect(src).not.toContain('bot-move-queue');
     expect(src).not.toContain('enqueue_bot_move_job');
+    expect(src).not.toContain('getRuntimeConfigValidationReport');
+    expect(src).toContain('playComputerBotEnvFailures');
   });
 
   test('no processor route added for computer lobby entry', () => {
