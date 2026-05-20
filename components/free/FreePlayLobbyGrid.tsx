@@ -1,18 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { DirectChallengePanel } from "@/components/DirectChallengePanel";
 import { FreePlayMatchPanel } from "@/components/FreePlayMatchPanel";
 import { HomePlaySection } from "@/components/HomePlaySection";
 import { FreeLobbyOpenGamesList } from "@/components/free/FreeLobbyOpenGamesList";
-import NexusLobbyActionsBar from "@/components/nexus/NexusLobbyActionsBar";
 import NexusLobbyChatColumn, { type LobbyPlatMode } from "@/components/nexus/NexusLobbyChatColumn";
 import { FreePlayOpenPairingByMode } from "@/components/free/FreePlayOpenPairingByMode";
 import {
   coercePlatTimeForMode,
   defaultPlatTimeControl,
-  PLAT_MODE_ORDER,
   type PlatMode,
 } from "@/lib/freePlayModeTimeControl";
 import { useFreeOpenSeatActivity } from "@/hooks/useFreeOpenSeatActivity";
@@ -37,46 +35,20 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
   const { activity: openSeatActivity, counts: openSeatCounts, loading: openSeatLoading } = useFreeOpenSeatActivity();
   const watchList = useFreePlayWatchList("adult");
 
-  const watchCounts = useMemo(() => {
-    if (!watchList.data) return undefined;
-    return PLAT_MODE_ORDER.reduce(
-      (acc, m) => {
-        acc[m] = watchList.data!.byMode[m]?.length ?? 0;
-        return acc;
-      },
-      {} as Record<PlatMode, number>,
-    );
-  }, [watchList.data]);
-
-  const watchClockHints = useMemo(() => {
-    if (!watchList.data) return undefined;
-    return PLAT_MODE_ORDER.reduce(
-      (acc, m) => {
-        const keys = [
-          ...new Set(watchList.data!.byMode[m].map((r) => r.liveTimeControlKey).filter(Boolean)),
-        ].sort();
-        acc[m] = keys;
-        return acc;
-      },
-      {} as Record<PlatMode, string[]>
-    );
-  }, [watchList.data]);
-
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
       <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-5 sm:pt-6">
-        <FreePlayWatchSpectatorByMode
-          loading={watchList.loading}
-          error={watchList.error}
-          data={watchList.data}
-        />
         <FreePlayOpenPairingByMode
           activity={openSeatActivity}
           openSeatCounts={openSeatCounts}
           loading={openSeatLoading}
-          watchActivity={watchList.data?.watchActivity}
-          watchCounts={watchCounts}
-          watchClockHints={watchClockHints}
+          activeSeatsOnly
+        />
+        <FreePlayWatchSpectatorByMode
+          loading={watchList.loading}
+          error={watchList.error}
+          data={watchList.data}
+          liveBoardsOnly
         />
       </div>
       <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-1 items-start gap-5 px-4 py-5 sm:gap-6 sm:px-5 sm:py-6 lg:grid-cols-2 lg:gap-8 lg:py-6">
@@ -96,13 +68,6 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
         {children}
         <HomePlaySection mode={mode} clock={clock} rated={rated} />
       </div>
-
-      <NexusLobbyActionsBar
-        watchSpectatorHref="#watch-as-spectator-anchor"
-        watchSpectatorLabel="Watch live"
-        publicGameHref="#free-lobby-open-games-anchor"
-        publicGameScrollLabel="Open games"
-      />
 
       <div className="w-full min-w-0">
         <FreePlayMatchPanel

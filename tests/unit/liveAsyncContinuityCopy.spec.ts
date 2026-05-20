@@ -17,13 +17,13 @@ test.describe('live vs async continuity copy (static)', () => {
     }
   });
 
-  test('lobby panel exposes live and daily-async sections', () => {
+  test('lobby panel exposes tournament, live, and daily-async sections', () => {
     const src = readFileSync(PATHS[0], 'utf8');
+    expect(src).toContain('free-lobby-tournament-live');
     expect(src).toContain('free-lobby-live-now');
     expect(src).toContain('free-lobby-daily-async');
-    expect(src).toContain('LIVE_NOW_SECTION_TITLE');
-    expect(src).toContain('DAILY_ASYNC_SECTION_TITLE');
-    expect(src).toContain('LIVE_NOW_SECTION_HINT');
+    expect(src).toContain('TOURNAMENT_LIVE_SECTION_TITLE');
+    expect(src).toContain('DAILY_ASYNC_YOUR_MOVE_TITLE');
   });
 
   test('nexus card is Your games', () => {

@@ -16,14 +16,17 @@ test.describe('lobby visibility (authenticated)', () => {
     await expect(page.getByTestId('home-lobby-root')).toBeVisible({ timeout: 30_000 });
   });
 
-  test('free lobby shows root, challenge panel, find match', async ({ page }) => {
+  test('free lobby prioritizes obligations over exploration', async ({ page }) => {
     await page.goto(ROUTES.free);
     await expect(page.getByTestId('free-lobby-root')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('free-lobby-ready')).toBeAttached();
+    await expect(page.getByTestId('free-lobby-your-move-heading')).toBeVisible();
     await expect(page.getByTestId('free-lobby-current-games')).toBeVisible();
+    await expect(page.getByTestId('free-lobby-tournament-live')).toBeVisible();
     await expect(page.getByTestId('free-lobby-live-now')).toBeVisible();
     await expect(page.getByTestId('free-lobby-daily-async')).toBeVisible();
-    await expect(page.getByTestId('direct-challenge-panel')).toBeVisible();
-    await expect(page.getByTestId('free-find-match').first()).toBeVisible();
+    await expect(page.getByTestId('free-open-pairing-by-mode')).toBeVisible();
+    await expect(page.getByTestId('free-watch-spectator-by-mode')).toBeVisible();
+    await expect(page.getByTestId('nexus-lobby-actions-bar')).toHaveCount(0);
   });
 });

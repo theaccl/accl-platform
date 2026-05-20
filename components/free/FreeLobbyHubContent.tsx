@@ -1,15 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
 
 import { FreeLobbyCurrentGamesPanel } from '@/components/free/FreeLobbyCurrentGamesPanel';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayOpenPairingByMode } from '@/components/free/FreePlayOpenPairingByMode';
 import { FreePlayWatchSpectatorByMode } from '@/components/free/FreePlayWatchSpectatorByMode';
-import NexusLobbyActionsBar from '@/components/nexus/NexusLobbyActionsBar';
 import { nexusPrestigeRoot } from '@/components/nexus/nexusShellTheme';
-import { nexusModuleHeadingClass } from '@/components/nexus/NexusHeader';
 import { useFreeOpenSeatActivity } from '@/hooks/useFreeOpenSeatActivity';
 import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
 import {
@@ -18,121 +15,82 @@ import {
   type PlatMode,
 } from '@/lib/freePlayModeTimeControl';
 import { FREE_PLAY_LOBBY_GENERAL_ROOM } from '@/lib/lobbyChatRooms';
-import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
 
 const focusRing =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0e12]';
 
 /**
- * Lobby Chat hub: optional general chat + mode room entry (navigation to `/free/lobby/[mode]`).
+ * Free Play command center — obligations first, then pairing, spectate, compact chat.
+ *
+ * Follow-up (not in scope): live tournament game pages should expose a side panel with other
+ * active tournament boards, bracket state, round label, and clickable game swaps.
  */
 export function FreeLobbyHubContent() {
   const { activity, counts: openSeatCounts, loading } = useFreeOpenSeatActivity();
   const watchList = useFreePlayWatchList('adult');
 
-  const watchCounts = useMemo(() => {
-    if (!watchList.data) return undefined;
-    return PLAT_MODE_ORDER.reduce(
-      (acc, m) => {
-        acc[m] = watchList.data!.byMode[m]?.length ?? 0;
-        return acc;
-      },
-      {} as Record<PlatMode, number>,
-    );
-  }, [watchList.data]);
-
-  const watchClockHints = useMemo(() => {
-    if (!watchList.data) return undefined;
-    return PLAT_MODE_ORDER.reduce(
-      (acc, m) => {
-        const keys = [
-          ...new Set(watchList.data!.byMode[m].map((r) => r.liveTimeControlKey).filter(Boolean)),
-        ].sort();
-        acc[m] = keys;
-        return acc;
-      },
-      {} as Record<PlatMode, string[]>
-    );
-  }, [watchList.data]);
-
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
-      <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-5 sm:pt-6">
-        <header className="mb-4">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Lobby Chat</h1>
+      <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-5 sm:px-5 sm:pt-6">
+        <header className="mb-5">
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl" data-testid="free-lobby-hub-title">
+            Free Play Lobby
+          </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">
-            General lobby is for cross-mode coordination. For mode-scoped chat and queue, open a{' '}
-            <strong className="text-gray-300">mode room</strong> — time controls there only filter open games, not chat.
+            Your move and live obligations come first — then open seats and spectating. Mode rooms stay available when
+            you need a specific clock or chat channel.
           </p>
         </header>
 
-        <TournamentCoexistenceNotice mode="lobby_reminder" />
-
-        <FreePlayWatchSpectatorByMode
-          loading={watchList.loading}
-          error={watchList.error}
-          data={watchList.data}
-        />
+        <FreeLobbyCurrentGamesPanel />
 
         <FreePlayOpenPairingByMode
           activity={activity}
           openSeatCounts={openSeatCounts}
           loading={loading}
-          watchActivity={watchList.data?.watchActivity}
-          watchCounts={watchCounts}
-          watchClockHints={watchClockHints}
+          activeSeatsOnly
         />
-        <FreeLobbyCurrentGamesPanel />
 
-        <p className="mt-3 text-xs text-gray-500">
-          <span className="font-medium text-violet-400/90">Violet</span> = live game to watch (tiles or bottom{' '}
-          <strong className="text-gray-400">Watch live</strong>).{' '}
-          <span className="font-medium text-emerald-400/90">Green</span> = open seat in Open Public Pairing — tap a tile
-          for that mode room.
-        </p>
+        <FreePlayWatchSpectatorByMode
+          loading={watchList.loading}
+          error={watchList.error}
+          data={watchList.data}
+          liveBoardsOnly
+        />
 
-        <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2 lg:gap-8">
+        <section className="mt-5" data-testid="free-lobby-hub-general-chat-section">
           <LobbyChatPanel
             lobbyRoom={FREE_PLAY_LOBBY_GENERAL_ROOM}
             roomLabel="General"
             heading="General lobby chat"
+            compact
             data-testid="free-lobby-hub-general-chat"
           />
+        </section>
 
-          <section
-            id="mode-rooms"
-            className="rounded-2xl border border-[#243244] bg-[#111a27] p-4 sm:p-5"
-            aria-label="Mode rooms"
-          >
-            <h2 className={nexusModuleHeadingClass}>Mode rooms</h2>
-            <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              Each mode has one shared chat (e.g. all Blitz players share Blitz chat). Pick a clock inside the room to
-              filter the queue.
-            </p>
-            <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
-              {PLAT_MODE_ORDER.map((m: PlatMode) => (
-                <li key={m}>
-                  <Link
-                    href={`/free/lobby/${m}`}
-                    className={`flex min-h-[48px] items-center justify-center rounded-xl border border-red-900/50 bg-gradient-to-b from-red-950/40 to-red-950/70 px-4 py-3 text-center text-sm font-semibold text-red-50 shadow-md shadow-red-950/30 transition hover:border-red-500/45 hover:from-red-900/50 hover:to-red-950/85 ${focusRing}`}
-                    data-testid={`free-lobby-hub-enter-${m}`}
-                  >
-                    {PLAT_MODE_LABELS[m]}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
+        <details className="mt-5 rounded-xl border border-[#243244] bg-[#111a27] p-4 sm:p-5" data-testid="free-lobby-mode-rooms-collapsed">
+          <summary className={`cursor-pointer text-sm font-semibold text-gray-300 ${focusRing}`}>
+            Mode rooms (Bullet, Blitz, Rapid, Daily)
+          </summary>
+          <p className="mt-3 text-sm leading-relaxed text-gray-500">
+            Open a mode room for scoped chat, queue filters, and play-vs-computer (live modes). Open public pairing above
+            jumps straight to waiting seats when lit.
+          </p>
+          <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {PLAT_MODE_ORDER.map((m: PlatMode) => (
+              <li key={m}>
+                <Link
+                  href={`/free/lobby/${m}`}
+                  className={`flex min-h-[44px] items-center justify-center rounded-lg border border-red-900/45 bg-red-950/30 px-3 py-2 text-center text-sm font-semibold text-red-50 transition hover:border-red-500/40 hover:bg-red-950/50 ${focusRing}`}
+                  data-testid={`free-lobby-hub-enter-${m}`}
+                >
+                  {PLAT_MODE_LABELS[m]}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
       </div>
-
-      <NexusLobbyActionsBar
-        watchSpectatorHref="#watch-as-spectator-anchor"
-        watchSpectatorLabel="Watch live"
-        publicGameHref="#mode-rooms"
-        publicGameScrollLabel="Mode rooms"
-        directChallengeHref="/free/create"
-      />
     </div>
   );
 }

@@ -12,136 +12,89 @@ type Props = {
   /** Per-mode open-seat counts for hub badges (cap display in labels via formatLobbyCountLabel). */
   openSeatCounts?: Record<PlatMode, number>;
   loading: boolean;
-  /** When set (hub), show a second link to that mode’s “Watch live” list when lit. */
-  watchActivity?: Record<PlatMode, boolean>;
-  /** Per-mode spectatable live game counts (optional; falls back to watchActivity boolean). */
-  watchCounts?: Record<PlatMode, number>;
-  /** Distinct spectatable clock tokens per mode (for deep-linking the mode room watch list). */
-  watchClockHints?: Record<PlatMode, string[]>;
+  /** Hub: show only modes with a joinable open seat (no dead tiles). */
+  activeSeatsOnly?: boolean;
 };
 
 /**
- * Hub shortcuts: native anchors + forced assign on primary click (Lit = hash to Open Games).
+ * Open public pairing — lit tiles jump to Open Games in that mode room.
  */
 export function FreePlayOpenPairingByMode({
   activity,
   openSeatCounts,
   loading,
-  watchActivity,
-  watchCounts,
-  watchClockHints,
+  activeSeatsOnly = false,
 }: Props) {
+  const modesToShow = PLAT_MODE_ORDER.filter((mode) => {
+    if (!activeSeatsOnly) return true;
+    const openN = openSeatCounts?.[mode] ?? 0;
+    return activity[mode] || openN > 0;
+  });
+
   return (
     <section
       className="relative z-[100] mb-4 rounded-xl border border-[#243244] bg-[#0f141c] px-4 py-3 sm:px-5"
       data-testid="free-open-pairing-by-mode"
-      aria-label="Quick shortcuts to mode rooms when open seats are waiting"
+      aria-label="Open public pairing"
     >
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-300/90">
         Open public pairing
       </h2>
       <p className="mt-1.5 text-xs leading-snug text-gray-500">
-        <strong className="text-emerald-400/90">Lit</strong> = someone is waiting in that mode —{' '}
-        <strong className="text-gray-300">tap a tile</strong> to jump to <strong className="text-gray-400">Open Games</strong>{' '}
-        there now. <strong className="text-gray-500">Not lit</strong> = open the mode room (chat, queue).{' '}
-        <strong className="text-gray-400">Mode rooms</strong> below always work too.
+        Joinable seats only — tap a lit tile to open <strong className="text-gray-300">Open Games</strong> in that mode.
+        No open seats? Collapse mode rooms below or pick a mode for chat and queue.
       </p>
-      <ul className="relative z-[101] mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {PLAT_MODE_ORDER.map((mode) => {
-          const on = activity[mode];
-          const openN = openSeatCounts?.[mode] ?? 0;
-          const openLabel = formatLobbyCountLabel(openN > 0 ? openN : on ? 1 : 0);
-          const watchOn = watchActivity?.[mode] === true;
-          const wn = watchCounts?.[mode] ?? 0;
-          const watchNLabel = formatLobbyCountLabel(wn > 0 ? wn : watchOn ? 1 : 0);
-          const watchClocks = watchClockHints?.[mode];
-          const watchQs =
-            watchClocks?.length === 1 ? `?clock=${encodeURIComponent(watchClocks[0]!)}` : '';
-          const modeLabel = PLAT_MODE_LABELS[mode];
-          const modeRoomHref = on
-            ? `/free/lobby/${mode}#free-lobby-open-games-anchor`
-            : `/free/lobby/${mode}`;
-          const shortcutLabel = on
-            ? `${modeLabel}: open seat waiting — go to Open Games now`
-            : `${modeLabel} mode room — open`;
-          return (
-            <li key={mode} className="relative z-[102] min-h-0">
-              <a
-                href={modeRoomHref}
-                onClick={(e) => forceDomNavigation(e, modeRoomHref)}
-                onPointerUp={(e) => {
-                  if (e.pointerType === 'touch') {
-                    window.location.assign(modeRoomHref);
-                  }
-                }}
-                aria-label={shortcutLabel}
-                className={`flex min-h-[48px] w-full touch-manipulation flex-col rounded-lg border px-2.5 py-2 text-left font-sans text-inherit no-underline shadow-sm transition active:opacity-95 [-webkit-tap-highlight-color:rgba(16,185,129,0.25)] ${focusRing} ${
-                  on
-                    ? 'border-emerald-500/55 bg-[#0f1a14] shadow-[0_0_0_1px_rgba(16,185,129,0.18)] hover:border-emerald-400/70 hover:bg-[#102016] hover:shadow-[0_0_12px_rgba(16,185,129,0.12)]'
-                    : 'border-[#2a3442] bg-[#111723] hover:border-sky-500/35 hover:bg-[#141c2a]'
-                }`}
-                title={
-                  on
-                    ? `${modeLabel}: tap to open Open Games (someone is waiting)`
-                    : `${modeLabel} room — open mode room`
-                }
-                data-testid={`free-open-pairing-link-${mode}`}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${on ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.65)]' : 'bg-gray-600'}`}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 text-[13px] font-semibold text-gray-100">{modeLabel}</span>
-                </span>
-                {on ? (
+
+      {modesToShow.length === 0 && !loading ? (
+        <p className="mt-3 text-xs text-gray-500" data-testid="free-open-pairing-empty">
+          No open public seats right now. Post from a mode room or check back shortly.
+        </p>
+      ) : (
+        <ul className="relative z-[101] mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {modesToShow.map((mode) => {
+            const on = activity[mode];
+            const openN = openSeatCounts?.[mode] ?? 0;
+            const openLabel = formatLobbyCountLabel(openN > 0 ? openN : on ? 1 : 0);
+            const modeLabel = PLAT_MODE_LABELS[mode];
+            const modeRoomHref = `/free/lobby/${mode}#free-lobby-open-games-anchor`;
+            const shortcutLabel = `${modeLabel}: open seat waiting — go to Open Games now`;
+            return (
+              <li key={mode} className="relative z-[102] min-h-0">
+                <a
+                  href={modeRoomHref}
+                  onClick={(e) => forceDomNavigation(e, modeRoomHref)}
+                  onPointerUp={(e) => {
+                    if (e.pointerType === 'touch') {
+                      window.location.assign(modeRoomHref);
+                    }
+                  }}
+                  aria-label={shortcutLabel}
+                  className={`flex min-h-[48px] w-full touch-manipulation flex-col rounded-lg border px-2.5 py-2 text-left font-sans text-inherit no-underline shadow-sm transition active:opacity-95 [-webkit-tap-highlight-color:rgba(16,185,129,0.25)] ${focusRing} border-emerald-500/55 bg-[#0f1a14] shadow-[0_0_0_1px_rgba(16,185,129,0.18)] hover:border-emerald-400/70 hover:bg-[#102016]`}
+                  title={`${modeLabel}: tap to open Open Games`}
+                  data-testid={`free-open-pairing-link-${mode}`}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.65)]"
+                      aria-hidden
+                    />
+                    <span className="min-w-0 text-[13px] font-semibold text-gray-100">{modeLabel}</span>
+                  </span>
                   <span className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300/95">
                     Open games ({openLabel}) →
                   </span>
-                ) : (
-                  <span className="mt-1 text-[10px] font-medium text-gray-500">Enter room</span>
-                )}
-              </a>
-              {watchActivity ? (
-                watchOn || wn > 0 ? (
-                  <a
-                    href={`/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`}
-                    onClick={(e) =>
-                      forceDomNavigation(e, `/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`)
-                    }
-                    onPointerUp={(e) => {
-                      if (e.pointerType === 'touch') {
-                        window.location.assign(`/free/lobby/${mode}${watchQs}#watch-as-spectator-anchor`);
-                      }
-                    }}
-                    className={`mt-1 block touch-manipulation rounded-md py-1 text-center text-[10px] font-semibold leading-tight text-violet-300 underline-offset-2 hover:text-violet-100 hover:underline ${focusRing}`}
-                    data-testid={`free-open-pairing-watch-${mode}`}
-                  >
-                    Watch ({watchNLabel}) →
-                  </a>
-                ) : (
-                  <span
-                    className="mt-1 block py-0.5 text-center text-[10px] font-medium leading-tight text-gray-600"
-                    data-testid={`free-open-pairing-watch-${mode}`}
-                  >
-                    No live games
-                  </span>
-                )
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       {loading ? (
         <p className="mt-2 text-[11px] text-gray-600" role="status">
           Checking open seats…
         </p>
-      ) : (
-        <p className="mt-2 text-[11px] text-gray-600">
-          <span className="font-medium text-emerald-400/90">Lit tile</span> = waiting game —{' '}
-          <span className="text-gray-400">tap it</span> to go straight to Open Games in that mode.
-        </p>
-      )}
+      ) : null}
     </section>
   );
 }

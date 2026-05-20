@@ -9,7 +9,6 @@ import { FreePlayWatchSpectatorForMode } from '@/components/free/FreePlayWatchSp
 import { platModeExposesComputerPlay } from '@/lib/freePlayComputerEntry';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayMatchPanel } from '@/components/FreePlayMatchPanel';
-import NexusLobbyActionsBar from '@/components/nexus/NexusLobbyActionsBar';
 import { nexusPrestigeRoot } from '@/components/nexus/nexusShellTheme';
 import {
   coercePlatTimeForMode,
@@ -65,7 +64,7 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
             <span aria-hidden className="text-lg leading-none">
               ←
             </span>
-            <span>Lobby Chat Hub</span>
+            <span>Free Play Lobby</span>
           </Link>
           <p className="text-[11px] leading-snug text-gray-500 sm:max-w-xs sm:text-right">
             General chat, mode tiles, open-seat lights, and watch discovery live here.
@@ -142,14 +141,6 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
           />
         </div>
       </div>
-
-      <NexusLobbyActionsBar
-        watchSpectatorHref="#watch-as-spectator-anchor"
-        watchSpectatorLabel="Watch live"
-        publicGameHref="#free-lobby-open-games-anchor"
-        publicGameScrollLabel="Open games"
-        directChallengeHref={`/free/create?mode=${encodeURIComponent(mode)}&rated=${rated ? 'true' : 'false'}`}
-      />
     </div>
   );
 }

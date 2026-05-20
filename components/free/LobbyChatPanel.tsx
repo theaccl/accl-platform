@@ -31,6 +31,8 @@ export type LobbyChatPanelProps = {
   initialToken?: string | null;
   /** Optional pre-resolved user id to avoid extra auth calls from this display-only panel. */
   initialUserId?: string | null;
+  /** Hub command-center layout: shorter transcript, fixed height. */
+  compact?: boolean;
 };
 
 /**
@@ -46,6 +48,7 @@ export function LobbyChatPanel({
   sendButtonTestId = 'lobby-chat-send',
   initialToken = null,
   initialUserId = null,
+  compact = false,
 }: LobbyChatPanelProps) {
   const [token, setToken] = useState<string | null>(initialToken);
   const [userId, setUserId] = useState<string | null>(initialUserId);
@@ -75,7 +78,7 @@ export function LobbyChatPanel({
     setBusy(true);
     setErr(null);
     const res = await fetch(
-      `/api/chat/messages?channel=lobby&lobbyRoom=${encodeURIComponent(lobbyRoom)}&limit=40`,
+      `/api/chat/messages?channel=lobby&lobbyRoom=${encodeURIComponent(lobbyRoom)}&limit=${compact ? 18 : 40}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -90,7 +93,7 @@ export function LobbyChatPanel({
     }
     const j = (await res.json()) as { messages?: ChatMsg[] };
     setMessages(j.messages ?? []);
-  }, [token, lobbyRoom]);
+  }, [token, lobbyRoom, compact]);
 
   useEffect(() => {
     loadRef.current = load;
@@ -165,7 +168,9 @@ export function LobbyChatPanel({
 
   return (
     <section
-      className={`${nexusPrestigeCard} flex h-full min-h-[280px] min-w-0 flex-col overflow-hidden p-4 sm:min-h-0 sm:p-5`}
+      className={`${nexusPrestigeCard} flex min-w-0 flex-col overflow-hidden p-4 sm:p-5 ${
+        compact ? 'max-h-[220px]' : 'h-full min-h-[280px] sm:min-h-0'
+      }`}
       data-testid={dataTestId}
       aria-label={heading}
     >
@@ -184,13 +189,15 @@ export function LobbyChatPanel({
       </p>
       <div
         key={lobbyRoom}
-        className="mt-4 min-h-[120px] flex-1 overflow-y-auto rounded-lg border border-white/[0.06] bg-[#0a0c10] p-3 text-sm leading-relaxed"
+        className={`mt-3 overflow-y-auto rounded-lg border border-white/[0.06] bg-[#0a0c10] p-2.5 text-sm leading-snug ${
+          compact ? 'max-h-[88px] min-h-0' : 'mt-4 min-h-[120px] flex-1 p-3 leading-relaxed'
+        }`}
       >
         {busy ? <p className="text-gray-500">Loading…</p> : null}
         {err ? <p className="text-red-400">{err}</p> : null}
         {!userId ? <p className="text-gray-500">Sign in to chat.</p> : null}
         {messages.map((m) => (
-          <div key={m.id} className="mb-2">
+          <div key={m.id} className={compact ? 'mb-1 truncate' : 'mb-2'}>
             {openIdentity ? (
               <button
                 type="button"
@@ -210,11 +217,11 @@ export function LobbyChatPanel({
           </div>
         ))}
       </div>
-      <div className="mt-4 flex gap-2">
+      <div className={`flex gap-2 ${compact ? 'mt-2' : 'mt-4'}`}>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          rows={2}
+          rows={compact ? 1 : 2}
           disabled={!userId}
           className="min-h-[44px] flex-1 resize-none rounded-lg border border-white/10 bg-[#0c0e12] px-2 py-2 text-sm text-white transition-colors placeholder:text-gray-600 focus-visible:border-red-500/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
           placeholder="Message…"
