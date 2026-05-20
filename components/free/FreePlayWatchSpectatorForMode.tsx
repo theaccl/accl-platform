@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 
-import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
+import { ModeRoomClockActivityRow } from '@/components/free/ModeRoomClockActivityRow';
 import {
   PLAT_MODE_LABELS,
   coercePlatTimeForMode,
@@ -14,9 +14,14 @@ import type { FreePlayWatchListRow } from '@/lib/server/freePlayWatchList';
 
 type Props = {
   mode: PlatMode;
-  viewerEcosystem?: 'adult' | 'k12';
   /** When set, only list games matching this room clock (same token as Open Games / create-find). */
   selectedClock?: string;
+  watchRows: FreePlayWatchListRow[];
+  watchLoading: boolean;
+  watchError: string | null;
+  watchByClock?: Record<string, number>;
+  clockActivityLoading?: boolean;
+  onSelectClock?: (clockId: string) => void;
 };
 
 function rowsForSelectedClock(
@@ -35,9 +40,17 @@ function rowsForSelectedClock(
 /**
  * Mode room: list live games in this PLAT bucket with spectate-only links.
  */
-export function FreePlayWatchSpectatorForMode({ mode, viewerEcosystem = 'adult', selectedClock }: Props) {
-  const { data, loading, error } = useFreePlayWatchList(viewerEcosystem);
-  const rows = rowsForSelectedClock(mode, selectedClock, data?.byMode[mode] ?? []);
+export function FreePlayWatchSpectatorForMode({
+  mode,
+  selectedClock,
+  watchRows,
+  watchLoading: loading,
+  watchError: error,
+  watchByClock,
+  clockActivityLoading = false,
+  onSelectClock,
+}: Props) {
+  const rows = rowsForSelectedClock(mode, selectedClock, watchRows);
   const label = PLAT_MODE_LABELS[mode];
 
   return (
@@ -69,6 +82,16 @@ export function FreePlayWatchSpectatorForMode({ mode, viewerEcosystem = 'adult',
           Watch lobby hub (all modes)
         </Link>
       </p>
+      {watchByClock && onSelectClock && selectedClock ? (
+        <ModeRoomClockActivityRow
+          variant="watch"
+          mode={mode}
+          selectedClock={selectedClock}
+          onSelectClock={onSelectClock}
+          countsByClock={watchByClock}
+          loading={clockActivityLoading}
+        />
+      ) : null}
       {loading ? <p className="mt-3 text-sm text-gray-500">Loading…</p> : null}
       {error ? (
         <p className="mt-3 text-sm text-red-400" role="alert">

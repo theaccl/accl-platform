@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FreeLobbyOpenGamesList } from '@/components/free/FreeLobbyOpenGamesList';
 import { FreeLobbyPlayComputerPanel } from '@/components/free/FreeLobbyPlayComputerPanel';
 import { FreePlayWatchSpectatorForMode } from '@/components/free/FreePlayWatchSpectatorForMode';
+import { useFreeLobbyModeClockActivity } from '@/hooks/useFreeLobbyModeClockActivity';
 import { platModeExposesComputerPlay } from '@/lib/freePlayComputerEntry';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
 import { FreePlayMatchPanel } from '@/components/FreePlayMatchPanel';
@@ -33,6 +34,14 @@ const noopMode = (_m: PlatMode) => {
 export function FreeLobbyModeRoomContent({ mode }: Props) {
   const [clock, setClock] = useState<string>(() => defaultPlatTimeControl(mode));
   const [rated, setRated] = useState(true);
+  const {
+    openByClock,
+    watchByClock,
+    watchRows,
+    watchLoading,
+    watchError,
+    loading: clockActivityLoading,
+  } = useFreeLobbyModeClockActivity(mode);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -41,6 +50,18 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
       setClock(raw);
     }
   }, [mode]);
+
+  const onClockChange = useCallback(
+    (next: string) => {
+      const coerced = coercePlatTimeForMode(mode, next);
+      setClock(coerced);
+      if (typeof window === 'undefined') return;
+      const url = new URL(window.location.href);
+      url.searchParams.set('clock', coerced);
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    },
+    [mode],
+  );
 
   const onModeChange = useCallback(noopMode, []);
   const lobbyRoom = FREE_PLAY_LOBBY_ROOM_BY_MODE[mode];
@@ -83,12 +104,28 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
 
         {/* Primary: Open Games should be the first visible priority panel. */}
         <div data-accl-layout="mode-room-open-games-primary" className="min-w-0">
-          <FreeLobbyOpenGamesList mode={mode} selectedClock={clock} selectedRated={rated} />
+          <FreeLobbyOpenGamesList
+            mode={mode}
+            selectedClock={clock}
+            selectedRated={rated}
+            openByClock={openByClock}
+            clockActivityLoading={clockActivityLoading}
+            onSelectClock={onClockChange}
+          />
         </div>
 
         {/* Secondary but still top-of-page: live spectate discovery for this mode. */}
         <div className="mt-4 min-w-0" data-accl-layout="mode-room-watch-secondary">
-          <FreePlayWatchSpectatorForMode mode={mode} selectedClock={clock} />
+          <FreePlayWatchSpectatorForMode
+            mode={mode}
+            selectedClock={clock}
+            watchByClock={watchByClock}
+            watchRows={watchRows}
+            watchLoading={watchLoading}
+            watchError={watchError}
+            clockActivityLoading={clockActivityLoading}
+            onSelectClock={onClockChange}
+          />
         </div>
 
         {/* Secondary: post a seat / auto-match — below the two primary panels */}
@@ -111,7 +148,7 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
               mode={mode}
               onModeChange={onModeChange}
               clock={clock}
-              onClockChange={(c) => setClock(coercePlatTimeForMode(mode, c))}
+              onClockChange={onClockChange}
               rated={rated}
               onRatedChange={setRated}
               modeLocked

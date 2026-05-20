@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { nexusModuleHeadingClass } from '@/components/nexus/NexusHeader';
 import { nexusPrestigeCard } from '@/components/nexus/nexusShellTheme';
+import { ModeRoomClockActivityRow } from '@/components/free/ModeRoomClockActivityRow';
 import { type FreeLobbyOpenSeatRow, useFreeLobbyOpenSeats } from '@/hooks/useFreeLobbyOpenSeats';
 import { formatWaitingDuration } from '@/lib/formatWaitingDuration';
 import { checkUserFreePlayQueueEligible } from '@/lib/freePlayFindMatch';
@@ -23,6 +24,10 @@ type Props = {
   selectedClock: string;
   /** Must match FreePlayMatchPanel rated toggle — list filters to same queue slice. */
   selectedRated: boolean;
+  /** Per-clock open-seat counts for the mode (all rated slices). */
+  openByClock?: Record<string, number>;
+  clockActivityLoading?: boolean;
+  onSelectClock?: (clockId: string) => void;
 };
 
 function rowModeLabel(row: FreeLobbyOpenSeatRow): string {
@@ -34,7 +39,14 @@ function rowModeLabel(row: FreeLobbyOpenSeatRow): string {
 /**
  * Open Games: open seats waiting for an opponent — select row → Accept (manual pick-up).
  */
-export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: Props) {
+export function FreeLobbyOpenGamesList({
+  mode,
+  selectedClock,
+  selectedRated,
+  openByClock,
+  clockActivityLoading = false,
+  onSelectClock,
+}: Props) {
   const router = useRouter();
   const { rows, loading, error } = useFreeLobbyOpenSeats(mode, selectedClock, selectedRated);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -107,6 +119,16 @@ export function FreeLobbyOpenGamesList({ mode, selectedClock, selectedRated }: P
       <p className="mt-1 text-[10px] text-gray-600" role="status">
         This list updates live when new seats are posted or joined.
       </p>
+      {openByClock && onSelectClock ? (
+        <ModeRoomClockActivityRow
+          variant="open"
+          mode={mode}
+          selectedClock={selectedClock}
+          onSelectClock={onSelectClock}
+          countsByClock={openByClock}
+          loading={clockActivityLoading}
+        />
+      ) : null}
       {loading ? <p className="mt-3 text-sm text-gray-500">Loading open seats…</p> : null}
       {error ? (
         <p className="mt-3 text-sm text-red-400" role="alert">
