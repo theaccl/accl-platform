@@ -75,8 +75,8 @@ export function FreeLobbyHubContent() {
             Free Play Lobby
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">
-            Your move first — use mode filters to lock onto Bullet, Blitz, Rapid, or Daily activity without leaving the
-            hub. Mode rooms remain available for chat and queue depth.
+            Your move first — pick a mode zone below to filter live boards and open seats without leaving the hub. Use
+            Room → only when you need mode-scoped chat or queue tools.
           </p>
         </header>
 

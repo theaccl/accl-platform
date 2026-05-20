@@ -1,10 +1,13 @@
 'use client';
 
-import Link from 'next/link';
-
 import { PLAT_MODE_LABELS, PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
+import { formatLobbyCountLabel } from '@/lib/formatLobbyCountLabel';
+import { forceDomNavigation } from '@/lib/forceDomNavigation';
 import type { LobbyHubModeFilter } from '@/lib/lobbyModeFilter';
 import type { FreePlayWatchListRow } from '@/lib/server/freePlayWatchList';
+
+const focusRing =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f141c]';
 
 type Props = {
   loading: boolean;
@@ -13,40 +16,35 @@ type Props = {
   modeFilter: LobbyHubModeFilter;
 };
 
-function rowsForFilter(
-  byMode: Record<PlatMode, FreePlayWatchListRow[]> | null,
-  modeFilter: LobbyHubModeFilter,
-): FreePlayWatchListRow[] {
-  if (!byMode) return [];
-  if (modeFilter) return byMode[modeFilter] ?? [];
-  return PLAT_MODE_ORDER.flatMap((m) => byMode[m] ?? []);
-}
-
 /**
- * Filterable live-board spectate list (continuity without page-hopping).
+ * Watch as spectator — mode tiles (violet), mirrors open-seat tile layout.
  */
 export function FreeLobbySpectatorFeed({ loading, error, byMode, modeFilter }: Props) {
-  const rows = rowsForFilter(byMode, modeFilter);
-  const filterLabel = modeFilter ? PLAT_MODE_LABELS[modeFilter] : 'All modes';
+  const modesToShow = PLAT_MODE_ORDER.filter((mode) => !modeFilter || mode === modeFilter);
+  const filterLabel = modeFilter ? PLAT_MODE_LABELS[modeFilter] : null;
+  const anyLive = modesToShow.some((mode) => (byMode?.[mode]?.length ?? 0) > 0);
 
   return (
     <section
       id="watch-as-spectator-anchor"
-      className="relative z-30 mb-4 rounded-xl border border-violet-500/30 bg-[#0c0e14] px-4 py-3 sm:px-5"
+      className="relative z-30 mb-4 rounded-xl border border-violet-500/35 bg-[#0c0e14] px-4 py-3 shadow-[0_0_0_1px_rgba(139,92,246,0.1)] sm:px-5"
       data-testid="free-lobby-spectator-feed"
       aria-label="Watch as spectator"
     >
       <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-300/90">
-        Live boards · spectator
+        Watch as spectator
       </h2>
       <p className="mt-1.5 text-xs leading-snug text-gray-400">
         {modeFilter ? (
           <>
-            Showing <strong className="text-violet-200/95">{filterLabel}</strong> only — read-only spectate links.
-            Clear the mode filter above to see every mode.
+            <strong className="text-violet-200/95">{filterLabel}</strong> live boards — violet dot = games in
+            session. Tap a tile to open that mode&apos;s watch list.
           </>
         ) : (
-          <>All modes — tap a mode filter chip to lock onto Bullet, Blitz, Rapid, or Daily activity.</>
+          <>
+            <strong className="text-violet-300/90">Violet dot</strong> = live boards you can watch. Tap a mode tile for
+            its spectate list (read-only).
+          </>
         )}
       </p>
       {error ? (
@@ -54,38 +52,69 @@ export function FreeLobbySpectatorFeed({ loading, error, byMode, modeFilter }: P
           {error}
         </p>
       ) : null}
-      {loading ? (
-        <p className="mt-3 text-xs text-gray-500" role="status">
-          Loading live boards…
-        </p>
-      ) : null}
-      {!loading && rows.length === 0 ? (
+
+      {!loading && !anyLive ? (
         <p className="mt-3 text-xs text-gray-500" data-testid="free-lobby-spectator-feed-empty">
           No live boards to watch{modeFilter ? ` in ${filterLabel}` : ''} right now.
         </p>
-      ) : null}
-      {!loading && rows.length > 0 ? (
-        <ul className="mt-3 flex max-h-[280px] flex-col gap-2 overflow-y-auto pr-1">
-          {rows.map((g) => (
-            <li key={g.id}>
-              <Link
-                href={`/game/${g.id}?spectate=1`}
-                className="flex flex-col rounded-lg border border-violet-500/25 bg-[#111018] px-3 py-2.5 text-left text-sm text-gray-200 transition hover:border-violet-400/45 hover:bg-[#16101f]"
-                data-testid={`free-watch-spectate-${g.id}`}
-              >
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="rounded border border-violet-500/30 bg-violet-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200/90">
-                    {PLAT_MODE_LABELS[g.mode]}
+      ) : (
+        <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {modesToShow.map((mode) => {
+            const rows = byMode?.[mode] ?? [];
+            const n = rows.length;
+            const on = n > 0;
+            const countLabel = formatLobbyCountLabel(n);
+            const clockKeys = [...new Set(rows.map((r) => r.liveTimeControlKey).filter(Boolean))].sort();
+            const clockQs = clockKeys.length === 1 ? `?clock=${encodeURIComponent(clockKeys[0]!)}` : '';
+            const href = `/free/lobby/${mode}${clockQs}#watch-as-spectator-anchor`;
+            const modeLabel = PLAT_MODE_LABELS[mode];
+            return (
+              <li key={mode} className="min-h-0">
+                <a
+                  href={href}
+                  onClick={(e) => forceDomNavigation(e, href)}
+                  onPointerUp={(e) => {
+                    if (e.pointerType === 'touch') window.location.assign(href);
+                  }}
+                  aria-label={
+                    on
+                      ? `${modeLabel}: ${countLabel} live game(s) — open watch list`
+                      : `${modeLabel}: no live boards — open watch area`
+                  }
+                  className={`flex min-h-[56px] w-full touch-manipulation flex-col justify-between gap-1.5 rounded-lg border px-2.5 py-2.5 text-left no-underline transition active:opacity-95 [-webkit-tap-highlight-color:rgba(167,139,250,0.25)] ${focusRing} ${
+                    on
+                      ? 'border-violet-500/50 bg-[#140f1c] shadow-[0_0_0_1px_rgba(139,92,246,0.12)] hover:border-violet-400/60 hover:bg-[#1a1424]'
+                      : 'border-[#2a3442] bg-[#111723] hover:border-violet-500/30 hover:bg-[#14101f]'
+                  }`}
+                  data-testid={`free-watch-link-${mode}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                        on
+                          ? 'bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.55)]'
+                          : 'bg-gray-600'
+                      }`}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 text-[13px] font-semibold text-gray-100">{modeLabel}</span>
+                  </div>
+                  <span
+                    className={`text-center text-[11px] font-semibold ${on ? 'text-violet-200/95' : 'text-gray-500'}`}
+                  >
+                    {on ? `Watch (${countLabel})` : 'No live games'}
                   </span>
-                  <span className="font-medium text-white">
-                    {g.whiteLabel} <span className="text-gray-500">vs</span> {g.blackLabel}
-                  </span>
-                </span>
-                <span className="text-[12px] text-gray-500">{g.timeLabel} · spectate</span>
-              </Link>
-            </li>
-          ))}
+                </a>
+              </li>
+            );
+          })}
         </ul>
+      )}
+
+      {loading ? (
+        <p className="mt-2 text-[11px] text-gray-600" role="status">
+          Loading watch list…
+        </p>
       ) : null}
     </section>
   );

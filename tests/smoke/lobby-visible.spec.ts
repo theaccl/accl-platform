@@ -27,6 +27,7 @@ test.describe('lobby visibility (authenticated)', () => {
     await expect(page.getByTestId('free-lobby-daily-async')).toBeVisible();
     await expect(page.getByTestId('free-lobby-mode-filter-strip')).toBeVisible();
     await expect(page.getByTestId('free-lobby-spectator-feed')).toBeVisible();
+    await expect(page.getByTestId('free-watch-link-blitz')).toBeVisible();
     await expect(page.getByTestId('free-open-pairing-by-mode')).toBeVisible();
     await expect(page.getByTestId('nexus-lobby-actions-bar')).toHaveCount(0);
   });

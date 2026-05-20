@@ -18,16 +18,15 @@ type Props = {
 };
 
 /**
- * Open public pairing — respects hub mode filter; join via mode room (secondary depth).
+ * Open public pairing — mode tiles (emerald), mirrors spectator tile layout.
  */
 export function FreePlayOpenPairingByMode({ activity, openSeatCounts, loading, modeFilter }: Props) {
-  const modesToShow = PLAT_MODE_ORDER.filter((mode) => {
-    if (modeFilter && mode !== modeFilter) return false;
+  const modesToShow = PLAT_MODE_ORDER.filter((mode) => !modeFilter || mode === modeFilter);
+  const filterLabel = modeFilter ? PLAT_MODE_LABELS[modeFilter] : null;
+  const anyOpen = modesToShow.some((mode) => {
     const openN = openSeatCounts?.[mode] ?? 0;
     return activity[mode] || openN > 0;
   });
-
-  const filterLabel = modeFilter ? PLAT_MODE_LABELS[modeFilter] : null;
 
   return (
     <section
@@ -36,27 +35,32 @@ export function FreePlayOpenPairingByMode({ activity, openSeatCounts, loading, m
       aria-label="Open public pairing"
     >
       <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-300/90">
-        Open seats
+        Open public pairing
       </h2>
       <p className="mt-1.5 text-xs leading-snug text-gray-500">
         {modeFilter ? (
           <>
-            Joinable <strong className="text-gray-300">{filterLabel}</strong> seats waiting for an opponent.
+            <strong className="text-emerald-300/90">Green dot</strong> = joinable{' '}
+            <strong className="text-gray-300">{filterLabel}</strong> seats. Tap a tile to open Open Games.
           </>
         ) : (
-          <>Joinable public seats — use mode filters above to focus on one clock family.</>
+          <>
+            <strong className="text-emerald-400/90">Green dot</strong> = someone waiting in that mode. Tap a tile to
+            jump to Open Games.
+          </>
         )}
       </p>
 
-      {modesToShow.length === 0 && !loading ? (
+      {!loading && !anyOpen ? (
         <p className="mt-3 text-xs text-gray-500" data-testid="free-open-pairing-empty">
           No open public seats{modeFilter ? ` in ${filterLabel}` : ''} right now.
         </p>
       ) : (
-        <ul className="relative z-[101] mt-3 flex flex-col gap-2 sm:max-w-md">
+        <ul className="relative z-[101] mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {modesToShow.map((mode) => {
             const openN = openSeatCounts?.[mode] ?? 0;
-            const openLabel = formatLobbyCountLabel(openN > 0 ? openN : activity[mode] ? 1 : 0);
+            const on = activity[mode] || openN > 0;
+            const openLabel = formatLobbyCountLabel(openN > 0 ? openN : on ? 1 : 0);
             const modeLabel = PLAT_MODE_LABELS[mode];
             const modeRoomHref = `/free/lobby/${mode}#free-lobby-open-games-anchor`;
             return (
@@ -65,26 +69,35 @@ export function FreePlayOpenPairingByMode({ activity, openSeatCounts, loading, m
                   href={modeRoomHref}
                   onClick={(e) => forceDomNavigation(e, modeRoomHref)}
                   onPointerUp={(e) => {
-                    if (e.pointerType === 'touch') {
-                      window.location.assign(modeRoomHref);
-                    }
+                    if (e.pointerType === 'touch') window.location.assign(modeRoomHref);
                   }}
-                  aria-label={`${modeLabel}: ${openLabel} open seat(s) — open games list`}
-                  className={`flex min-h-[48px] w-full touch-manipulation items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left no-underline transition active:opacity-95 ${focusRing} border-emerald-500/55 bg-[#0f1a14] hover:border-emerald-400/70 hover:bg-[#102016]`}
+                  aria-label={
+                    on
+                      ? `${modeLabel}: ${openLabel} open seat(s) — open games list`
+                      : `${modeLabel}: no open seats — open mode room`
+                  }
+                  className={`flex min-h-[56px] w-full touch-manipulation flex-col justify-between gap-1.5 rounded-lg border px-2.5 py-2.5 text-left no-underline transition active:opacity-95 [-webkit-tap-highlight-color:rgba(16,185,129,0.25)] ${focusRing} ${
+                    on
+                      ? 'border-emerald-500/55 bg-[#0f1a14] shadow-[0_0_0_1px_rgba(16,185,129,0.18)] hover:border-emerald-400/70 hover:bg-[#102016]'
+                      : 'border-[#2a3442] bg-[#111723] hover:border-emerald-500/35 hover:bg-[#141c2a]'
+                  }`}
                   data-testid={`free-open-pairing-link-${mode}`}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.65)]"
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                        on
+                          ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.65)]'
+                          : 'bg-gray-600'
+                      }`}
                       aria-hidden
                     />
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold text-gray-100">{modeLabel}</span>
-                      <span className="block text-[10px] text-emerald-300/90">{openLabel} open seat(s)</span>
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-300/95">
-                    Join →
+                    <span className="min-w-0 text-[13px] font-semibold text-gray-100">{modeLabel}</span>
+                  </div>
+                  <span
+                    className={`text-center text-[11px] font-semibold ${on ? 'text-emerald-300/95' : 'text-gray-500'}`}
+                  >
+                    {on ? `Open (${openLabel})` : 'No open seats'}
                   </span>
                 </a>
               </li>

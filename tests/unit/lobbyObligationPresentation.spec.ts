@@ -45,6 +45,13 @@ test.describe('lobby obligation presentation (unit)', () => {
     expect(hub.indexOf('FreeLobbyCurrentGamesPanel')).toBeLessThan(hub.indexOf('FreeLobbyModeFilterStrip'));
     expect(hub.indexOf('FreeLobbyModeFilterStrip')).toBeLessThan(hub.indexOf('FreeLobbySpectatorFeed'));
     expect(hub).toContain('FreeLobbyModeFilterStrip');
+    const strip = readFileSync(join(process.cwd(), 'components', 'free', 'FreeLobbyModeFilterStrip.tsx'), 'utf8');
+    expect(strip).toContain('ModeFilterCard');
+    expect(strip).toContain('data-mode-filter-selected');
+    const spectator = readFileSync(join(process.cwd(), 'components', 'free', 'FreeLobbySpectatorFeed.tsx'), 'utf8');
+    expect(spectator).toContain('free-watch-link-');
+    expect(spectator).toContain('grid-cols-2');
+    expect(spectator).toContain('bg-violet-400');
     expect(panel).toContain('free-lobby-your-move-heading');
     expect(panel).toContain('free-lobby-tournament-live');
   });
