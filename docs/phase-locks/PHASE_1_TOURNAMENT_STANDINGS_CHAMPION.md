@@ -80,6 +80,7 @@ Standings UI redesign, payouts, Swiss table, Elo recalculation, trophy emitter c
 
 ## Related
 
+- [PHASE_1_FREEZE_AUDIT.md](./PHASE_1_FREEZE_AUDIT.md) — consolidated freeze classification
 - [PHASE_1_TOURNAMENT_4P_KO_VERIFICATION.md](./PHASE_1_TOURNAMENT_4P_KO_VERIFICATION.md)
 - [PHASE_1_TOURNAMENT_RECOVERY.md](./PHASE_1_TOURNAMENT_RECOVERY.md)
 - [PHASE_1_TOURNAMENT_MULTI_CONCURRENCY.md](./PHASE_1_TOURNAMENT_MULTI_CONCURRENCY.md)

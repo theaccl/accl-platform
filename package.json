@@ -18,6 +18,7 @@
     "verify:tournament-recovery": "node scripts/tournament-recovery-verification.mjs",
     "verify:tournament-multi-concurrency": "node scripts/tournament-multi-concurrency-verification.mjs",
     "verify:tournament-standings-champion": "node scripts/tournament-standings-champion-verification.mjs",
+    "verify:phase-1-tournament-freeze": "npm run verify:tournament-4p-ko && npm run verify:tournament-8p-ko && npm run verify:tournament-noshow-ops && npm run verify:tournament-freeplay-coexistence && npm run verify:tournament-scheduled-start-noshow && npm run verify:tournament-spectator-reconnect && npm run verify:tournament-recovery && npm run verify:tournament-multi-concurrency && npm run verify:tournament-standings-champion",
     "e2e:audit-auth-metadata": "node scripts/e2e-audit-auth-app-metadata.mjs",
     "e2e:audit-auth-metadata:fix": "node scripts/e2e-audit-auth-app-metadata.mjs --fix",
     "audit:testers": "node scripts/audit-tester-readiness.mjs",
