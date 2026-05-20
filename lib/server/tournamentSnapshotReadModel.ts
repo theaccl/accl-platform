@@ -15,6 +15,11 @@ import {
   tournamentPhaseStatus,
   tournamentPhaseStatusLabel,
 } from '@/lib/server/tournamentOperator';
+import {
+  isEntrantPresentAtLaunch,
+  isLiveTournamentForLaunch,
+  launchCountdownRemainingSec,
+} from '@/lib/tournamentLaunchAttendance';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 
 const UUID_RE =
@@ -65,6 +70,7 @@ type TournamentDbRow = {
   sponsor_tag: string | null;
   created_by: string | null;
   created_at: string;
+  launch_scheduled_at?: string | null;
 };
 
 type EntryDbRow = {
@@ -72,6 +78,9 @@ type EntryDbRow = {
   seed: number | null;
   eliminated: boolean;
   current_round: number;
+  entry_role?: string | null;
+  checked_in_at?: string | null;
+  last_seen_at?: string | null;
 };
 
 type MatchDbRow = {
@@ -117,6 +126,15 @@ export type TournamentSnapshotResult =
         canBootstrap: boolean;
         phaseStatus: string;
         phaseLabel: string;
+        matchCount: number;
+      };
+      launch: {
+        isLiveTournament: boolean;
+        launchScheduledAt: string | null;
+        countdownRemainingSec: number | null;
+        checkedInCount: number;
+        presentCount: number;
+        standbyCount: number;
       };
       tournamentEcosystem: NexusEcosystem;
       tournament: {
@@ -135,6 +153,7 @@ export type TournamentSnapshotResult =
         createdAt: string;
         createdById: string | null;
         createdByDisplayName: string | null;
+        launchScheduledAt: string | null;
       };
       entries: Array<{
         userId: string;
@@ -142,6 +161,10 @@ export type TournamentSnapshotResult =
         seed: number | null;
         eliminated: boolean;
         currentRound: number;
+        entryRole: 'entrant' | 'standby';
+        checkedInAt: string | null;
+        lastSeenAt: string | null;
+        isPresentForLaunch: boolean;
       }>;
       matches: Array<{
         id: string;
@@ -227,7 +250,7 @@ export async function buildTournamentSnapshot(params: {
   const { data: tRaw, error: tErr } = await supabase
     .from('tournaments')
     .select(
-      'id,name,status,format,tempo,live_time_control,rated,ecosystem_scope,entry_fee_cents,prize_pool_cents,sponsor_label,sponsor_tag,created_by,created_at',
+      'id,name,status,format,tempo,live_time_control,rated,ecosystem_scope,entry_fee_cents,prize_pool_cents,sponsor_label,sponsor_tag,created_by,created_at,launch_scheduled_at',
     )
     .eq('id', tournamentId)
     .maybeSingle();
@@ -344,7 +367,7 @@ export async function buildTournamentSnapshot(params: {
   const [{ data: entriesRaw, error: eErr }, { data: mRaw, error: mErr }] = await Promise.all([
     supabase
       .from('tournament_entries')
-      .select('user_id, seed, eliminated, current_round')
+      .select('user_id, seed, eliminated, current_round, entry_role, checked_in_at, last_seen_at')
       .eq('tournament_id', tournamentId)
       .order('seed', { ascending: true, nullsFirst: false }),
     supabase
@@ -444,16 +467,36 @@ export async function buildTournamentSnapshot(params: {
   const displayNamesByUserId: Record<string, string> = {};
   for (const [uid, name] of displayByUser) displayNamesByUserId[uid] = name;
 
-  const entrantCount = entries.length;
+  const registeredEntries = entries.filter(
+    (e) => String(e.entry_role ?? 'entrant') === 'entrant',
+  );
+  const standbyEntries = entries.filter((e) => String(e.entry_role ?? '') === 'standby');
+  const entrantCount = registeredEntries.length;
   const bracketTargetSize = tournamentBracketTargetSize(entrantCount);
   const isBracketFull = isTournamentBracketFull(entrantCount);
+  const matchCount = matches.length;
   const phase = tournamentPhaseStatus({
     status: st,
     entrantCount,
-    matchCount: matches.length,
+    matchCount,
   });
   const canBootstrap =
-    canOperate && st === 'pending' && matches.length === 0 && isBracketFull;
+    canOperate && st === 'pending' && matchCount === 0 && isBracketFull;
+
+  const nowMs = Date.now();
+  const isLiveTournament = isLiveTournamentForLaunch(t.tempo);
+  const launchScheduledAt =
+    t.launch_scheduled_at != null ? String(t.launch_scheduled_at) : null;
+  const checkedInCount = registeredEntries.filter((e) => e.checked_in_at != null).length;
+  const presentCount = registeredEntries.filter((e) =>
+    isEntrantPresentAtLaunch(
+      {
+        checkedInAt: e.checked_in_at != null ? String(e.checked_in_at) : null,
+        lastSeenAt: e.last_seen_at != null ? String(e.last_seen_at) : null,
+      },
+      nowMs,
+    ),
+  ).length;
 
   return {
     access: 'allowed',
@@ -476,6 +519,15 @@ export async function buildTournamentSnapshot(params: {
       canBootstrap,
       phaseStatus: phase,
       phaseLabel: tournamentPhaseStatusLabel(phase),
+      matchCount,
+    },
+    launch: {
+      isLiveTournament,
+      launchScheduledAt,
+      countdownRemainingSec: launchCountdownRemainingSec(launchScheduledAt, nowMs),
+      checkedInCount,
+      presentCount,
+      standbyCount: standbyEntries.length,
     },
     tournamentEcosystem: tEco,
     tournament: {
@@ -504,14 +556,25 @@ export async function buildTournamentSnapshot(params: {
       createdAt: String(t.created_at ?? ''),
       createdById,
       createdByDisplayName,
+      launchScheduledAt,
     },
-    entries: entries.map((e) => ({
-      userId: e.user_id,
-      displayName: displayByUser.get(e.user_id) ?? snapshotDisplayName(tEco, e.user_id, null),
-      seed: e.seed,
-      eliminated: e.eliminated,
-      currentRound: e.current_round,
-    })),
+    entries: entries.map((e) => {
+      const checkedInAt = e.checked_in_at != null ? String(e.checked_in_at) : null;
+      const lastSeenAt = e.last_seen_at != null ? String(e.last_seen_at) : null;
+      const entryRole =
+        String(e.entry_role ?? 'entrant') === 'standby' ? ('standby' as const) : ('entrant' as const);
+      return {
+        userId: e.user_id,
+        displayName: displayByUser.get(e.user_id) ?? snapshotDisplayName(tEco, e.user_id, null),
+        seed: e.seed,
+        eliminated: e.eliminated,
+        currentRound: e.current_round,
+        entryRole,
+        checkedInAt,
+        lastSeenAt,
+        isPresentForLaunch: isEntrantPresentAtLaunch({ checkedInAt, lastSeenAt }, nowMs),
+      };
+    }),
     matches: matchesOut,
     gameStatusById,
     displayNamesByUserId,

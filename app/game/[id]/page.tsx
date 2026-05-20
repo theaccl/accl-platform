@@ -38,6 +38,7 @@ import {
 } from '@/lib/gameTimeControl';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
+import { TournamentSessionRail } from '@/components/tournament/TournamentSessionRail';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
 import { canPickPieceForMove } from '@/lib/boardInteraction';
 import {
@@ -76,6 +77,7 @@ import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
 import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
+import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
 const MOVE_LOG_LOAD_REASONS = [
@@ -2298,16 +2300,29 @@ export default function GamePage() {
   }, [effectiveAnalysis]);
 
   /** Must run before any conditional returns — hooks order must not depend on `loading` / `game`. */
-  const continuityHubLink = useMemo(
-    () =>
-      game
-        ? inGameContinuityHubLink({
-            tempo: game.tempo ?? null,
-            live_time_control: game.live_time_control ?? null,
-          })
-        : inGameContinuityHubLink({ tempo: null, live_time_control: null }),
-    [game],
-  );
+  const continuityHubLink = useMemo(() => {
+    const tid = String(game?.tournament_id ?? '').trim();
+    if (tid && String(game?.play_context ?? '') === 'tournament') {
+      return tournamentContinuityHubLink(tid);
+    }
+    return game
+      ? inGameContinuityHubLink({
+          tempo: game.tempo ?? null,
+          live_time_control: game.live_time_control ?? null,
+        })
+      : inGameContinuityHubLink({ tempo: null, live_time_control: null });
+  }, [game]);
+
+  useEffect(() => {
+    if (!game || !userId || !myColor) return;
+    if (game.status !== 'finished') return;
+    const tid = String(game.tournament_id ?? '').trim();
+    if (!tid || String(game.play_context ?? '') !== 'tournament') return;
+    const t = window.setTimeout(() => {
+      router.replace(`/tournaments/${tid}`);
+    }, 2400);
+    return () => window.clearTimeout(t);
+  }, [game, userId, myColor, router]);
 
   const lobbyReturnHref = useMemo(() => {
     if (!game) return '/free/lobby';
@@ -2997,6 +3012,14 @@ export default function GamePage() {
             <strong style={{ color: '#e2e8f0' }}>Completed game</strong> — this board is a read-only
             record. Dragging is disabled; use <strong>Replay</strong> below to step through the moves (
             <strong>Final position</strong> returns to the end of the game).
+            {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
+              <>
+                {' '}
+                <span data-testid="tournament-return-shell-hint" style={{ color: '#93c5fd' }}>
+                  Returning to the tournament hub shortly…
+                </span>
+              </>
+            ) : null}
           </p>
           ) : null}
           <div
@@ -3784,19 +3807,29 @@ export default function GamePage() {
       ) : null}
 
       <div
-        data-testid="game-board"
-        data-interaction-mode={boardInteractionMode}
-        data-spectator-readonly={isPublicViewer ? '1' : '0'}
+        data-testid="game-board-with-tournament-rail"
         style={{
-          position: 'relative',
-          zIndex: 100,
-          maxWidth: 520,
-          width: '100%',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 16,
+          alignItems: 'flex-start',
           marginTop: 20,
-          isolation: 'isolate',
-          scrollMarginTop: 72,
         }}
       >
+        <div
+          data-testid="game-board"
+          data-interaction-mode={boardInteractionMode}
+          data-spectator-readonly={isPublicViewer ? '1' : '0'}
+          style={{
+            position: 'relative',
+            zIndex: 100,
+            flex: '1 1 280px',
+            maxWidth: 520,
+            width: '100%',
+            isolation: 'isolate',
+            scrollMarginTop: 72,
+          }}
+        >
         <Chessboard
           id="accl-e2e-board"
           position={boardPosition}
@@ -3925,6 +3958,14 @@ export default function GamePage() {
             </div>
           </div>
         )}
+        </div>
+        {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
+          <TournamentSessionRail
+            tournamentId={String(game.tournament_id)}
+            currentGameId={game.id}
+            userId={userId || null}
+          />
+        ) : null}
       </div>
       {userId ? (
         <div style={{ marginTop: 20, maxWidth: 520 }}>

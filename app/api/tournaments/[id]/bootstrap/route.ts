@@ -1,15 +1,11 @@
 import { getSupabaseUserFromCookies } from '@/lib/auth/getSupabaseUserFromCookies';
 import { isModeratorUser } from '@/lib/moderatorAuth';
-import {
-  canUserOperateTournament,
-  isTournamentBracketFull,
-  orderedUserIdsFromTournamentEntries,
-} from '@/lib/server/tournamentOperator';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { guardRequest } from '@/lib/server/requestGuard';
+import { runTournamentBootstrap } from '@/lib/server/tournamentBootstrap';
+import { canUserOperateTournament } from '@/lib/server/tournamentOperator';
 import { tournamentApiErrorPayload } from '@/lib/server/tournamentUserFacingError';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
-import { persistTournamentBracket, TournamentBracketPersistError } from '@/lib/tournamentPersist';
 
 export const runtime = 'nodejs';
 
@@ -28,6 +24,7 @@ function json(body: unknown, status = 200): Response {
 
 /**
  * Host/moderator bracket bootstrap — same persistence path as internal ops bootstrap.
+ * Live tournaments: attendance gate + optional launch countdown before spawn.
  */
 export async function POST(request: Request, context: { params: { id: string } }): Promise<Response> {
   const guard = guardRequest(request, 'tournaments');
@@ -61,7 +58,7 @@ export async function POST(request: Request, context: { params: { id: string } }
 
     const { data: tRow, error: tErr } = await supabase
       .from('tournaments')
-      .select('id, status, created_by')
+      .select('id, created_by')
       .eq('id', tournamentId)
       .maybeSingle();
     if (tErr) return json({ ok: false, error: tErr.message }, 502);
@@ -78,70 +75,34 @@ export async function POST(request: Request, context: { params: { id: string } }
       return json({ ok: false, error: 'Only the tournament host or a moderator can start the bracket.' }, 403);
     }
 
-    if (String(tRow.status ?? '').toLowerCase() !== 'pending') {
-      return json({ ok: false, error: 'Tournament must be pending to start the bracket.' }, 409);
-    }
-
-    const { data: entries, error: eErr } = await supabase
-      .from('tournament_entries')
-      .select('user_id, seed')
-      .eq('tournament_id', tournamentId);
-    if (eErr) return json({ ok: false, error: eErr.message }, 502);
-
-    const entryRows = (entries ?? []) as { user_id: string; seed: number | null }[];
-    const entrantCount = entryRows.length;
-    if (!isTournamentBracketFull(entrantCount)) {
+    const result = await runTournamentBootstrap(supabase, tournamentId);
+    if (!result.ok) {
+      auditApiLog('tournament_bootstrap', {
+        result: 'reject',
+        code: result.code,
+        detail: result.error,
+      });
       return json(
         {
           ok: false,
-          error: 'Not enough entrants to start — bracket must be full (power-of-2 field, min 2).',
-          entrant_count: entrantCount,
+          error: result.error,
+          code: result.code,
+          ...(result.detail ?? {}),
         },
-        409,
+        result.status,
       );
     }
 
-    const { count: matchCount, error: mErr } = await supabase
-      .from('tournament_matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('tournament_id', tournamentId);
-    if (mErr) return json({ ok: false, error: mErr.message }, 502);
-    if ((matchCount ?? 0) > 0) {
-      return json({ ok: false, error: 'Bracket already exists for this tournament.' }, 409);
-    }
+    auditApiLog('tournament_bootstrap', {
+      result: 'ok',
+      tournament_id: shortId(tournamentId),
+      operator: shortId(sessionUser.id),
+      moderator: isModerator,
+      idempotent: result.idempotent_replay,
+      launch_attendance: result.launch_attendance_applied,
+    });
 
-    const orderedUserIds = orderedUserIdsFromTournamentEntries(
-      entryRows.map((r) => ({ userId: r.user_id, seed: r.seed })),
-    );
-
-    try {
-      const result = await persistTournamentBracket(supabase, tournamentId, orderedUserIds);
-      const gameIds = result.matchRows.map((m) => m.game_id).filter((x): x is string => Boolean(x));
-
-      auditApiLog('tournament_bootstrap', {
-        result: 'ok',
-        tournament_id: shortId(tournamentId),
-        operator: shortId(sessionUser.id),
-        moderator: isModerator,
-        idempotent: Boolean(result.idempotentReplay),
-      });
-
-      return json({
-        ok: true,
-        tournament_id: tournamentId,
-        idempotent_replay: result.idempotentReplay ?? false,
-        match_count: result.matchRows.length,
-        game_ids: gameIds,
-      });
-    } catch (e) {
-      if (e instanceof TournamentBracketPersistError) {
-        auditApiLog('tournament_bootstrap', { result: 'reject', detail: e.message });
-        return json({ ok: false, error: e.message }, 409);
-      }
-      const message = e instanceof Error ? e.message : 'Bootstrap failed';
-      auditApiLog('tournament_bootstrap', { result: 'error', detail: message });
-      return json({ ok: false, error: message }, 502);
-    }
+    return json(result);
   } finally {
     guard.release();
   }

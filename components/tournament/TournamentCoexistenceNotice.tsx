@@ -110,21 +110,31 @@ export function TournamentCoexistenceNotice(props: Props) {
   return (
     <div
       data-testid="tournament-active-match-reminder"
-      className="mb-4 rounded-xl border border-amber-600/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-100/95"
+      className="mb-4 rounded-xl border-2 border-amber-500/55 bg-gradient-to-br from-amber-950/50 to-[#14100c] px-4 py-3 text-sm text-amber-50"
       role="status"
     >
-      <p>
-        You currently have an active tournament match. Tournament games are separate from free play.
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200/90">
+        Your match ready — tournament obligation
       </p>
-      <p className="mt-2 text-xs text-amber-200/80">
+      <p className="mt-1 leading-snug text-amber-100/95">
+        Live bracket play takes priority over free-play discovery. Open your board or return to the event hub.
+      </p>
+      <p className="mt-3 flex flex-wrap gap-3 text-xs">
+        <Link
+          href={`/game/${primary.gameId}`}
+          data-testid="tournament-obligation-game-link"
+          className="inline-flex min-h-[36px] items-center rounded-lg border border-amber-400/50 bg-amber-900/40 px-3 py-1.5 font-bold text-amber-50 underline-offset-2 hover:bg-amber-800/50"
+        >
+          Open your board
+        </Link>
         <Link
           href={`/tournaments/${primary.tournamentId}`}
-          className="font-semibold text-sky-300 underline hover:text-sky-200"
+          className="inline-flex min-h-[36px] items-center font-semibold text-sky-300 underline hover:text-sky-200"
         >
-          Open tournament
+          Tournament hub
         </Link>
         {rows.length > 1 ? (
-          <span className="text-amber-200/70"> — {rows.length} active tournament boards</span>
+          <span className="self-center text-amber-200/70">{rows.length} active event boards</span>
         ) : null}
       </p>
     </div>

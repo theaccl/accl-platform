@@ -3,7 +3,7 @@ import type { GameContinuityRow } from '@/lib/gameContinuityPresentation';
 export const YOUR_MOVE_SECTION_TITLE = 'Your move';
 export const TOURNAMENT_LIVE_SECTION_TITLE = 'Tournament — Your Move / Live';
 export const TOURNAMENT_LIVE_SECTION_HINT =
-  'Bracket boards take priority over free-play queues — return here between rounds.';
+  'Your match ready — bracket boards dominate free-play queues; you will be routed to your board or event hub while live.';
 export const FREE_LIVE_SECTION_TITLE = 'Free play — Live';
 export const DAILY_ASYNC_YOUR_MOVE_TITLE = 'Daily / Async — Your Move';
 

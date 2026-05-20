@@ -5,6 +5,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { FreeLobbyCurrentGamesPanel } from '@/components/free/FreeLobbyCurrentGamesPanel';
+import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
+import { TournamentFieldReadyNotice } from '@/components/tournament/TournamentFieldReadyNotice';
 import { FreeLobbyModeFilterStrip } from '@/components/free/FreeLobbyModeFilterStrip';
 import { FreeLobbySpectatorFeed } from '@/components/free/FreeLobbySpectatorFeed';
 import { LobbyChatPanel } from '@/components/free/LobbyChatPanel';
@@ -79,6 +81,9 @@ export function FreeLobbyHubContent() {
             Room → only when you need mode-scoped chat or queue tools.
           </p>
         </header>
+
+        <TournamentFieldReadyNotice />
+        <TournamentCoexistenceNotice mode="lobby_reminder" />
 
         <FreeLobbyCurrentGamesPanel modeFilter={modeFilter} obligations={obligations} />
 

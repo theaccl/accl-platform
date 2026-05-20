@@ -6,6 +6,8 @@ import { UtcClock } from '@/components/UtcClock';
 import { PublicProfileLink } from '@/components/PublicProfileLink';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { TournamentLaunchPanel } from '@/components/tournament/TournamentLaunchPanel';
+import { TournamentSessionShell } from '@/components/tournament/TournamentSessionShell';
 import {
   championUserIdFromTournament,
   findFinalMatch,
@@ -13,6 +15,11 @@ import {
   matchBoardStatus,
   matchStatusPresentation,
 } from '@/lib/tournamentReadModel';
+import { isLiveTournamentForLaunch } from '@/lib/tournamentLaunchAttendance';
+import {
+  findViewerPlayableMatch,
+  isTournamentSessionLive,
+} from '@/lib/tournamentSessionContinuity';
 import { supabase } from '@/lib/supabaseClient';
 
 const UUID_RE =
@@ -57,6 +64,7 @@ type ViewerMeta = {
   canOperate: boolean;
   isCreator: boolean;
   isParticipant: boolean;
+  isModerator: boolean;
 };
 
 type OperatorMeta = {
@@ -66,30 +74,16 @@ type OperatorMeta = {
   isBracketFull: boolean;
   canBootstrap: boolean;
   phaseLabel: string;
+  matchCount: number;
 };
 
-function findViewerPlayableMatch(
-  userId: string | null,
-  matches: MatchRow[],
-  gameStatusById: Record<string, string>
-): MatchRow | null {
-  if (!userId) return null;
-  const mine = matches
-    .filter(
-      (m) =>
-        (m.player1_id === userId || m.player2_id === userId) &&
-        !m.winner_id &&
-        m.player1_id &&
-        m.player2_id
-    )
-    .sort((a, b) => a.round_number - b.round_number || a.match_number - b.match_number);
-  for (const m of mine) {
-    if (!m.game_id) continue;
-    const board = matchBoardStatus(m, gameStatusById[m.game_id]);
-    if (board === 'ready' || board === 'live' || board === 'waiting') return m;
-  }
-  return null;
-}
+type LaunchMeta = {
+  isLiveTournament: boolean;
+  launchScheduledAt: string | null;
+  checkedInCount: number;
+  presentCount: number;
+  standbyCount: number;
+};
 
 export default function TournamentDetailPage() {
   const params = useParams();
@@ -112,8 +106,8 @@ export default function TournamentDetailPage() {
   } | null>(null);
   const [viewerMeta, setViewerMeta] = useState<ViewerMeta | null>(null);
   const [operatorMeta, setOperatorMeta] = useState<OperatorMeta | null>(null);
-  const [bootstrapBusy, setBootstrapBusy] = useState(false);
-  const [bootstrapErr, setBootstrapErr] = useState<string | null>(null);
+  const [launchMeta, setLaunchMeta] = useState<LaunchMeta | null>(null);
+  const [launchScheduledAt, setLaunchScheduledAt] = useState<string | null>(null);
 
   const matchesList = useMemo(() => payload?.matches ?? [], [payload]);
   const matchesByRound = useMemo(() => {
@@ -160,7 +154,6 @@ export default function TournamentDetailPage() {
       return;
     }
     setSnapshotLoading(true);
-    setBootstrapErr(null);
     const res = await fetch(`/api/tournaments/${encodeURIComponent(idRaw)}/snapshot`, {
       credentials: 'include',
     });
@@ -172,6 +165,7 @@ export default function TournamentDetailPage() {
         canOperate?: boolean;
         isCreator?: boolean;
         isParticipant?: boolean;
+        isModerator?: boolean;
       };
       operator?: {
         entrantCount?: number;
@@ -180,7 +174,9 @@ export default function TournamentDetailPage() {
         isBracketFull?: boolean;
         canBootstrap?: boolean;
         phaseLabel?: string;
+        matchCount?: number;
       };
+      launch?: LaunchMeta;
       tournament?: {
         id: string;
         name: string;
@@ -194,6 +190,7 @@ export default function TournamentDetailPage() {
         prizePoolCents: number | null;
         createdAt: string;
         createdById: string | null;
+        launchScheduledAt?: string | null;
       };
       entries?: Array<{
         userId: string;
@@ -223,6 +220,8 @@ export default function TournamentDetailPage() {
     if (!res.ok || !j.ok || !j.tournament) {
       setViewerMeta(null);
       setOperatorMeta(null);
+      setLaunchMeta(null);
+      setLaunchScheduledAt(null);
       setDisplayNames({});
       setPayload({
         tournament: null,
@@ -273,6 +272,7 @@ export default function TournamentDetailPage() {
       canOperate: Boolean(j.viewer?.canOperate),
       isCreator: Boolean(j.viewer?.isCreator),
       isParticipant: Boolean(j.viewer?.isParticipant),
+      isModerator: Boolean(j.viewer?.isModerator),
     });
     setOperatorMeta(
       j.operator
@@ -283,9 +283,20 @@ export default function TournamentDetailPage() {
             isBracketFull: Boolean(j.operator.isBracketFull),
             canBootstrap: Boolean(j.operator.canBootstrap),
             phaseLabel: j.operator.phaseLabel ?? 'Tournament',
+            matchCount: j.operator.matchCount ?? matches.length,
           }
         : null
     );
+    setLaunchMeta(
+      j.launch ?? {
+        isLiveTournament: isLiveTournamentForLaunch(j.tournament.tempo),
+        launchScheduledAt: j.tournament.launchScheduledAt ?? null,
+        checkedInCount: 0,
+        presentCount: 0,
+        standbyCount: 0,
+      },
+    );
+    setLaunchScheduledAt(j.tournament.launchScheduledAt ?? null);
     setDisplayNames(j.displayNamesByUserId ?? {});
     setPayload({
       tournament,
@@ -319,6 +330,15 @@ export default function TournamentDetailPage() {
       cancelled = true;
     };
   }, [loadSnapshot]);
+
+  useEffect(() => {
+    const t = payload?.tournament;
+    if (!t || !isTournamentSessionLive(t.status)) return;
+    const interval = window.setInterval(() => {
+      void loadSnapshot();
+    }, 8000);
+    return () => window.clearInterval(interval);
+  }, [payload?.tournament, loadSnapshot]);
 
   const labelFor = (uid: string | null) => {
     if (!uid) return '—';
@@ -404,6 +424,32 @@ export default function TournamentDetailPage() {
             ) : null}
           </p>
 
+          {operatorMeta && launchMeta ? (
+            <TournamentLaunchPanel
+              currentUserId={currentUserId}
+              meta={{
+                tournamentId: tournament.id,
+                tournamentStatus: tournament.status,
+                tempo: tournament.tempo,
+                createdById: tournament.created_by,
+                launchScheduledAt,
+                entrantCount: operatorMeta.entrantCount,
+                bracketTargetSize: operatorMeta.bracketTargetSize,
+                matchCount: operatorMeta.matchCount,
+                isBracketFull: operatorMeta.isBracketFull,
+                canBootstrap: operatorMeta.canBootstrap,
+                canOperate: Boolean(viewerMeta?.canOperate),
+                isModerator: Boolean(viewerMeta?.isModerator),
+                isCreator: Boolean(viewerMeta?.isCreator),
+                isParticipant: Boolean(viewerMeta?.isParticipant),
+                launch: launchMeta,
+              }}
+              matches={matchesList}
+              gameStatusById={gameStatusById}
+              onReload={loadSnapshot}
+            />
+          ) : null}
+
           {operatorMeta ? (
             <section
               data-testid="tournament-phase-status"
@@ -431,6 +477,20 @@ export default function TournamentDetailPage() {
                 ) : null}
               </p>
             </section>
+          ) : null}
+
+          {viewerMeta?.isParticipant && isTournamentSessionLive(tournament.status) ? (
+            <TournamentSessionShell
+              tournamentId={tournament.id}
+              tournamentName={tournament.name}
+              tournamentStatus={tournament.status}
+              userId={currentUserId}
+              isParticipant={viewerMeta.isParticipant}
+              entries={entriesList}
+              matches={matchesList}
+              gameStatusById={gameStatusById}
+              maxRound={maxRound}
+            />
           ) : null}
 
           {viewerPlayableMatch?.game_id ? (
@@ -466,64 +526,6 @@ export default function TournamentDetailPage() {
               >
                 Go to your game
               </Link>
-            </section>
-          ) : null}
-
-          {viewerMeta?.canOperate && String(tournament.status).toLowerCase() === 'pending' ? (
-            <section
-              data-testid="tournament-operator-controls"
-              style={{
-                marginTop: 16,
-                padding: 16,
-                borderRadius: 10,
-                border: '1px solid #475569',
-                background: '#111827',
-              }}
-            >
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>Operator controls</p>
-              <p style={{ margin: '8px 0 14px 0', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>
-                {operatorMeta?.canBootstrap
-                  ? 'Bracket is full. Start spawns round-one boards using the verified bootstrap path.'
-                  : operatorMeta?.isBracketFull
-                    ? 'Bracket cannot be started from this page right now.'
-                    : 'Start is available once the entrant field is full (power-of-2 bracket size).'}
-              </p>
-              <button
-                type="button"
-                data-testid="tournament-start-button"
-                disabled={bootstrapBusy || !operatorMeta?.canBootstrap}
-                onClick={async () => {
-                  setBootstrapBusy(true);
-                  setBootstrapErr(null);
-                  const res = await fetch(
-                    `/api/tournaments/${encodeURIComponent(idRaw)}/bootstrap`,
-                    { method: 'POST', credentials: 'include' }
-                  );
-                  const j = (await res.json()) as { ok?: boolean; error?: string };
-                  setBootstrapBusy(false);
-                  if (!res.ok || !j.ok) {
-                    setBootstrapErr(j.error ?? 'Could not start tournament.');
-                    return;
-                  }
-                  await loadSnapshot();
-                }}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: 8,
-                  border: '1px solid #16a34a',
-                  background: operatorMeta?.canBootstrap ? '#15803d' : '#334155',
-                  color: '#fff',
-                  fontWeight: 700,
-                  cursor:
-                    bootstrapBusy || !operatorMeta?.canBootstrap ? 'not-allowed' : 'pointer',
-                  opacity: bootstrapBusy || !operatorMeta?.canBootstrap ? 0.65 : 1,
-                }}
-              >
-                {bootstrapBusy ? 'Starting…' : 'Start Tournament'}
-              </button>
-              {bootstrapErr ? (
-                <p style={{ margin: '10px 0 0 0', fontSize: 13, color: '#fca5a5' }}>{bootstrapErr}</p>
-              ) : null}
             </section>
           ) : null}
 
