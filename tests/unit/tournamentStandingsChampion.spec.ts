@@ -75,6 +75,8 @@ test.describe('Phase 1 — tournament standings + champion (unit)', () => {
     const src = readFileSync(join(process.cwd(), 'app', 'tournaments', '[id]', 'page.tsx'), 'utf8');
     expect(src).toContain('championUserIdFromTournament');
     expect(src).toContain('data-testid="tournament-champion-banner"');
+    expect(src).toContain('data-testid="tournament-start-button"');
+    expect(src).toContain('data-testid="tournament-your-match-ready"');
   });
 
   test('verification script documents read-model-only scope', () => {

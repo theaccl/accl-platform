@@ -7,6 +7,14 @@ import type { NexusEcosystem } from '@/lib/nexus/getNexusData';
 import { matchBoardStatus } from '@/lib/tournamentReadModel';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { DEFAULT_FREE_TOURNAMENT_MAX_ENTRANTS } from '@/lib/server/tournamentFreeJoin';
+import {
+  canUserOperateTournament,
+  isTournamentBracketFull,
+  tournamentBracketTargetSize,
+  tournamentPhaseStatus,
+  tournamentPhaseStatusLabel,
+} from '@/lib/server/tournamentOperator';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 
 const UUID_RE =
@@ -98,6 +106,17 @@ export type TournamentSnapshotResult =
         isParticipant: boolean;
         /** Same as participant or creator (full bracket + pending eligibility). */
         isInsider: boolean;
+        isModerator: boolean;
+        canOperate: boolean;
+      };
+      operator: {
+        entrantCount: number;
+        bracketTargetSize: number;
+        maxEntrants: number;
+        isBracketFull: boolean;
+        canBootstrap: boolean;
+        phaseStatus: string;
+        phaseLabel: string;
       };
       tournamentEcosystem: NexusEcosystem;
       tournament: {
@@ -153,6 +172,7 @@ type ViewerInput = {
   authenticated: boolean;
   userId: string | null;
   viewerEcosystem: NexusEcosystem | null;
+  isModerator?: boolean;
 };
 
 async function isUserEntrant(
@@ -312,6 +332,14 @@ export async function buildTournamentSnapshot(params: {
   }
 
   const isInsider = isCreator || isParticipant;
+  const isModerator = Boolean(v.authenticated && v.isModerator);
+  const canOperate = v.authenticated
+    ? canUserOperateTournament({
+        userId: v.userId ?? '',
+        createdById: t.created_by != null ? String(t.created_by) : null,
+        isModerator,
+      })
+    : false;
 
   const [{ data: entriesRaw, error: eErr }, { data: mRaw, error: mErr }] = await Promise.all([
     supabase
@@ -416,6 +444,17 @@ export async function buildTournamentSnapshot(params: {
   const displayNamesByUserId: Record<string, string> = {};
   for (const [uid, name] of displayByUser) displayNamesByUserId[uid] = name;
 
+  const entrantCount = entries.length;
+  const bracketTargetSize = tournamentBracketTargetSize(entrantCount);
+  const isBracketFull = isTournamentBracketFull(entrantCount);
+  const phase = tournamentPhaseStatus({
+    status: st,
+    entrantCount,
+    matchCount: matches.length,
+  });
+  const canBootstrap =
+    canOperate && st === 'pending' && matches.length === 0 && isBracketFull;
+
   return {
     access: 'allowed',
     reason: 'ok',
@@ -426,6 +465,17 @@ export async function buildTournamentSnapshot(params: {
       isCreator,
       isParticipant,
       isInsider,
+      isModerator,
+      canOperate,
+    },
+    operator: {
+      entrantCount,
+      bracketTargetSize,
+      maxEntrants: DEFAULT_FREE_TOURNAMENT_MAX_ENTRANTS,
+      isBracketFull,
+      canBootstrap,
+      phaseStatus: phase,
+      phaseLabel: tournamentPhaseStatusLabel(phase),
     },
     tournamentEcosystem: tEco,
     tournament: {

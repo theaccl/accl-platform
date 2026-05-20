@@ -1,4 +1,5 @@
 import { getSupabaseUserFromCookies } from '@/lib/auth/getSupabaseUserFromCookies';
+import { isModeratorUser } from '@/lib/moderatorAuth';
 import { resolveUserNexusEcosystemFromAuthMetadata } from '@/lib/auth/resolveUserNexusEcosystem';
 import {
   buildTournamentSnapshot,
@@ -24,6 +25,7 @@ function json(body: unknown, status = 200): Response {
 function serializeAllowed(s: Extract<TournamentSnapshotResult, { access: 'allowed' }>) {
   return {
     viewer: s.viewer,
+    operator: s.operator,
     tournamentEcosystem: s.tournamentEcosystem,
     tournament: s.tournament,
     entries: s.entries,
@@ -48,11 +50,20 @@ export async function GET(request: Request, context: { params: { id: string } })
     }
 
     const sessionUser = await getSupabaseUserFromCookies();
+    const isModerator = sessionUser?.id
+      ? isModeratorUser({
+          userId: sessionUser.id,
+          appMetadata: sessionUser.app_metadata ?? {},
+          allowedModeratorUserIdsEnv: process.env.ACCL_MODERATOR_USER_IDS,
+          enableAllowlistFallback: process.env.ACCL_ENABLE_MODERATOR_ID_FALLBACK === 'true',
+        })
+      : false;
     const viewer = sessionUser?.id
       ? {
           authenticated: true as const,
           userId: sessionUser.id,
           viewerEcosystem: resolveUserNexusEcosystemFromAuthMetadata(sessionUser),
+          isModerator,
         }
       : { authenticated: false as const, userId: null as null, viewerEcosystem: null as null };
 

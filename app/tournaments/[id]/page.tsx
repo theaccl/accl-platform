@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShellNav } from '@/components/AppShellNav';
 import { UtcClock } from '@/components/UtcClock';
 import { PublicProfileLink } from '@/components/PublicProfileLink';
@@ -53,6 +53,44 @@ type MatchRow = {
   advance_winner_as: string | null;
 };
 
+type ViewerMeta = {
+  canOperate: boolean;
+  isCreator: boolean;
+  isParticipant: boolean;
+};
+
+type OperatorMeta = {
+  entrantCount: number;
+  bracketTargetSize: number;
+  maxEntrants: number;
+  isBracketFull: boolean;
+  canBootstrap: boolean;
+  phaseLabel: string;
+};
+
+function findViewerPlayableMatch(
+  userId: string | null,
+  matches: MatchRow[],
+  gameStatusById: Record<string, string>
+): MatchRow | null {
+  if (!userId) return null;
+  const mine = matches
+    .filter(
+      (m) =>
+        (m.player1_id === userId || m.player2_id === userId) &&
+        !m.winner_id &&
+        m.player1_id &&
+        m.player2_id
+    )
+    .sort((a, b) => a.round_number - b.round_number || a.match_number - b.match_number);
+  for (const m of mine) {
+    if (!m.game_id) continue;
+    const board = matchBoardStatus(m, gameStatusById[m.game_id]);
+    if (board === 'ready' || board === 'live' || board === 'waiting') return m;
+  }
+  return null;
+}
+
 export default function TournamentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -72,6 +110,10 @@ export default function TournamentDetailPage() {
     gameStatusById: Record<string, string>;
     error: string | null;
   } | null>(null);
+  const [viewerMeta, setViewerMeta] = useState<ViewerMeta | null>(null);
+  const [operatorMeta, setOperatorMeta] = useState<OperatorMeta | null>(null);
+  const [bootstrapBusy, setBootstrapBusy] = useState(false);
+  const [bootstrapErr, setBootstrapErr] = useState<string | null>(null);
 
   const matchesList = useMemo(() => payload?.matches ?? [], [payload]);
   const matchesByRound = useMemo(() => {
@@ -107,6 +149,154 @@ export default function TournamentDetailPage() {
     [matchesList]
   );
 
+  const viewerPlayableMatch = useMemo(
+    () => findViewerPlayableMatch(currentUserId, matchesList, payload?.gameStatusById ?? {}),
+    [currentUserId, matchesList, payload?.gameStatusById]
+  );
+
+  const loadSnapshot = useCallback(async () => {
+    if (!idOk) {
+      setSnapshotLoading(false);
+      return;
+    }
+    setSnapshotLoading(true);
+    setBootstrapErr(null);
+    const res = await fetch(`/api/tournaments/${encodeURIComponent(idRaw)}/snapshot`, {
+      credentials: 'include',
+    });
+    const j = (await res.json()) as {
+      ok?: boolean;
+      code?: string;
+      error?: string;
+      viewer?: {
+        canOperate?: boolean;
+        isCreator?: boolean;
+        isParticipant?: boolean;
+      };
+      operator?: {
+        entrantCount?: number;
+        bracketTargetSize?: number;
+        maxEntrants?: number;
+        isBracketFull?: boolean;
+        canBootstrap?: boolean;
+        phaseLabel?: string;
+      };
+      tournament?: {
+        id: string;
+        name: string;
+        status: string;
+        format: string;
+        tempo: string | null;
+        liveTimeControl: string | null;
+        rated: boolean;
+        ecosystemScope: string;
+        entryFeeCents: number | null;
+        prizePoolCents: number | null;
+        createdAt: string;
+        createdById: string | null;
+      };
+      entries?: Array<{
+        userId: string;
+        displayName: string;
+        seed: number | null;
+        eliminated: boolean;
+        currentRound: number;
+      }>;
+      matches?: Array<{
+        id: string;
+        round: number;
+        matchNumber: number;
+        player1: { userId: string | null; displayName: string | null };
+        player2: { userId: string | null; displayName: string | null };
+        winnerUserId: string | null;
+        gameId: string | null;
+        nextMatchId: string | null;
+        advanceWinnerAs: string | null;
+      }>;
+      gameStatusById?: Record<string, string>;
+      displayNamesByUserId?: Record<string, string>;
+    };
+    if (res.status === 401 && j.code === 'K12_REQUIRES_AUTH') {
+      router.replace(`/login?next=${encodeURIComponent(`/tournaments/${idRaw}`)}`);
+      return;
+    }
+    if (!res.ok || !j.ok || !j.tournament) {
+      setViewerMeta(null);
+      setOperatorMeta(null);
+      setDisplayNames({});
+      setPayload({
+        tournament: null,
+        entries: [],
+        matches: [],
+        gameStatusById: {},
+        error: j.error ?? `Could not load tournament (${res.status})`,
+      });
+      setSnapshotLoading(false);
+      return;
+    }
+
+    const tournament: TournamentRow = {
+      id: j.tournament.id,
+      name: j.tournament.name,
+      status: j.tournament.status,
+      format: j.tournament.format,
+      tempo: j.tournament.tempo ?? '',
+      live_time_control: j.tournament.liveTimeControl ?? null,
+      rated: j.tournament.rated,
+      created_by: j.tournament.createdById,
+      created_at: j.tournament.createdAt,
+      ecosystem_scope: j.tournament.ecosystemScope,
+      entry_fee_cents: j.tournament.entryFeeCents,
+      prize_pool_cents: j.tournament.prizePoolCents,
+    };
+
+    const entries: EntryRow[] = (j.entries ?? []).map((e) => ({
+      user_id: e.userId,
+      seed: e.seed,
+      eliminated: e.eliminated,
+      current_round: e.currentRound,
+    }));
+
+    const matches: MatchRow[] = (j.matches ?? []).map((m) => ({
+      id: m.id,
+      round_number: m.round,
+      match_number: m.matchNumber,
+      player1_id: m.player1?.userId ?? null,
+      player2_id: m.player2?.userId ?? null,
+      game_id: m.gameId,
+      winner_id: m.winnerUserId,
+      next_match_id: m.nextMatchId,
+      advance_winner_as: m.advanceWinnerAs,
+    }));
+
+    setViewerMeta({
+      canOperate: Boolean(j.viewer?.canOperate),
+      isCreator: Boolean(j.viewer?.isCreator),
+      isParticipant: Boolean(j.viewer?.isParticipant),
+    });
+    setOperatorMeta(
+      j.operator
+        ? {
+            entrantCount: j.operator.entrantCount ?? entries.length,
+            bracketTargetSize: j.operator.bracketTargetSize ?? entries.length,
+            maxEntrants: j.operator.maxEntrants ?? 8,
+            isBracketFull: Boolean(j.operator.isBracketFull),
+            canBootstrap: Boolean(j.operator.canBootstrap),
+            phaseLabel: j.operator.phaseLabel ?? 'Tournament',
+          }
+        : null
+    );
+    setDisplayNames(j.displayNamesByUserId ?? {});
+    setPayload({
+      tournament,
+      entries,
+      matches,
+      gameStatusById: j.gameStatusById ?? {},
+      error: null,
+    });
+    setSnapshotLoading(false);
+  }, [idOk, idRaw, router]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -120,121 +310,15 @@ export default function TournamentDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!idOk) {
-      setSnapshotLoading(false);
-      return;
-    }
     let cancelled = false;
     void (async () => {
-      setSnapshotLoading(true);
-      const res = await fetch(`/api/tournaments/${encodeURIComponent(idRaw)}/snapshot`, {
-        credentials: 'include',
-      });
-      const j = (await res.json()) as {
-        ok?: boolean;
-        code?: string;
-        error?: string;
-        tournament?: {
-          id: string;
-          name: string;
-          status: string;
-          format: string;
-          tempo: string | null;
-          liveTimeControl: string | null;
-          rated: boolean;
-          ecosystemScope: string;
-          entryFeeCents: number | null;
-          prizePoolCents: number | null;
-          createdAt: string;
-          createdById: string | null;
-        };
-        entries?: Array<{
-          userId: string;
-          displayName: string;
-          seed: number | null;
-          eliminated: boolean;
-          currentRound: number;
-        }>;
-        matches?: Array<{
-          id: string;
-          round: number;
-          matchNumber: number;
-          player1: { userId: string | null; displayName: string | null };
-          player2: { userId: string | null; displayName: string | null };
-          winnerUserId: string | null;
-          gameId: string | null;
-          nextMatchId: string | null;
-          advanceWinnerAs: string | null;
-        }>;
-        gameStatusById?: Record<string, string>;
-        displayNamesByUserId?: Record<string, string>;
-      };
+      await loadSnapshot();
       if (cancelled) return;
-      if (res.status === 401 && j.code === 'K12_REQUIRES_AUTH') {
-        router.replace(`/login?next=${encodeURIComponent(`/tournaments/${idRaw}`)}`);
-        return;
-      }
-      if (!res.ok || !j.ok || !j.tournament) {
-        setDisplayNames({});
-        setPayload({
-          tournament: null,
-          entries: [],
-          matches: [],
-          gameStatusById: {},
-          error: j.error ?? `Could not load tournament (${res.status})`,
-        });
-        setSnapshotLoading(false);
-        return;
-      }
-
-      const tournament: TournamentRow = {
-        id: j.tournament.id,
-        name: j.tournament.name,
-        status: j.tournament.status,
-        format: j.tournament.format,
-        tempo: j.tournament.tempo ?? '',
-        live_time_control: j.tournament.liveTimeControl ?? null,
-        rated: j.tournament.rated,
-        created_by: j.tournament.createdById,
-        created_at: j.tournament.createdAt,
-        ecosystem_scope: j.tournament.ecosystemScope,
-        entry_fee_cents: j.tournament.entryFeeCents,
-        prize_pool_cents: j.tournament.prizePoolCents,
-      };
-
-      const entries: EntryRow[] = (j.entries ?? []).map((e) => ({
-        user_id: e.userId,
-        seed: e.seed,
-        eliminated: e.eliminated,
-        current_round: e.currentRound,
-      }));
-
-      const matches: MatchRow[] = (j.matches ?? []).map((m) => ({
-        id: m.id,
-        round_number: m.round,
-        match_number: m.matchNumber,
-        player1_id: m.player1?.userId ?? null,
-        player2_id: m.player2?.userId ?? null,
-        game_id: m.gameId,
-        winner_id: m.winnerUserId,
-        next_match_id: m.nextMatchId,
-        advance_winner_as: m.advanceWinnerAs,
-      }));
-
-      setDisplayNames(j.displayNamesByUserId ?? {});
-      setPayload({
-        tournament,
-        entries,
-        matches,
-        gameStatusById: j.gameStatusById ?? {},
-        error: null,
-      });
-      setSnapshotLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [idOk, idRaw, router]);
+  }, [loadSnapshot]);
 
   const labelFor = (uid: string | null) => {
     if (!uid) return '—';
@@ -319,6 +403,129 @@ export default function TournamentDetailPage() {
               </>
             ) : null}
           </p>
+
+          {operatorMeta ? (
+            <section
+              data-testid="tournament-phase-status"
+              style={{
+                marginTop: 16,
+                padding: '14px 16px',
+                borderRadius: 10,
+                border: '1px solid #334155',
+                background: '#0f172a',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>
+                {operatorMeta.phaseLabel}
+              </p>
+              <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>
+                <strong style={{ color: '#cbd5e1' }} data-testid="tournament-entrant-count">
+                  {operatorMeta.entrantCount} / {operatorMeta.bracketTargetSize}
+                </strong>{' '}
+                entrants
+                {operatorMeta.entrantCount < operatorMeta.maxEntrants ? (
+                  <> (field caps at {operatorMeta.maxEntrants})</>
+                ) : null}
+                {String(tournament.status).toLowerCase() === 'pending' && !operatorMeta.isBracketFull ? (
+                  <> — need {operatorMeta.bracketTargetSize - operatorMeta.entrantCount} more to fill the bracket.</>
+                ) : null}
+              </p>
+            </section>
+          ) : null}
+
+          {viewerPlayableMatch?.game_id ? (
+            <section
+              data-testid="tournament-your-match-ready"
+              style={{
+                marginTop: 16,
+                padding: '16px 18px',
+                borderRadius: 12,
+                border: '2px solid #2563eb',
+                background: 'linear-gradient(135deg, #0c1929 0%, #0f2744 100%)',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#93c5fd', letterSpacing: '0.06em' }}>
+                YOUR MATCH IS READY
+              </p>
+              <p style={{ margin: '8px 0 14px 0', fontSize: 14, color: '#cbd5e1', lineHeight: 1.5 }}>
+                Round {viewerPlayableMatch.round_number}, match {viewerPlayableMatch.match_number} — open your board
+                to play.
+              </p>
+              <Link
+                href={`/game/${viewerPlayableMatch.game_id}`}
+                data-testid="tournament-your-match-link"
+                style={{
+                  display: 'inline-block',
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  background: '#2563eb',
+                  color: '#fff',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                Go to your game
+              </Link>
+            </section>
+          ) : null}
+
+          {viewerMeta?.canOperate && String(tournament.status).toLowerCase() === 'pending' ? (
+            <section
+              data-testid="tournament-operator-controls"
+              style={{
+                marginTop: 16,
+                padding: 16,
+                borderRadius: 10,
+                border: '1px solid #475569',
+                background: '#111827',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>Operator controls</p>
+              <p style={{ margin: '8px 0 14px 0', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>
+                {operatorMeta?.canBootstrap
+                  ? 'Bracket is full. Start spawns round-one boards using the verified bootstrap path.'
+                  : operatorMeta?.isBracketFull
+                    ? 'Bracket cannot be started from this page right now.'
+                    : 'Start is available once the entrant field is full (power-of-2 bracket size).'}
+              </p>
+              <button
+                type="button"
+                data-testid="tournament-start-button"
+                disabled={bootstrapBusy || !operatorMeta?.canBootstrap}
+                onClick={async () => {
+                  setBootstrapBusy(true);
+                  setBootstrapErr(null);
+                  const res = await fetch(
+                    `/api/tournaments/${encodeURIComponent(idRaw)}/bootstrap`,
+                    { method: 'POST', credentials: 'include' }
+                  );
+                  const j = (await res.json()) as { ok?: boolean; error?: string };
+                  setBootstrapBusy(false);
+                  if (!res.ok || !j.ok) {
+                    setBootstrapErr(j.error ?? 'Could not start tournament.');
+                    return;
+                  }
+                  await loadSnapshot();
+                }}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  border: '1px solid #16a34a',
+                  background: operatorMeta?.canBootstrap ? '#15803d' : '#334155',
+                  color: '#fff',
+                  fontWeight: 700,
+                  cursor:
+                    bootstrapBusy || !operatorMeta?.canBootstrap ? 'not-allowed' : 'pointer',
+                  opacity: bootstrapBusy || !operatorMeta?.canBootstrap ? 0.65 : 1,
+                }}
+              >
+                {bootstrapBusy ? 'Starting…' : 'Start Tournament'}
+              </button>
+              {bootstrapErr ? (
+                <p style={{ margin: '10px 0 0 0', fontSize: 13, color: '#fca5a5' }}>{bootstrapErr}</p>
+              ) : null}
+            </section>
+          ) : null}
 
           {String(tournament.ecosystem_scope ?? 'adult') === 'k12' ? (
             <p style={{ marginTop: 14, fontSize: 14, color: '#67e8f9', lineHeight: 1.55, maxWidth: 720 }}>
@@ -543,8 +750,13 @@ export default function TournamentDetailPage() {
           >
             <h2 style={{ marginTop: 0, fontSize: 17, color: '#f1f5f9' }}>Who’s in</h2>
             <p style={{ margin: '0 0 14px 0', color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
-              <strong style={{ color: '#e2e8f0' }}>{sortedEntries.length}</strong> entrant
-              {sortedEntries.length === 1 ? '' : 's'}
+              <strong style={{ color: '#e2e8f0' }} data-testid="tournament-entries-summary">
+                {operatorMeta
+                  ? `${operatorMeta.entrantCount} / ${operatorMeta.bracketTargetSize}`
+                  : sortedEntries.length}{' '}
+                entrant
+                {(operatorMeta?.entrantCount ?? sortedEntries.length) === 1 ? '' : 's'}
+              </strong>
               {finalMatch ? (
                 <>
                   . Terminal match: round {finalMatch.round_number}, match {finalMatch.match_number}.
@@ -620,7 +832,11 @@ export default function TournamentDetailPage() {
               only—they do not change bracket rules.
             </p>
             {matchesByRound.length === 0 ? (
-              <p style={{ color: '#64748b' }}>No bracket matches yet.</p>
+              <p style={{ color: '#64748b' }} data-testid="tournament-bracket-empty">
+                {String(tournament.status).toLowerCase() === 'pending'
+                  ? 'No bracket matches yet. The host starts the tournament once the field is full.'
+                  : 'No bracket matches yet.'}
+              </p>
             ) : (
               matchesByRound.map(([roundNum, roundMatches]) => {
                 const isFinalRound = maxRound > 0 && roundNum === maxRound;
@@ -734,22 +950,22 @@ export default function TournamentDetailPage() {
                             </div>
                             {m.game_id ? (
                               <div>
-                                <button
-                                  type="button"
+                                <Link
+                                  href={`/game/${m.game_id}`}
                                   data-testid={`tournament-match-open-game-${m.id}`}
-                                  onClick={() => router.push(`/game/${m.game_id}`)}
                                   style={{
+                                    display: 'inline-block',
                                     padding: '8px 14px',
                                     borderRadius: 8,
                                     border: '1px solid #3b82f6',
                                     background: '#1d4ed8',
                                     color: '#fff',
                                     fontWeight: 700,
-                                    cursor: 'pointer',
+                                    textDecoration: 'none',
                                   }}
                                 >
                                   Open board & game record
-                                </button>
+                                </Link>
                                 <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>
                                   PGN / replay on the game page
                                 </span>
