@@ -75,3 +75,7 @@ Does **not** replace the integration script above.
 | Final not spawned after R1 | `trg_games_tournament_finish_advance` missing or game not `finished` |
 | `tournament_advance_invariant_violation` | Bracket plan vs DB `advance_winner_as` mismatch |
 | Stays `active` after final | Winner not derived (`result` / `winner_id` on game) |
+
+## Related
+
+- Next slice: [PHASE_1_TOURNAMENT_8P_KO_VERIFICATION.md](./PHASE_1_TOURNAMENT_8P_KO_VERIFICATION.md)
