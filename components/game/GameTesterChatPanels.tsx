@@ -155,6 +155,7 @@ function ChatStrip({
   const remaining = maxLen - draft.length;
   return (
     <section
+      className="accl-game-side-panel"
       style={{
         marginTop: 14,
         maxWidth: 520,
@@ -171,6 +172,7 @@ function ChatStrip({
         <p style={{ margin: '4px 0 0 0', fontSize: 11, color: '#94a3b8', lineHeight: 1.35 }}>{subtitle}</p>
       </div>
       <div
+        className="accl-scroll-no-anchor"
         style={{
           maxHeight: 160,
           overflowY: 'auto',
@@ -691,7 +693,11 @@ export default function GameTesterChatPanels({
   const laneProps = { gameId, accessToken: accessToken!, viewerEcosystem };
 
   return (
-    <div data-testid="game-tester-chat-panels" style={{ marginTop: 20, maxWidth: 520 }}>
+    <div
+      data-testid="game-tester-chat-panels"
+      className="accl-game-side-panel"
+      style={{ marginTop: 20, maxWidth: 520 }}
+    >
       {effectiveLane === 'spectator' ? (
         <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
           <strong style={{ color: '#e2e8f0' }}>Tester chat</strong> — you are on{' '}

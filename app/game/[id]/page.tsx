@@ -38,6 +38,7 @@ import {
 } from '@/lib/gameTimeControl';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
+import { TournamentFirstMoveGraceBanner } from '@/components/tournament/TournamentFirstMoveGraceBanner';
 import { TournamentSessionRail } from '@/components/tournament/TournamentSessionRail';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
 import { canPickPieceForMove } from '@/lib/boardInteraction';
@@ -1588,6 +1589,13 @@ export default function GamePage() {
     logsBootstrapKeyRef.current = key;
     void loadMoveLogs('bootstrap');
   }, [gameId, userId, publicSpectate, loadMoveLogs]);
+
+  /** Stable scrollbar gutter + reduced document scroll-anchoring on game routes (desktop + mobile). */
+  useEffect(() => {
+    document.documentElement.classList.add('accl-game-route');
+    return () => document.documentElement.classList.remove('accl-game-route');
+  }, []);
+
   const scheduleRefresh = useCallback(
     (opts?: {
       snapshot?: boolean;
@@ -2377,7 +2385,7 @@ export default function GamePage() {
           padding: 24,
           color: '#888',
           background: 'black',
-          minHeight: '100vh',
+          minHeight: '100dvh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -2397,7 +2405,7 @@ export default function GamePage() {
             padding: 24,
             color: '#888',
             background: 'black',
-            minHeight: '100vh',
+            minHeight: '100dvh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -2434,7 +2442,7 @@ export default function GamePage() {
             padding: 24,
             color: '#e2e8f0',
             background: 'black',
-            minHeight: '100vh',
+            minHeight: '100dvh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -2489,7 +2497,7 @@ export default function GamePage() {
             padding: 24,
             color: '#e2e8f0',
             background: 'black',
-            minHeight: '100vh',
+            minHeight: '100dvh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -2530,7 +2538,7 @@ export default function GamePage() {
           padding: 24,
           color: '#888',
           background: 'black',
-          minHeight: '100vh',
+          minHeight: '100dvh',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -3632,7 +3640,7 @@ export default function GamePage() {
       )}
 
       {moveLogs.length > 0 && (
-        <div style={{ marginBottom: 16, maxWidth: 560 }}>
+        <div className="accl-game-side-panel" style={{ marginBottom: 16, maxWidth: 560 }}>
           <h3 style={{ marginTop: 0 }}>Replay</h3>
           <div
             style={{
@@ -3654,6 +3662,7 @@ export default function GamePage() {
               Notation — click a move to jump
             </div>
             <div
+              className="accl-scroll-no-anchor"
               style={{
                 maxHeight: 180,
                 overflowY: 'auto',
@@ -3806,30 +3815,34 @@ export default function GamePage() {
         </p>
       ) : null}
 
-      <div
-        data-testid="game-board-with-tournament-rail"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 16,
-          alignItems: 'flex-start',
-          marginTop: 20,
-        }}
-      >
+      {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
+        <TournamentFirstMoveGraceBanner
+          gameId={game.id}
+          game={{
+            play_context: game.play_context,
+            tournament_id: game.tournament_id,
+            tempo: game.tempo,
+            status: game.status,
+            white_player_id: game.white_player_id,
+            black_player_id: game.black_player_id,
+            turn: game.turn,
+            created_at: game.created_at,
+          }}
+          gameStatus={game.status}
+          moveCount={moveLogs.length}
+          userId={userId}
+          isMyTurn={Boolean(isMyTurn && !isSpectator)}
+        />
+      ) : null}
+
+      <div className="accl-game-board-row" data-testid="game-board-with-tournament-rail">
         <div
+          className="accl-game-board-stage"
           data-testid="game-board"
           data-interaction-mode={boardInteractionMode}
           data-spectator-readonly={isPublicViewer ? '1' : '0'}
-          style={{
-            position: 'relative',
-            zIndex: 100,
-            flex: '1 1 280px',
-            maxWidth: 520,
-            width: '100%',
-            isolation: 'isolate',
-            scrollMarginTop: 72,
-          }}
         >
+        <div className="accl-game-board-canvas">
         <Chessboard
           id="accl-e2e-board"
           position={boardPosition}
@@ -3959,6 +3972,7 @@ export default function GamePage() {
           </div>
         )}
         </div>
+        </div>
         {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
           <TournamentSessionRail
             tournamentId={String(game.tournament_id)}
@@ -3976,6 +3990,7 @@ export default function GamePage() {
         </div>
       ) : null}
       {!isPublicViewer && game ? (
+        <div className="accl-game-side-panel">
         <GameTesterChatPanels
           key={`chat-${game.id}-${chatViewerRole}-${isSpectator ? 'spec' : 'seat'}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
           gameId={game.id}
@@ -3987,6 +4002,7 @@ export default function GamePage() {
           viewerEcosystem={viewerEcosystem}
           accessToken={chatAccessToken}
         />
+        </div>
       ) : null}
       {isEngineProhibited && (
         <p style={{ marginTop: 20, color: '#e57373', fontSize: 12 }}>

@@ -329,11 +329,65 @@ body {
   }
 }
 
-/** Minimal game page shell — frames canvas; gameplay layout unchanged inside */
+/** Reserve scrollbar width on game routes — avoids board column width flicker (desktop). */
+html.accl-game-route {
+  scrollbar-gutter: stable;
+}
+
+html.accl-game-route body {
+  overflow-anchor: none;
+}
+
+/** Minimal game page shell — stable viewport + board column; meta/chat may grow below without resizing the board. */
 .accl-game-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--accl-bg-game);
   color: var(--accl-text-primary);
   padding: var(--accl-space-6);
   font-family: var(--font-accl-ui), ui-sans-serif, system-ui, sans-serif;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+/** Flex row: board stage stays fixed width; tournament rail wraps without shrinking the board. */
+.accl-game-board-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  margin-top: 20px;
+  width: 100%;
+  max-width: 560px;
+}
+
+/** Square board stage — react-chessboard sizes to this box; do not flex-grow with side panels. */
+.accl-game-board-stage {
+  position: relative;
+  z-index: 100;
+  flex: 0 0 auto;
+  width: min(100%, 520px);
+  isolation: isolate;
+  scroll-margin-top: 72px;
+}
+
+.accl-game-board-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  contain: layout size style;
+  overflow: hidden;
+}
+
+/** Chat / move-log scroll regions — prevent scroll-anchoring jitter on append. */
+.accl-scroll-no-anchor {
+  overflow-anchor: none;
+}
+
+/** Side panels (chat, replay log) — layout contained so growth does not reflow the board stage. */
+.accl-game-side-panel {
+  contain: layout style;
+  max-width: 520px;
+  width: 100%;
 }

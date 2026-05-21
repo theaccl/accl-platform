@@ -42,6 +42,22 @@ test.describe('production hardening audit (static)', () => {
     expect(s).toContain('data-interaction-mode={boardInteractionMode}');
   });
 
+  test('game route stabilizes viewport and board stage against layout jitter', () => {
+    const page = src('app/game/[id]/page.tsx');
+    const css = src('app/globals.css');
+    expect(page).toContain("classList.add('accl-game-route')");
+    expect(page).toContain('accl-game-board-stage');
+    expect(page).toContain('accl-game-board-canvas');
+    expect(page).toContain('accl-scroll-no-anchor');
+    expect(page).toContain("minHeight: '100dvh'");
+    expect(css).toContain('html.accl-game-route');
+    expect(css).toContain('scrollbar-gutter: stable');
+    expect(css).toContain('.accl-game-board-canvas');
+    expect(css).toContain('overflow-anchor: none');
+    const chat = src('components/game/GameTesterChatPanels.tsx');
+    expect(chat).toContain('accl-scroll-no-anchor');
+  });
+
   test('tester chat uses send locks and max body length', () => {
     const s = src('components/game/GameTesterChatPanels.tsx');
     expect(s).toContain('CHAT_BODY_MAX');
