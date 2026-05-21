@@ -38,7 +38,9 @@ export type E2eTeardownResult = { ran: boolean; reason: string };
  *
  * @returns whether any delete was attempted (still check `reason` if `ran` is false).
  */
-export async function teardownE2ePairStaleRows(): Promise<E2eTeardownResult> {
+export type E2ePairEmails = { aEmail: string; bEmail: string };
+
+export async function teardownE2ePairStaleRows(pair?: E2ePairEmails): Promise<E2eTeardownResult> {
   const url =
     process.env.E2E_SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || '';
   const key = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY?.trim() || '';
@@ -50,10 +52,10 @@ export async function teardownE2ePairStaleRows(): Promise<E2eTeardownResult> {
     };
   }
 
-  const aEmail = e2eUserEmail()?.toLowerCase();
-  const bEmail = e2eUserBEmail()?.toLowerCase();
+  const aEmail = (pair?.aEmail ?? e2eUserEmail())?.toLowerCase();
+  const bEmail = (pair?.bEmail ?? e2eUserBEmail())?.toLowerCase();
   if (!aEmail || !bEmail) {
-    return { ran: false, reason: 'DB teardown skipped: E2E_USER_EMAIL and E2E_USER_B_EMAIL required.' };
+    return { ran: false, reason: 'DB teardown skipped: two E2E profile emails required.' };
   }
 
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });

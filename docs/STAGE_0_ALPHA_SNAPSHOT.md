@@ -2,8 +2,8 @@
 
 Operational benchmark for invited testers — **not** a feature release tag.
 
-**Deployment candidate:** `bed490b`  
-**Status:** Verification **in progress** — do **not** tag `alpha-stage0-20260521` until all gates below are PASS.
+**Deployment candidate:** `bed490b` (prod SHA **unconfirmed**) — GitHub `main` is `0f1037d`  
+**Status:** **HOLD** — do **not** tag `alpha-stage0-20260521` until migration check PASS + Vercel production SHA confirmed.
 
 ---
 
@@ -14,7 +14,8 @@ Operational benchmark for invited testers — **not** a feature release tag.
 | Pre–Stage 0 production tip | `d8709ad` | Mode room clock activity |
 | Stage 0 slices A–E | `da3c39c` … `9b80127` | See rollback table |
 | Overlap E2E harness | `5a4f738` | Concurrent pressure spec + runner |
-| **Git `main` (GitHub)** | `bed490b` | Current tip |
+| Harness reproducibility (overlap prod routes) | *(see `main` tip after push)* | `/free/lobby/blitz`, pair-scoped teardown, hub assertions, create/find pairing |
+| **Git `main` (GitHub)** | `0f1037d` + harness commit | Freeze SHA = **Vercel production** (not GitHub tip alone) |
 
 ### Rollback slices
 
@@ -28,19 +29,19 @@ Operational benchmark for invited testers — **not** a feature release tag.
 
 ---
 
-## Verification results (2026-05-21)
+## Verification results (2026-05-21, re-run)
 
 **Operator environment:** local Windows, `.env.local` loaded, `NODE_TLS_REJECT_UNAUTHORIZED=0` (Node TLS workaround for corporate/proxy certs).
 
 | Gate | Result | Evidence |
 |------|--------|----------|
-| Migration `20260519200000` (Management API) | **FAIL** | `SUPABASE_ACCESS_TOKEN` → Management API **401 Unauthorized** |
-| Migration behavior probe (service role RPC) | **INCONCLUSIVE** | `apply_free_play_rating_update` returns `not_authorized` for service-role caller; use SQL editor or refresh token |
-| `ensure:play-computer-bots` | **PASS** | All three bot profiles present (Cardi/Aggro/Endgame); `auth_warnings=0` |
-| Play Computer prod smoke (`accl-platform.vercel.app`) | **PASS** | balanced/aggressive/defensive/chaos → `source_type: bot_game`, HTTP 200 |
-| 4-player KO verification | **PASS** | Registration → bracket → final → champion; cleanup OK |
-| Concurrent overlap E2E | **FAIL** | Harness could not complete Find Match pairing on `bed490b` dev shell (route/test drift: `/free` → lobby; Find Match on `/free/play` or mode room). **Re-run after Vercel deploy + selector fix.** |
-| Vercel production SHA | **UNCONFIRMED** | Response headers do not expose git SHA; **confirm in Vercel dashboard** deployment for `bed490b` |
+| Migration `20260519200000` (Management API) | **FAIL** | `node scripts/apply-supabase-migration.mjs --check …` → **401 Unauthorized** (`SUPABASE_ACCESS_TOKEN` stale). **Manual:** run `supabase/migrations/20260519200000_tournament_zero_move_rating_void.sql` in Supabase SQL Editor, then re-check. |
+| Migration behavior probe (service role RPC) | **INCONCLUSIVE** | `verify-zero-move-rating-migration.mjs` → `not_authorized` (not a substitute for Management API `--check OK`) |
+| `ensure:play-computer-bots` | **PASS** | (prior run) All three bot profiles present; `auth_warnings=0` |
+| Play Computer prod smoke (`accl-platform.vercel.app`) | **PASS** | (prior run) personalities → `source_type: bot_game`, HTTP 200 |
+| 4-player KO verification | **PASS** | (prior run) Registration → bracket → final → champion |
+| Concurrent overlap E2E (prod URL) | **PASS** | `PLAYWRIGHT_BASE_URL=https://accl-platform.vercel.app`, `--project=stage0-overlap`, **10.1s** — create-seat + find-match on `/free/lobby/blitz`, concurrent nexus/profile/lobby/daily/challenge/spectate |
+| Vercel production SHA | **UNCONFIRMED** | `/api/health` and `/api/status` omit git SHA; `vercel ls` needs interactive login on this machine. **Operator:** Vercel → Production deployment → commit. If SHA = `0f1037d`, freeze candidate becomes `0f1037d`; if still `bed490b`, record `bed490b`. |
 
 ### Commands (re-run locally)
 
@@ -70,9 +71,10 @@ npm run verify:stage-0-alpha
 
 ## Deployment truth (required before tag)
 
-1. Vercel **Production** deployment commit must equal **`bed490b`** (full SHA `bed490b6215e2330ee91565b4516ff42787b7241`).
-2. GitHub `main` already matches (`git ls-remote origin main`).
-3. **Deployment truth supersedes local truth** — prod smoke passed on current Vercel URL; app code on server may still be pre-`bed490b` until deploy completes.
+1. Vercel **Production** deployment commit must equal the freeze candidate SHA ( **`bed490b`** or **`0f1037d`** if production has caught up to harness tip).
+2. GitHub `main` = **`0f1037d`** (`git ls-remote origin main`, 2026-05-21).
+3. **Deployment truth supersedes local/GitHub assumptions** — overlap E2E passed against the live URL; that does not prove which commit Vercel built until the dashboard (or `VERCEL_TOKEN` + API) confirms it.
+4. Harness reproducibility fixes are committed on `main` so CI/operators can reproduce overlap **PASS** against prod URL.
 
 ---
 

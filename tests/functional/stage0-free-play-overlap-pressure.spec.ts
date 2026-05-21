@@ -19,7 +19,7 @@ test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
   test('simultaneous live game, navigation hops, chat, reconnect, challenge, and spectate', async ({
     browser,
   }) => {
-    await teardownE2ePairStaleRows();
+    await teardownE2ePairStaleRows({ aEmail: pair!.aEmail, bEmail: pair!.bEmail });
     const { pageA, pageB, gameId, dispose } = await setupLiveOpenSeatPair(browser, pair!);
 
     const tabANexus = await pageA.context().newPage();
@@ -35,10 +35,12 @@ test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
         (async () => {
           await expect(pageA.getByTestId('game-tester-chat-panels')).toBeVisible({ timeout: 25_000 });
           const panel = pageA.getByTestId('game-tester-chat-panels');
-          await panel.locator('textarea').first().fill(`overlap-${Date.now()}`);
+          const msg = `overlap-${Date.now()}`;
+          await panel.locator('textarea').first().fill(msg);
           const send = pageA.locator('[data-testid^="game-chat-send-"]').first();
-          await send.click();
           await expect(send).toBeEnabled({ timeout: 15_000 });
+          await send.click();
+          await expect(send).not.toHaveText('Sending…', { timeout: 15_000 });
         })(),
 
         (async () => {
@@ -49,9 +51,7 @@ test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
 
         (async () => {
           await tabANexus.goto('/nexus');
-          await expect(
-            tabANexus.getByTestId('nexus-operational-games').or(tabANexus.getByRole('heading', { name: /NEXUS/i })),
-          ).toBeVisible({ timeout: 30_000 });
+          await expect(tabANexus.getByTestId('nexus-operational-games')).toBeVisible({ timeout: 30_000 });
         })(),
 
         (async () => {
@@ -63,9 +63,8 @@ test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
         (async () => {
           await tabBLobby.goto(ROUTES.free);
           await expect(tabBLobby.getByTestId('free-lobby-root')).toBeVisible({ timeout: 30_000 });
-          await expect(tabBLobby.getByTestId('free-primary-game').or(tabBLobby.getByText(/YOUR MOVE|WAITING/i))).toBeVisible({
-            timeout: 25_000,
-          });
+          await expect(tabBLobby.getByTestId('free-lobby-ready')).toBeAttached({ timeout: 30_000 });
+          await expect(tabBLobby.getByTestId('free-lobby-current-games')).toBeVisible({ timeout: 25_000 });
         })(),
 
         (async () => {
@@ -84,8 +83,8 @@ test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
         })(),
       ]);
 
-      await expect(pageA.getByTestId('accl-e2e-board')).toBeVisible({ timeout: 15_000 });
-      await expect(pageB.getByTestId('accl-e2e-board')).toBeVisible({ timeout: 15_000 });
+      await expect(pageA.getByTestId('game-board')).toBeVisible({ timeout: 15_000 });
+      await expect(pageB.getByTestId('game-board')).toBeVisible({ timeout: 15_000 });
     } finally {
       await tabANexus.close().catch(() => {});
       await tabAProfile.close().catch(() => {});

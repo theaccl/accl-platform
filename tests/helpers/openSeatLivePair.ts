@@ -1,12 +1,19 @@
 import type { Browser, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 
 import type { E2EPairCredentials } from './liveChallengePair';
 import { loginAs } from './auth';
 import { teardownE2ePairStaleRows } from './e2eTeardown';
-import { gameIdFromUrl } from './gameUrl';
 import { waitForGameUrl } from './gameUrl';
 
-const FIND_MATCH_ENTRY = '/free/lobby/blitz';
+/** Find Match + open-seat panel live on mode room (not hub `/free`). */
+const BLITZ_MODE_ROOM = '/free/lobby/blitz';
+
+async function gotoBlitzFindMatch(page: Page): Promise<void> {
+  await page.goto(BLITZ_MODE_ROOM);
+  await expect(page.getByTestId('free-lobby-mode-room-blitz')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('free-find-match').first()).toBeVisible({ timeout: 30_000 });
+}
 
 /** Live open-seat pairing (Find Match) — reliable for Stage 0 overlap setup. */
 export async function setupLiveOpenSeatPair(
@@ -20,7 +27,7 @@ export async function setupLiveOpenSeatPair(
 
   const dispose = async () => {
     try {
-      await teardownE2ePairStaleRows();
+      await teardownE2ePairStaleRows({ aEmail: pair.aEmail, bEmail: pair.bEmail });
       await contextA.close().catch(() => {});
       await contextB.close().catch(() => {});
     } catch {
@@ -29,16 +36,15 @@ export async function setupLiveOpenSeatPair(
     }
   };
 
+  await teardownE2ePairStaleRows({ aEmail: pair.aEmail, bEmail: pair.bEmail });
   await loginAs(pageA, pair.aEmail, pair.aPassword);
   await loginAs(pageB, pair.bEmail, pair.bPassword);
 
-  await pageA.goto(FIND_MATCH_ENTRY);
-  await pageA.getByTestId('free-lobby-mode-room-blitz').waitFor({ state: 'visible', timeout: 30_000 });
-  await pageA.getByTestId('free-find-match').first().click();
-  const gameId = await waitForGameUrl(pageA);
+  await gotoBlitzFindMatch(pageA);
+  await pageA.getByTestId('free-create-game').first().click();
+  const gameId = await waitForGameUrl(pageA, 90_000);
 
-  await pageB.goto(FIND_MATCH_ENTRY);
-  await pageB.getByTestId('free-lobby-mode-room-blitz').waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoBlitzFindMatch(pageB);
   await pageB.getByTestId('free-find-match').first().click();
   await pageB.waitForURL((u) => u.pathname === `/game/${gameId}`, { timeout: 90_000 });
 
