@@ -95,37 +95,25 @@ results.push(
   runStep('ko', '4-player KO verification', ['node', 'scripts/tournament-4p-ko-verification.mjs']),
 );
 
-console.log('\n=== Free Play matrix (Playwright — run when E2E creds set) ===');
-const freePlayTests = [
-  'tests/functional/free-play-validation.spec.ts',
-  'tests/functional/launch-convergence-challenge.spec.ts',
-  'tests/functional/queue-match-free.spec.ts',
-  'tests/functional/first-move-sync.spec.ts',
-  'tests/unit/gameAcceptRedirectPriority.spec.ts',
-  'tests/unit/chatApiSurface.spec.ts',
-  'tests/unit/gameSpectatorSurface.spec.ts',
-  'tests/unit/finishedGameDetailPage.spec.ts',
-  'tests/smoke/lobby-visible.spec.ts',
-];
-for (const t of freePlayTests) {
-  console.log(`  npx playwright test ${t}`);
-}
+const overlapSpec = 'tests/functional/stage0-free-play-overlap-pressure.spec.ts';
+console.log('\n=== Free Play overlap (concurrent — required for Stage 0) ===');
+console.log(`  npx playwright test ${overlapSpec}`);
 if (!only || only.has('free-play')) {
   const hasTwo =
     Boolean(process.env.E2E_USER_EMAIL?.trim()) &&
     Boolean(process.env.E2E_USER_B_EMAIL?.trim());
   if (hasTwo) {
     results.push(
-      runStep('free-play', 'Free Play E2E subset', [
+      runStep('free-play', 'Free Play concurrent overlap pressure', [
         'npx',
         'playwright',
         'test',
-        ...freePlayTests.slice(0, 4),
+        overlapSpec,
       ]),
     );
   } else {
-    console.log('SKIP: Free Play E2E (set E2E_USER_EMAIL + E2E_USER_B_EMAIL)');
-    results.push({ key: 'free-play', label: 'Free Play E2E', ok: true, skipped: true });
+    console.log('SKIP: Free Play overlap (set E2E_USER_EMAIL + E2E_USER_B_EMAIL)');
+    results.push({ key: 'free-play', label: 'Free Play overlap', ok: true, skipped: true });
   }
 }
 

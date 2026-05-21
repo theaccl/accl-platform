@@ -54,18 +54,27 @@ Or step-by-step:
 | 4 | Free Play matrix | See Playwright list in `stage-0-alpha-verification.mjs` output |
 | 5 | 4p KO | `npm run verify:tournament-4p-ko` |
 
-### Free Play matrix (expected coverage)
+### Free Play overlap (concurrent — required)
 
-| Flow | Primary test / surface |
-|------|-------------------------|
-| Live create/join | `tests/functional/free-play-validation.spec.ts` |
-| Daily game | `tests/functional/queue-match-free.spec.ts` (when daily path enabled) |
-| Open pairing | `tests/functional/free-play-validation.spec.ts` (Find Match) |
-| Direct challenge | `tests/functional/launch-convergence-challenge.spec.ts` |
-| Accept redirect priority | `tests/unit/gameAcceptRedirectPriority.spec.ts` |
-| Spectator | `tests/unit/gameSpectatorSurface.spec.ts` + lobby watch row |
-| Chat continuity | `tests/unit/chatApiSurface.spec.ts` + `gameTesterChatSurface` |
-| Finished-game continuity | `tests/unit/finishedGameDetailPage.spec.ts` |
+**Do not rely on serial specs alone.** Stage 0 gate:
+
+```bash
+npx playwright test tests/functional/stage0-free-play-overlap-pressure.spec.ts
+```
+
+Runs **in parallel**: live seated board + chat + reconnect reload + NEXUS tab + profile tab + lobby tab + daily room tab + outgoing challenge tab + public spectate — same wall-clock window.
+
+| Pressure | How overlap spec exercises it |
+|----------|-------------------------------|
+| Live | Accepted 5m challenge; both on `/game/[id]` |
+| Daily | `/free/lobby/daily` tab while B seated on live board |
+| Challenge | Outgoing challenge tab while A on live board |
+| Spectator | `?spectate=1` context without chat panels |
+| Chat | Game tab sends tester chat while other tabs navigate |
+| Reconnect | `pageB.reload()` during overlap |
+| Profile / NEXUS | Extra tabs on `/profile` and `/nexus` while games active |
+
+Supplemental serial specs (optional): `free-play-validation`, `launch-convergence-challenge`, `queue-match-free`, `first-move-sync`.
 
 ### Bot provisioning
 
