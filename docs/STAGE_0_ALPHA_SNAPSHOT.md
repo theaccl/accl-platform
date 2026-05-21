@@ -8,8 +8,9 @@ Operational benchmark for invited testers — **not** a feature release tag.
 |--------|--------|--------|
 | Pre–Stage 0 production tip | `d8709ad` | Mode room clock activity (last pushed before Stage 0 slice) |
 | Stage 0 slice (5 commits) | `da3c39c` … `9b80127` | See table below |
-| Git `main` (local + GitHub) | `5a4f738` | Includes concurrent overlap E2E (`5a4f738` after slice doc `a3f2f82`) |
-| Vercel production | _fill from deployment detail_ | Must match `5a4f738` before alpha tag |
+| Overlap E2E | `5a4f738` | Concurrent free-play pressure spec + runner gate |
+| Git `main` (local + GitHub) | `bc536d4` | Stage 0 slices + overlap E2E + snapshot doc tip |
+| Vercel production | _fill from deployment detail_ | Must match `bc536d4` before alpha tag |
 
 ### Stage 0 commit slices (rollback order)
 
