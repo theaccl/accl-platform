@@ -2,119 +2,113 @@
 
 Operational benchmark for invited testers — **not** a feature release tag.
 
-## Stable anchor (verify before tagging)
+**Deployment candidate:** `bed490b`  
+**Status:** Verification **in progress** — do **not** tag `alpha-stage0-20260521` until all gates below are PASS.
+
+---
+
+## Stable anchor
 
 | Source | Commit | Notes |
 |--------|--------|--------|
-| Pre–Stage 0 production tip | `d8709ad` | Mode room clock activity (last pushed before Stage 0 slice) |
-| Stage 0 slice (5 commits) | `da3c39c` … `9b80127` | See table below |
-| Overlap E2E | `5a4f738` | Concurrent free-play pressure spec + runner gate |
-| Git `main` (local + GitHub) | `bc536d4` | Stage 0 slices + overlap E2E + snapshot doc tip |
-| Vercel production | _fill from deployment detail_ | Must match `bc536d4` before alpha tag |
+| Pre–Stage 0 production tip | `d8709ad` | Mode room clock activity |
+| Stage 0 slices A–E | `da3c39c` … `9b80127` | See rollback table |
+| Overlap E2E harness | `5a4f738` | Concurrent pressure spec + runner |
+| **Git `main` (GitHub)** | `bed490b` | Current tip |
 
-### Stage 0 commit slices (rollback order)
+### Rollback slices
 
-| Commit | SHA | Scope |
-|--------|-----|--------|
-| A — Spine + identity | `da3c39c` | Login→profile default, NEXUS nav/CTA, redirect safety, E2E profile shell |
+| Slice | SHA | Scope |
+|-------|-----|--------|
+| A — Spine + identity | `da3c39c` | Login→profile, NEXUS nav/CTA, redirect safety |
 | B — NEXUS ops | `205746b` | `operationalGames`, mode lanes, sort order |
-| C — Battlefield | `34b48c5` | Lobby continuity, tournament rail, first-move grace API, zero-move rating migration file |
+| C — Battlefield | `34b48c5` | Lobby continuity, tournament rail, grace API, rating migration **file** |
 | D — Play Computer | `a12c17d` | Bot ensure script, provisioning detail, verification runners |
-| E — Viewport | `9b80127` | Game shell CSS, grace banner wiring on game page |
-
-Tag alpha only after migration applied in Supabase, verification scripts PASS, and Vercel SHA aligned.
+| E — Viewport | `9b80127` | Game shell CSS, grace banner on game page |
 
 ---
 
-## Constitutional locks (unchanged)
+## Verification results (2026-05-21)
 
-- Profile = identity
-- NEXUS = operations
-- Battlefield = tournament legitimacy
-- Engine truth supremacy; queue containment; finished-only analysis intake
-- No Swiss, tournament bots, async bot queue authority changes, or AI mentor in Stage 0
+**Operator environment:** local Windows, `.env.local` loaded, `NODE_TLS_REJECT_UNAUTHORIZED=0` (Node TLS workaround for corporate/proxy certs).
 
----
+| Gate | Result | Evidence |
+|------|--------|----------|
+| Migration `20260519200000` (Management API) | **FAIL** | `SUPABASE_ACCESS_TOKEN` → Management API **401 Unauthorized** |
+| Migration behavior probe (service role RPC) | **INCONCLUSIVE** | `apply_free_play_rating_update` returns `not_authorized` for service-role caller; use SQL editor or refresh token |
+| `ensure:play-computer-bots` | **PASS** | All three bot profiles present (Cardi/Aggro/Endgame); `auth_warnings=0` |
+| Play Computer prod smoke (`accl-platform.vercel.app`) | **PASS** | balanced/aggressive/defensive/chaos → `source_type: bot_game`, HTTP 200 |
+| 4-player KO verification | **PASS** | Registration → bracket → final → champion; cleanup OK |
+| Concurrent overlap E2E | **FAIL** | Harness could not complete Find Match pairing on `bed490b` dev shell (route/test drift: `/free` → lobby; Find Match on `/free/play` or mode room). **Re-run after Vercel deploy + selector fix.** |
+| Vercel production SHA | **UNCONFIRMED** | Response headers do not expose git SHA; **confirm in Vercel dashboard** deployment for `bed490b` |
 
-## Verification checklist
+### Commands (re-run locally)
 
-Run from repo root (requires network + `.env.local`):
+```powershell
+cd c:\Users\Chees\accl-platform
+$env:NODE_TLS_REJECT_UNAUTHORIZED='0'
 
-```bash
-node scripts/stage-0-alpha-verification.mjs
+# Migration — refresh token first, or paste SQL in Supabase SQL Editor
+node scripts/apply-supabase-migration.mjs --check 20260519200000_tournament_zero_move_rating_void.sql
+npm run verify:migration:zero-move-rating
+
+npm run ensure:play-computer-bots
+$env:ACCL_BASE_URL='https://accl-platform.vercel.app'
+node scripts/prod-play-computer-smoke.mjs
+
+npm run verify:tournament-4p-ko
+
+# Overlap — production candidate must be deployed; local:
+$env:PLAYWRIGHT_BASE_URL='https://accl-platform.vercel.app'
+$env:PLAYWRIGHT_SKIP_WEBSERVER='1'
+npx playwright test tests/functional/stage0-free-play-overlap-pressure.spec.ts --project=stage0-overlap
+
+npm run verify:stage-0-alpha
 ```
 
-Or step-by-step:
+---
 
-| # | Step | Command |
-|---|------|---------|
-| 1 | Rating void migration | `node scripts/apply-supabase-migration.mjs 20260519200000_tournament_zero_move_rating_void.sql` |
-| 2 | Bot profiles | `npm run ensure:play-computer-bots` |
-| 3 | Play Computer (prod/staging) | `ACCL_BASE_URL=https://accl-platform.vercel.app node scripts/prod-play-computer-smoke.mjs` |
-| 4 | Free Play matrix | See Playwright list in `stage-0-alpha-verification.mjs` output |
-| 5 | 4p KO | `npm run verify:tournament-4p-ko` |
+## Deployment truth (required before tag)
 
-### Free Play overlap (concurrent — required)
+1. Vercel **Production** deployment commit must equal **`bed490b`** (full SHA `bed490b6215e2330ee91565b4516ff42787b7241`).
+2. GitHub `main` already matches (`git ls-remote origin main`).
+3. **Deployment truth supersedes local truth** — prod smoke passed on current Vercel URL; app code on server may still be pre-`bed490b` until deploy completes.
 
-**Do not rely on serial specs alone.** Stage 0 gate:
+---
 
-```bash
-npx playwright test tests/functional/stage0-free-play-overlap-pressure.spec.ts
+## Alpha freeze gate
+
+Tag **only** when every row in the results table is **PASS** and Vercel SHA is confirmed:
+
+```powershell
+git tag -a alpha-stage0-20260521 -m "Stage 0 operational alpha: spine, nexus ops, battlefield, sync play computer, viewport shell, overlap pressure"
+git push origin main --tags
 ```
 
-Runs **in parallel**: live seated board + chat + reconnect reload + NEXUS tab + profile tab + lobby tab + daily room tab + outgoing challenge tab + public spectate — same wall-clock window.
+---
 
-| Pressure | How overlap spec exercises it |
-|----------|-------------------------------|
-| Live | Accepted 5m challenge; both on `/game/[id]` |
-| Daily | `/free/lobby/daily` tab while B seated on live board |
-| Challenge | Outgoing challenge tab while A on live board |
-| Spectator | `?spectate=1` context without chat panels |
-| Chat | Game tab sends tester chat while other tabs navigate |
-| Reconnect | `pageB.reload()` during overlap |
-| Profile / NEXUS | Extra tabs on `/profile` and `/nexus` while games active |
+## Known limitations (Stage 0 scope)
 
-Supplemental serial specs (optional): `free-play-validation`, `launch-convergence-challenge`, `queue-match-free`, `first-move-sync`.
-
-### Bot provisioning
-
-- Env: all three `BOT_USER_ID_*` set to **distinct UUIDs**, or **all unset** (defaults `10000000-…001/002/003`).
-- Each selected bot must have `profiles` row (and `auth.users` when using custom IDs).
-- Sync start: `POST /api/bot/game/start` — no async all-bot audit on this path.
+- No Swiss, tournament bots, async bot queue authority changes, AI mentor, or reconnect sovereignty expansion.
+- `supabase db push` requires `SUPABASE_DB_PASSWORD` or valid `SUPABASE_ACCESS_TOKEN`.
+- Overlap test uses moderator + non-moderator when `E2E_USER_*` pair unset.
+- Play Computer uses configured `BOT_USER_ID_*` (distinct UUIDs in this environment).
 
 ---
 
-## Results log (fill after run)
+## Operational expectations (20 invited testers)
 
-**Date:** ___________  
-**Operator:** ___________  
-**Supabase project:** `nlptviibefbzisyqswuv`  
-**ACCL_BASE_URL:** ___________
-
-| Check | Result | Notes |
-|-------|--------|-------|
-| Migration `20260519200000` | ☐ PASS ☐ FAIL | |
-| `ensure:play-computer-bots` | ☐ PASS ☐ FAIL | |
-| Play Computer smoke | ☐ PASS ☐ FAIL | |
-| Free Play E2E subset | ☐ PASS ☐ SKIP | |
-| 4p KO verification | ☐ PASS ☐ FAIL | |
-| Vercel deploy SHA | | |
+| Layer | Expectation |
+|-------|-------------|
+| **Profile** | Identity spine after login; public stats and history |
+| **NEXUS** | Operational obligations only; populated mode lanes; your-move first |
+| **Battlefield** | Tournament rail + first-move grace on live KO boards; zero-move finishes must not penalize ratings **after migration applied** |
+| **Free play** | Live open pairing, daily rooms, direct challenge via `/free/create` or `/free/play` |
+| **Play Computer** | Sync start only; provisioning errors show `detail` text |
+| **Observation phase** | Report navigation hesitation, overlap weirdness, trust breaks — not feature requests |
 
 ---
 
-## Alpha tag (only if all PASS)
+## Post-alpha: observation only
 
-```bash
-git tag -a alpha-stage0-YYYYMMDD -m "Stage 0 operational alpha: spine, nexus ops, bot sync, KO smoke"
-```
-
-Do not force-push `main`. Redeploy Vercel from tagged commit and confirm deployment SHA.
-
----
-
-## Known gaps / out of scope
-
-- Swiss, tournament bots, reconnect sovereignty expansion
-- Trainer / AI mentor / visual polish
-- Phase 2 observability dashboard
-- `supabase db push` requires `SUPABASE_DB_PASSWORD` or Management API token (`apply-supabase-migration.mjs`)
+Do not expand Swiss, AI mentor, emotional runtime, graphics spirals, or new routes. Stage 0 success means the ecosystem is **observable under real overlap pressure**, not that more systems should be added.

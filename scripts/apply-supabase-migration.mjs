@@ -11,6 +11,7 @@
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import fetch from 'cross-fetch';
 
 function loadEnvLocal() {
   if (!existsSync('.env.local')) return;

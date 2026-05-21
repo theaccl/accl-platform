@@ -1,24 +1,26 @@
 import { test, expect } from '@playwright/test';
 
-import { hasTwoUserE2ECredentials } from '../fixtures/env';
+import { overlapE2EPair } from '../fixtures/env';
 import { ROUTES } from '../fixtures/routes';
 import { teardownE2ePairStaleRows } from '../helpers/e2eTeardown';
 import { gameIdFromUrl } from '../helpers/gameUrl';
-import { setupAcceptedLiveChallenge, sendPendingLiveChallengeFromFree } from '../helpers/liveChallengePair';
+import { sendPendingLiveChallengeFromFree } from '../helpers/liveChallengePair';
+import { setupLiveOpenSeatPair } from '../helpers/openSeatLivePair';
 
 /**
  * Stage 0 — concurrent operational overlap (not serial happy-path).
  * Surfaces realtime sovereignty conflicts: live seat + lobby + nexus + profile + chat + reconnect + challenge.
  */
 test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
-  test.skip(!hasTwoUserE2ECredentials(), 'Set E2E_USER_EMAIL, E2E_USER_PASSWORD, E2E_USER_B_EMAIL, E2E_USER_B_PASSWORD');
+  const pair = overlapE2EPair();
+  test.skip(!pair, 'Set E2E_USER_* pair or E2E_MODERATOR_* + E2E_NON_MODERATOR_* in .env.local');
   test.describe.configure({ timeout: 300_000 });
 
   test('simultaneous live game, navigation hops, chat, reconnect, challenge, and spectate', async ({
     browser,
   }) => {
     await teardownE2ePairStaleRows();
-    const { pageA, pageB, gameId, dispose } = await setupAcceptedLiveChallenge(browser);
+    const { pageA, pageB, gameId, dispose } = await setupLiveOpenSeatPair(browser, pair!);
 
     const tabANexus = await pageA.context().newPage();
     const tabAProfile = await pageA.context().newPage();
@@ -72,7 +74,7 @@ test.describe('Stage 0 — free-play overlap pressure (concurrent)', () => {
         })(),
 
         (async () => {
-          await sendPendingLiveChallengeFromFree(tabAChallenge);
+          await sendPendingLiveChallengeFromFree(tabAChallenge, pair!.bEmail);
         })(),
 
         (async () => {

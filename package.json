@@ -26,6 +26,7 @@
     "ensure:play-computer-bots": "node scripts/ensure-play-computer-bot-profiles.mjs",
     "verify:stage-0-alpha": "node scripts/stage-0-alpha-verification.mjs",
     "verify:migration:zero-move-rating": "node scripts/apply-supabase-migration.mjs 20260519200000_tournament_zero_move_rating_void.sql",
+    "verify:migration:zero-move-rating:probe": "node scripts/verify-zero-move-rating-migration.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

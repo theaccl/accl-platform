@@ -65,3 +65,29 @@ export function e2eNonModeratorPassword(): string | undefined {
 export function hasNonModeratorE2ECredentials(): boolean {
   return Boolean(e2eNonModeratorEmail() && e2eNonModeratorPassword());
 }
+
+/** Stage 0 overlap: dedicated A/B pair, or moderator + non-moderator when A/B unset. */
+export function overlapE2EPair(): {
+  aEmail: string;
+  aPassword: string;
+  bEmail: string;
+  bPassword: string;
+} | null {
+  if (hasTwoUserE2ECredentials()) {
+    return {
+      aEmail: e2eUserEmail()!,
+      aPassword: e2eUserPassword()!,
+      bEmail: e2eUserBEmail()!,
+      bPassword: e2eUserBPassword()!,
+    };
+  }
+  if (hasModeratorE2ECredentials() && hasNonModeratorE2ECredentials()) {
+    return {
+      aEmail: e2eModeratorEmail()!,
+      aPassword: e2eModeratorPassword()!,
+      bEmail: e2eNonModeratorEmail()!,
+      bPassword: e2eNonModeratorPassword()!,
+    };
+  }
+  return null;
+}

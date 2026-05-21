@@ -109,6 +109,7 @@ if (!only || only.has('free-play')) {
         'playwright',
         'test',
         overlapSpec,
+        '--project=stage0-overlap',
       ]),
     );
   } else {

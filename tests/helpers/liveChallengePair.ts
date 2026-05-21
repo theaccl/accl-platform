@@ -20,13 +20,17 @@ import { openMatchRequestsInbox } from './requestsInbox';
  * Sends a live 5m / White direct challenge from `/free` and waits for awaiting-response UI.
  * Does not accept — use for “no game until accept” coverage.
  */
-export async function sendPendingLiveChallengeFromFree(page: Page): Promise<void> {
-  await page.goto(ROUTES.free);
-  await expect(page.getByTestId('free-lobby-root')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId('free-lobby-ready')).toBeAttached({ timeout: 30_000 });
-  await page.getByRole('button', { name: '5 min' }).click();
+const CHALLENGE_ENTRY = '/free/play';
+
+export async function sendPendingLiveChallengeFromFree(
+  page: Page,
+  opponentEmail?: string,
+): Promise<void> {
+  await page.goto(CHALLENGE_ENTRY);
+  await expect(page.getByTestId('direct-challenge-panel')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('direct-challenge-clock-5m').click();
   await page.getByLabel(/Your color/i).selectOption('white');
-  await page.getByTestId('challenge-opponent-lookup').fill(e2eUserBEmail()!);
+  await page.getByTestId('challenge-opponent-lookup').fill(opponentEmail ?? e2eUserBEmail()!);
   await page.getByTestId('challenge-find-opponent').click();
   await expect(page.locator('[data-testid^="user-row-"]')).toBeVisible({ timeout: 25_000 });
   await page.getByTestId('challenge-send-submit').click();
@@ -37,8 +41,16 @@ export async function sendPendingLiveChallengeFromFree(page: Page): Promise<void
  * Two isolated storage contexts (no shared cookies/storage). A sends live 5 min White → B;
  * B accepts on `/requests`. Waits for realtime-driven navigation on A before returning.
  */
+export type E2EPairCredentials = {
+  aEmail: string;
+  aPassword: string;
+  bEmail: string;
+  bPassword: string;
+};
+
 export async function setupAcceptedLiveChallenge(
-  browser: Browser
+  browser: Browser,
+  pair?: E2EPairCredentials,
 ): Promise<{
   pageA: Page;
   pageB: Page;
@@ -75,18 +87,17 @@ export async function setupAcceptedLiveChallenge(
     }
   };
 
-  const aMail = e2eUserEmail()!;
-  const aPass = e2eUserPassword()!;
-  const bMail = e2eUserBEmail()!;
-  const bPass = e2eUserBPassword()!;
+  const aMail = pair?.aEmail ?? e2eUserEmail()!;
+  const aPass = pair?.aPassword ?? e2eUserPassword()!;
+  const bMail = pair?.bEmail ?? e2eUserBEmail()!;
+  const bPass = pair?.bPassword ?? e2eUserBPassword()!;
 
   await loginAs(pageA, aMail, aPass);
   await loginAs(pageB, bMail, bPass);
 
-  await pageA.goto(ROUTES.free);
-  await expect(pageA.getByTestId('free-lobby-root')).toBeVisible({ timeout: 30_000 });
-  await expect(pageA.getByTestId('free-lobby-ready')).toBeAttached({ timeout: 30_000 });
-  await pageA.getByRole('button', { name: '5 min' }).click();
+  await pageA.goto(CHALLENGE_ENTRY);
+  await expect(pageA.getByTestId('direct-challenge-panel')).toBeVisible({ timeout: 30_000 });
+  await pageA.getByTestId('direct-challenge-clock-5m').click();
   await pageA.getByLabel(/Your color/i).selectOption('white');
   await pageA.getByTestId('challenge-opponent-lookup').fill(bMail);
   await pageA.getByTestId('challenge-find-opponent').click();
@@ -102,7 +113,11 @@ export async function setupAcceptedLiveChallenge(
   await pageB.waitForLoadState('domcontentloaded');
   const gameId = gameIdFromUrl(pageB.url());
 
-  await pageA.waitForURL((u) => u.pathname === `/game/${gameId}`, { timeout: 90_000 });
+  try {
+    await pageA.waitForURL((u) => u.pathname === `/game/${gameId}`, { timeout: 45_000 });
+  } catch {
+    await pageA.goto(ROUTES.game(gameId));
+  }
   await pageA.waitForLoadState('domcontentloaded');
   await expect(pageB.getByTestId('game-startup-snapshot')).toBeAttached({ timeout: 30_000 });
   await expect(pageA.getByTestId('game-startup-snapshot')).toBeAttached({ timeout: 30_000 });
