@@ -347,6 +347,7 @@ html.accl-game-route body {
   padding: var(--accl-space-6);
   font-family: var(--font-accl-ui), ui-sans-serif, system-ui, sans-serif;
   overflow-x: clip;
+  overflow-anchor: none;
   box-sizing: border-box;
 }
 
@@ -360,6 +361,7 @@ html.accl-game-route body {
   margin-top: 20px;
   width: 100%;
   max-width: 560px;
+  overflow-anchor: none;
 }
 
 /** Square board stage — react-chessboard sizes to this box; do not flex-grow with side panels. */
@@ -368,16 +370,14 @@ html.accl-game-route body {
   z-index: 100;
   flex: 0 0 auto;
   width: min(100%, 520px);
-  isolation: isolate;
-  scroll-margin-top: 72px;
 }
 
 .accl-game-board-canvas {
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
-  contain: layout size style;
   overflow: hidden;
+  touch-action: none;
 }
 
 /** Chat / move-log scroll regions — prevent scroll-anchoring jitter on append. */
@@ -385,9 +385,9 @@ html.accl-game-route body {
   overflow-anchor: none;
 }
 
-/** Side panels (chat, replay log) — layout contained so growth does not reflow the board stage. */
+/** Side panels (chat, replay log) — growth stays below board; no layout containment (breaks drag preview). */
 .accl-game-side-panel {
-  contain: layout style;
   max-width: 520px;
   width: 100%;
+  overflow-anchor: none;
 }

@@ -3639,138 +3639,6 @@ export default function GamePage() {
         </div>
       )}
 
-      {moveLogs.length > 0 && (
-        <div className="accl-game-side-panel" style={{ marginBottom: 16, maxWidth: 560 }}>
-          <h3 style={{ marginTop: 0 }}>Replay</h3>
-          <div
-            style={{
-              marginBottom: 10,
-              border: '1px solid #444',
-              borderRadius: 6,
-              background: '#111',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                padding: '6px 10px',
-                borderBottom: '1px solid #333',
-                color: '#aaa',
-                fontSize: 12,
-              }}
-            >
-              Notation — click a move to jump
-            </div>
-            <div
-              className="accl-scroll-no-anchor"
-              style={{
-                maxHeight: 180,
-                overflowY: 'auto',
-                padding: '8px 10px',
-                fontSize: 13,
-                lineHeight: 1.55,
-                fontFamily: 'ui-monospace, monospace',
-              }}
-            >
-              {(() => {
-                let flat = 0;
-                const hl = (idx: number) =>
-                  replayStep !== null && idx >= 0 && replayStep === idx + 1;
-                const sanBtn = (idx: number, label: string) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    title="Jump to position after this move"
-                    onClick={() => setReplayStep(idx + 1)}
-                    style={{
-                      padding: '1px 4px',
-                      margin: 0,
-                      border: 'none',
-                      borderRadius: 3,
-                      background: hl(idx) ? 'rgba(255, 180, 60, 0.4)' : 'transparent',
-                      color: '#eee',
-                      fontSize: 'inherit',
-                      lineHeight: 'inherit',
-                      fontFamily: 'inherit',
-                      fontWeight: hl(idx) ? 600 : 400,
-                      cursor: 'pointer',
-                      verticalAlign: 'baseline',
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-                return pairedRows.map((row: ReplayPairedRow) => {
-                  const wIdx = flat++;
-                  const bIdx = row.black !== undefined ? flat++ : -1;
-                  return (
-                    <div key={row.num} style={{ marginBottom: 3 }}>
-                      <span style={{ color: '#888', userSelect: 'none' }}>{row.num}. </span>
-                      {sanBtn(wIdx, row.white)}
-                      {row.black !== undefined && (
-                        <>
-                          {' '}
-                          {sanBtn(bIdx, row.black)}
-                        </>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button
-              type="button"
-              onClick={() => setReplayStep(0)}
-              disabled={replayStep === 0}
-              style={{ padding: '6px 10px' }}
-            >
-              First
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setReplayStep((s: number | null) => (s === null ? 0 : Math.max(0, s - 1)))
-              }
-              disabled={replayStep !== null && replayStep <= 0}
-              style={{ padding: '6px 10px' }}
-            >
-              Prev
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setReplayStep((s: number | null) => {
-                  if (s === null) return 0;
-                  return Math.min(maxReplayStep, s + 1);
-                })
-              }
-              disabled={replayStep !== null && replayStep >= maxReplayStep}
-              style={{ padding: '6px 10px' }}
-            >
-              Next
-            </button>
-            <button
-              type="button"
-              onClick={() => setReplayStep(maxReplayStep)}
-              disabled={replayStep === maxReplayStep}
-              style={{ padding: '6px 10px' }}
-            >
-              Last
-            </button>
-            <button type="button" onClick={() => setReplayStep(null)} style={{ padding: '6px 10px' }}>
-              {game.status === 'finished' ? 'Final position' : 'Live'}
-            </button>
-            {replayStep !== null && (
-              <span style={{ fontSize: 14 }}>
-                Step {replayStep} / {maxReplayStep}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* TEST CONTRACT: `game-turn-indicator` + `data-game-state` — E2E; UI "waiting" here does not change DB status */}
       {game.status !== 'finished' && (
         <p
@@ -3904,19 +3772,20 @@ export default function GamePage() {
             }}
           >
             <div
+              role="document"
+              onClick={(e) => e.stopPropagation()}
               style={{
                 background: '#1a1a1a',
-                border: '1px solid #444',
+                border: '1px solid #555',
                 borderRadius: 8,
-                padding: '16px 20px',
-                maxWidth: 360,
-                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                padding: 16,
+                maxWidth: 280,
+                width: '100%',
               }}
-              onClick={(e) => e.stopPropagation()}
             >
               <p
                 id="promotion-dialog-title"
-                style={{ margin: '0 0 6px 0', fontSize: 16, fontWeight: 600 }}
+                style={{ margin: '0 0 8px 0', fontSize: 15, fontWeight: 600, color: '#eee' }}
               >
                 Choose promotion
               </p>
@@ -3981,6 +3850,143 @@ export default function GamePage() {
           />
         ) : null}
       </div>
+
+      {moveLogs.length > 0 && (
+        <div
+          className="accl-game-side-panel accl-game-replay-panel"
+          data-testid="game-replay-panel"
+          style={{ marginTop: 16, marginBottom: 16, maxWidth: 560 }}
+        >
+          <h3 style={{ marginTop: 0 }}>Replay</h3>
+          <div
+            style={{
+              marginBottom: 10,
+              border: '1px solid #444',
+              borderRadius: 6,
+              background: '#111',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '6px 10px',
+                borderBottom: '1px solid #333',
+                color: '#aaa',
+                fontSize: 12,
+              }}
+            >
+              Notation — click a move to jump
+            </div>
+            <div
+              className="accl-scroll-no-anchor"
+              style={{
+                maxHeight: 180,
+                overflowY: 'auto',
+                padding: '8px 10px',
+                fontSize: 13,
+                lineHeight: 1.55,
+                fontFamily: 'ui-monospace, monospace',
+              }}
+            >
+              {(() => {
+                let flat = 0;
+                const hl = (idx: number) =>
+                  replayStep !== null && idx >= 0 && replayStep === idx + 1;
+                const sanBtn = (idx: number, label: string) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    title="Jump to position after this move"
+                    onClick={() => setReplayStep(idx + 1)}
+                    style={{
+                      padding: '1px 4px',
+                      margin: 0,
+                      border: 'none',
+                      borderRadius: 3,
+                      background: hl(idx) ? 'rgba(255, 180, 60, 0.4)' : 'transparent',
+                      color: '#eee',
+                      fontSize: 'inherit',
+                      lineHeight: 'inherit',
+                      fontFamily: 'inherit',
+                      fontWeight: hl(idx) ? 600 : 400,
+                      cursor: 'pointer',
+                      verticalAlign: 'baseline',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+                return pairedRows.map((row: ReplayPairedRow) => {
+                  const wIdx = flat++;
+                  const bIdx = row.black !== undefined ? flat++ : -1;
+                  return (
+                    <div key={row.num} style={{ marginBottom: 3 }}>
+                      <span style={{ color: '#888', userSelect: 'none' }}>{row.num}. </span>
+                      {sanBtn(wIdx, row.white)}
+                      {row.black !== undefined && (
+                        <>
+                          {' '}
+                          {sanBtn(bIdx, row.black)}
+                        </>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setReplayStep(0)}
+              disabled={replayStep === 0}
+              style={{ padding: '6px 10px' }}
+            >
+              First
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setReplayStep((s: number | null) => (s === null ? 0 : Math.max(0, s - 1)))
+              }
+              disabled={replayStep !== null && replayStep <= 0}
+              style={{ padding: '6px 10px' }}
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setReplayStep((s: number | null) => {
+                  if (s === null) return 0;
+                  return Math.min(maxReplayStep, s + 1);
+                })
+              }
+              disabled={replayStep !== null && replayStep >= maxReplayStep}
+              style={{ padding: '6px 10px' }}
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              onClick={() => setReplayStep(maxReplayStep)}
+              disabled={replayStep === maxReplayStep}
+              style={{ padding: '6px 10px' }}
+            >
+              Last
+            </button>
+            <button type="button" onClick={() => setReplayStep(null)} style={{ padding: '6px 10px' }}>
+              {game.status === 'finished' ? 'Final position' : 'Live'}
+            </button>
+            {replayStep !== null && (
+              <span style={{ fontSize: 14 }}>
+                Step {replayStep} / {maxReplayStep}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {userId ? (
         <div style={{ marginTop: 20, maxWidth: 520 }}>
           <TesterBugReportTrigger

@@ -49,10 +49,16 @@ test.describe('production hardening audit (static)', () => {
     expect(page).toContain('accl-game-board-stage');
     expect(page).toContain('accl-game-board-canvas');
     expect(page).toContain('accl-scroll-no-anchor');
+    expect(page).toContain('data-testid="game-replay-panel"');
     expect(page).toContain("minHeight: '100dvh'");
+    const boardIdx = page.indexOf('game-board-with-tournament-rail');
+    const replayIdx = page.indexOf('game-replay-panel');
+    expect(boardIdx).toBeGreaterThan(-1);
+    expect(replayIdx).toBeGreaterThan(boardIdx);
     expect(css).toContain('html.accl-game-route');
     expect(css).toContain('scrollbar-gutter: stable');
     expect(css).toContain('.accl-game-board-canvas');
+    expect(css).not.toContain('contain: layout size style');
     expect(css).toContain('overflow-anchor: none');
     const chat = src('components/game/GameTesterChatPanels.tsx');
     expect(chat).toContain('accl-scroll-no-anchor');
