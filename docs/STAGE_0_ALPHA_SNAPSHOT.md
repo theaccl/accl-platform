@@ -6,11 +6,23 @@ Operational benchmark for invited testers — **not** a feature release tag.
 
 | Source | Commit | Notes |
 |--------|--------|--------|
-| Git `main` (local) | `d8709ad` | Last pushed: mode room clock activity |
-| GitHub `main` | `d8709ad` | Confirm matches `git ls-remote origin main` |
-| Vercel production | _fill from deployment detail_ | Must match intended anchor or newer Stage 0 commit |
+| Pre–Stage 0 production tip | `d8709ad` | Mode room clock activity (last pushed before Stage 0 slice) |
+| Stage 0 slice (5 commits) | `da3c39c` … `9b80127` | See table below |
+| Git `main` (local, post–Stage 0) | `9b80127` | Push + confirm Vercel deploy SHA |
+| GitHub `main` | _after push_ | `git ls-remote origin main` |
+| Vercel production | _fill from deployment detail_ | Must match `9b80127` (or newer) before alpha tag |
 
-**Working tree:** Stage 0 spine / NEXUS ops / bot provisioning / battlefield continuity may be **uncommitted** after `d8709ad`. Tag alpha only after those commits are on `main` and deployed.
+### Stage 0 commit slices (rollback order)
+
+| Commit | SHA | Scope |
+|--------|-----|--------|
+| A — Spine + identity | `da3c39c` | Login→profile default, NEXUS nav/CTA, redirect safety, E2E profile shell |
+| B — NEXUS ops | `205746b` | `operationalGames`, mode lanes, sort order |
+| C — Battlefield | `34b48c5` | Lobby continuity, tournament rail, first-move grace API, zero-move rating migration file |
+| D — Play Computer | `a12c17d` | Bot ensure script, provisioning detail, verification runners |
+| E — Viewport | `9b80127` | Game shell CSS, grace banner wiring on game page |
+
+Tag alpha only after migration applied in Supabase, verification scripts PASS, and Vercel SHA aligned.
 
 ---
 
