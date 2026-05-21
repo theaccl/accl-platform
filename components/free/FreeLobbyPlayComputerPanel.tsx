@@ -66,9 +66,14 @@ export function FreeLobbyPlayComputerPanel({ mode, initialClock }: Props) {
         game?: { id?: string };
         error?: string;
         message?: string;
+        detail?: string;
+        key?: string;
       };
       if (!res.ok || !payload.game?.id) {
-        setMessage(payload.error ?? payload.message ?? 'Could not start computer game.');
+        const parts = [payload.error, payload.detail, payload.message].filter(
+          (s): s is string => Boolean(s && String(s).trim()),
+        );
+        setMessage(parts.length > 0 ? parts.join(' — ') : 'Could not start computer game.');
         return;
       }
       router.push(`/game/${payload.game.id}`);

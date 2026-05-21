@@ -73,6 +73,7 @@ test.describe('Free lobby Play Computer entry (static)', () => {
       'utf8',
     );
     expect(panelSrc).toContain('/api/bot/game/start');
+    expect(panelSrc).toContain('payload.detail');
     expect(panelSrc).not.toContain('/api/internal/bot-move');
   });
 
