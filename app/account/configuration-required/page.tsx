@@ -7,7 +7,7 @@ import NavigationBar from '@/components/NavigationBar';
 
 function Inner() {
   const searchParams = useSearchParams();
-  const next = searchParams.get('next')?.trim() || '/tester/welcome';
+  const next = searchParams.get('next')?.trim() || '/profile';
 
   return (
     <main className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-12 text-white">

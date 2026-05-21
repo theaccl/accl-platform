@@ -13,14 +13,22 @@ test.describe('login', () => {
     await expect(page.getByTestId('login-submit')).toBeVisible(vis);
   });
 
-  test('valid login reaches lobby-ready (home or modes)', async ({ page }) => {
+  test('valid login reaches post-login shell (profile or lobby-ready)', async ({ page }) => {
     test.skip(!hasE2ECredentials(), 'Set E2E_USER_EMAIL and E2E_USER_PASSWORD');
     const email = e2eUserEmail()!;
     const password = e2eUserPassword()!;
     await loginAs(page, email, password);
     const path = new URL(page.url()).pathname;
-    expect(path === '/' || path === '/modes' || path === '/tester/welcome').toBeTruthy();
-    await expect(page.getByTestId('lobby-ready')).toBeAttached();
+    expect(
+      path === '/' ||
+        path === '/modes' ||
+        path === '/tester/welcome' ||
+        path === '/profile' ||
+        path.startsWith('/profile/'),
+    ).toBeTruthy();
+    await expect(
+      page.getByTestId('lobby-ready').or(page.getByTestId('public-profile-root')),
+    ).toBeAttached();
   });
 
   test('session collision: two isolated contexts may both sign in as the same user', async ({
@@ -36,8 +44,12 @@ test.describe('login', () => {
     try {
       await loginAs(page1, email, password);
       await loginAs(page2, email, password);
-      await expect(page1.getByTestId('lobby-ready')).toBeAttached();
-      await expect(page2.getByTestId('lobby-ready')).toBeAttached();
+      await expect(
+        page1.getByTestId('lobby-ready').or(page1.getByTestId('public-profile-root')),
+      ).toBeAttached();
+      await expect(
+        page2.getByTestId('lobby-ready').or(page2.getByTestId('public-profile-root')),
+      ).toBeAttached();
       await page1.goto(ROUTES.home);
       await expect(page1.getByTestId('lobby-ready')).toBeAttached({ timeout: 20_000 });
     } finally {
@@ -55,10 +67,16 @@ test.describe('login', () => {
       await page.goto(ROUTES.login);
       await expect(page).toHaveURL(
         (u) =>
-          u.pathname === ROUTES.home || u.pathname === '/modes' || u.pathname === '/tester/welcome',
-        { timeout: 30_000 }
+          u.pathname === ROUTES.home ||
+          u.pathname === '/modes' ||
+          u.pathname === '/tester/welcome' ||
+          u.pathname === '/profile' ||
+          u.pathname.startsWith('/profile/'),
+        { timeout: 30_000 },
       );
-      await expect(page.getByTestId('lobby-ready')).toBeAttached({ timeout: 20_000 });
+      await expect(
+        page.getByTestId('lobby-ready').or(page.getByTestId('public-profile-root')),
+      ).toBeAttached({ timeout: 20_000 });
     } finally {
       await context.close();
     }

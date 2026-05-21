@@ -4,6 +4,7 @@ import {
   buildGameHref,
   buildGameLoginRedirect,
   buildTournamentHref,
+  DEFAULT_POST_LOGIN_PATH,
   getSafePostLoginRedirect,
   isValidGameRoute,
   isValidTournamentRoute,
@@ -14,10 +15,11 @@ const UPPER = "750E8400-E29B-41D4-A716-446655440002";
 
 test.describe("getSafePostLoginRedirect", () => {
   test("empty or missing next falls back to default post-login path", () => {
-    expect(getSafePostLoginRedirect(null)).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect(undefined)).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("   ")).toBe("/tester/welcome");
+    expect(DEFAULT_POST_LOGIN_PATH).toBe("/profile");
+    expect(getSafePostLoginRedirect(null)).toBe("/profile");
+    expect(getSafePostLoginRedirect(undefined)).toBe("/profile");
+    expect(getSafePostLoginRedirect("")).toBe("/profile");
+    expect(getSafePostLoginRedirect("   ")).toBe("/profile");
   });
 
   test("internal paths pass through", () => {
@@ -34,27 +36,27 @@ test.describe("getSafePostLoginRedirect", () => {
   });
 
   test("rejects open redirects and protocol tricks", () => {
-    expect(getSafePostLoginRedirect("//evil.com")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("//evil.com/path")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("https://evil.com")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("http://evil.com")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("javascript:alert(1)")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("//evil.com")).toBe("/profile");
+    expect(getSafePostLoginRedirect("//evil.com/path")).toBe("/profile");
+    expect(getSafePostLoginRedirect("https://evil.com")).toBe("/profile");
+    expect(getSafePostLoginRedirect("http://evil.com")).toBe("/profile");
+    expect(getSafePostLoginRedirect("javascript:alert(1)")).toBe("/profile");
   });
 
   test("rejects backslashes and traversal", () => {
-    expect(getSafePostLoginRedirect("/foo\\bar")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("\\\\evil\\path")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("/safe/../admin")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("/foo\\bar")).toBe("/profile");
+    expect(getSafePostLoginRedirect("\\\\evil\\path")).toBe("/profile");
+    expect(getSafePostLoginRedirect("/safe/../admin")).toBe("/profile");
   });
 
   test("avoids redirect loop to login", () => {
-    expect(getSafePostLoginRedirect("/login")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("/login?next=/nexus")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("/login")).toBe("/profile");
+    expect(getSafePostLoginRedirect("/login?next=/nexus")).toBe("/profile");
   });
 
   test("avoids onboarding paths as post-login targets", () => {
-    expect(getSafePostLoginRedirect("/onboarding/username")).toBe("/tester/welcome");
-    expect(getSafePostLoginRedirect("/onboarding/username?next=/nexus")).toBe("/tester/welcome");
+    expect(getSafePostLoginRedirect("/onboarding/username")).toBe("/profile");
+    expect(getSafePostLoginRedirect("/onboarding/username?next=/nexus")).toBe("/profile");
   });
 });
 

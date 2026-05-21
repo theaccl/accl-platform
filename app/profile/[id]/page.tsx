@@ -223,12 +223,34 @@ export default function PublicProfilePage() {
         ) : null}
 
         {isSelf ? (
-          <div className="flex flex-wrap items-center justify-end gap-3" data-testid="profile-self-actions">
-            <TesterBugReportTrigger
-              label="Report issue"
-              className="rounded-md border border-amber-500/35 bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-100 hover:bg-amber-950/35"
-            />
-            <ProfileLogOutButton />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <section
+              className="rounded-xl border border-sky-500/30 bg-sky-950/20 px-4 py-3"
+              data-testid="profile-nexus-spine-cta"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300/90">
+                Operations
+              </p>
+              <p className="mt-1 max-w-xl text-sm text-gray-300">
+                Your profile is identity. NEXUS is where active games, tournaments, and obligations live.
+              </p>
+              <Link
+                href="/nexus"
+                className="mt-3 inline-flex rounded-lg border border-sky-500/45 bg-sky-950/40 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-900/50"
+              >
+                Open NEXUS
+              </Link>
+            </section>
+            <div
+              className="flex flex-wrap items-center justify-end gap-3"
+              data-testid="profile-self-actions"
+            >
+              <TesterBugReportTrigger
+                label="Report issue"
+                className="rounded-md border border-amber-500/35 bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-100 hover:bg-amber-950/35"
+              />
+              <ProfileLogOutButton />
+            </div>
           </div>
         ) : null}
 

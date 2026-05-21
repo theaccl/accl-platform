@@ -105,7 +105,14 @@ function ProfileIdentityAnchor({
               className="block w-full rounded-lg border border-red-500/35 bg-red-950/20 px-3 py-2 text-left text-sm font-medium text-red-100/95 transition hover:border-red-500/50 hover:bg-red-950/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
             >
               View Profile
-              <span className="mt-0.5 block text-xs font-normal text-gray-500">Open full profile</span>
+              <span className="mt-0.5 block text-xs font-normal text-gray-500">Identity &amp; stats</span>
+            </Link>
+            <Link
+              href="/nexus"
+              className="block w-full rounded-lg border border-sky-500/35 bg-sky-950/20 px-3 py-2 text-left text-sm font-medium text-sky-100/95 transition hover:border-sky-500/50 hover:bg-sky-950/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40"
+            >
+              Open NEXUS
+              <span className="mt-0.5 block text-xs font-normal text-gray-500">Operations hub</span>
             </Link>
             <button
               type="button"
@@ -239,6 +246,9 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
                 className="flex max-w-full min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-2.5"
                 aria-label="Primary navigation"
               >
+                <Link href="/nexus" className={navBtn} data-testid="nav-nexus-link">
+                  NEXUS
+                </Link>
                 <Link href="/players" className={navBtn}>
                   Player lookup
                 </Link>

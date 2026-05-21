@@ -8,8 +8,8 @@
 
 import { isSafeHubDocumentId, isValidNexusHubHref } from "@/lib/nexus/nexusHubMapping";
 
-/** Default landing after sign-in when `next` is absent or unsafe (tester entry surface). */
-const DEFAULT_POST_LOGIN_PATH = "/tester/welcome";
+/** Default landing after sign-in when `next` is absent or unsafe (identity spine). */
+export const DEFAULT_POST_LOGIN_PATH = "/profile";
 
 /**
  * Strict post-login redirect target. URLSearchParams already decodes `next` once.
