@@ -8,10 +8,14 @@ import type { useLobbyUserObligations } from '@/hooks/useLobbyUserObligations';
 import {
   DAILY_ASYNC_SECTION_HINT,
   freeActiveGamesHref,
-  LIVE_NOW_SECTION_HINT,
 } from '@/lib/gameContinuityPresentation';
 import {
+  isLiveFreeRecoveryObligation,
+  shouldRenderLobbyObligationSubsection,
+} from '@/lib/lobbyOperationalContinuity';
+import {
   DAILY_ASYNC_YOUR_MOVE_TITLE,
+  FREE_LIVE_RECOVERY_HINT,
   FREE_LIVE_SECTION_TITLE,
   sortLobbyObligationRows,
   TOURNAMENT_LIVE_SECTION_HINT,
@@ -62,24 +66,31 @@ type Props = {
 };
 
 /**
- * Lobby hub: obligations first — tournament live (always), free live + daily/async respect mode filter.
+ * Lobby hub: obligations first — All Modes overview vs focused operational lane when filtered.
  */
 export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: Props) {
   const { uid, error, loading, freeLiveRaw, dailyAsyncRaw, tournamentRows, tournamentNames } = obligations;
   const filterLabel = modeFilter ? PLAT_MODE_LABELS[modeFilter] : null;
 
-  const tournamentLive = useMemo(
-    () => sortLobbyObligationRows(tournamentRows ?? [], uid),
-    [tournamentRows, uid],
-  );
-  const freeLive = useMemo(
-    () => sortLobbyObligationRows(filterRowsByLobbyMode(freeLiveRaw, modeFilter), uid),
-    [freeLiveRaw, modeFilter, uid],
-  );
+  const tournamentLive = useMemo(() => {
+    const filtered = filterRowsByLobbyMode(tournamentRows ?? [], modeFilter);
+    return sortLobbyObligationRows(filtered, uid);
+  }, [tournamentRows, modeFilter, uid]);
+
+  const freeLive = useMemo(() => {
+    const recovery = (freeLiveRaw ?? []).filter((r) => isLiveFreeRecoveryObligation(r, uid));
+    return sortLobbyObligationRows(filterRowsByLobbyMode(recovery, modeFilter), uid);
+  }, [freeLiveRaw, modeFilter, uid]);
+
   const dailyAsync = useMemo(
     () => sortLobbyObligationRows(filterRowsByLobbyMode(dailyAsyncRaw, modeFilter), uid),
     [dailyAsyncRaw, modeFilter, uid],
   );
+
+  const showTournament = shouldRenderLobbyObligationSubsection(modeFilter, tournamentLive.length, loading);
+  const showFreeLive = shouldRenderLobbyObligationSubsection(modeFilter, freeLive.length, loading);
+  const showDailyAsync = shouldRenderLobbyObligationSubsection(modeFilter, dailyAsync.length, loading);
+  const showAnySubsection = showTournament || showFreeLive || showDailyAsync;
 
   return (
     <section
@@ -102,6 +113,18 @@ export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: P
         </Link>
       </div>
 
+      {modeFilter ? (
+        <p className="text-[11px] leading-snug text-gray-500" data-testid="free-lobby-filtered-lane-hint">
+          Focused <strong className="text-gray-300">{filterLabel}</strong> lane — only sections with your activity
+          in this mode. Clear the filter for the full ecosystem overview.
+        </p>
+      ) : (
+        <p className="text-[11px] leading-snug text-gray-500" data-testid="free-lobby-all-modes-hint">
+          <strong className="text-gray-300">All modes</strong> — tournament, live recovery, daily/async, and open-seat
+          obligations in one view.
+        </p>
+      )}
+
       {loading ? (
         <p className="rounded-xl border border-amber-500/25 bg-[#14100c] px-4 py-3 text-xs text-gray-500">
           Loading your boards…
@@ -111,96 +134,119 @@ export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: P
         <p className="rounded-xl border border-red-500/35 bg-[#0f141c] px-4 py-3 text-xs text-red-400">{error}</p>
       ) : null}
 
-      <ObligationSubsection
-        title={TOURNAMENT_LIVE_SECTION_TITLE}
-        hint={TOURNAMENT_LIVE_SECTION_HINT}
-        testId="free-lobby-tournament-live"
-        titleClassName="text-amber-200/90"
-        borderClassName="border-amber-500/35 bg-[#14100c]"
-      >
-        {!loading && tournamentLive.length === 0 ? (
-          <p className="text-xs text-gray-500">No active tournament boards.</p>
-        ) : null}
-        {tournamentLive.length > 0 ? (
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {tournamentLive.map((g) => {
-              const tid = String(g.tournament_id ?? '').trim();
-              const label = tid ? (tournamentNames[tid] ?? 'Tournament') : 'Tournament';
-              return (
-                <li key={g.id}>
-                  <Link
-                    href={`/game/${g.id}`}
-                    className="flex min-h-[48px] flex-col justify-center rounded-lg border border-amber-500/30 bg-[#1a140c] px-3 py-2 text-sm text-gray-200 transition hover:border-amber-400/50 hover:bg-[#221a0e]"
-                    data-testid={`free-lobby-tournament-game-${g.id}`}
-                  >
-                    <span className="truncate font-semibold text-amber-50">{label}</span>
-                    <span className="text-[11px] text-amber-200/70">Bracket board — open game</span>
-                  </Link>
-                  {tid ? (
+      {!loading && !error && modeFilter && !showAnySubsection ? (
+        <p
+          className="rounded-xl border border-[#2a3a4f] bg-[#0f141c] px-4 py-3 text-xs text-gray-400"
+          data-testid="free-lobby-filtered-empty"
+        >
+          No <strong className="text-gray-200">{filterLabel}</strong> obligations right now. Use{' '}
+          <strong className="text-gray-200">Room →</strong> below for open games and watch discovery in that mode, or
+          clear the filter for the full hub.
+        </p>
+      ) : null}
+
+      {showTournament ? (
+        <ObligationSubsection
+          title={TOURNAMENT_LIVE_SECTION_TITLE}
+          hint={
+            filterLabel
+              ? `${TOURNAMENT_LIVE_SECTION_HINT} Showing ${filterLabel} tournament boards only.`
+              : TOURNAMENT_LIVE_SECTION_HINT
+          }
+          testId="free-lobby-tournament-live"
+          titleClassName="text-amber-200/90"
+          borderClassName="border-amber-500/35 bg-[#14100c]"
+        >
+          {!loading && tournamentLive.length === 0 ? (
+            <p className="text-xs text-gray-500">No active tournament boards.</p>
+          ) : null}
+          {tournamentLive.length > 0 ? (
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {tournamentLive.map((g) => {
+                const tid = String(g.tournament_id ?? '').trim();
+                const label = tid ? (tournamentNames[tid] ?? 'Tournament') : 'Tournament';
+                return (
+                  <li key={g.id}>
                     <Link
-                      href={`/tournaments/${tid}`}
-                      className="mt-1 inline-block text-[10px] font-medium text-gray-500 hover:text-amber-200/80"
-                      data-testid={`free-lobby-tournament-detail-${tid}`}
+                      href={`/game/${g.id}`}
+                      className="flex min-h-[48px] flex-col justify-center rounded-lg border border-amber-500/30 bg-[#1a140c] px-3 py-2 text-sm text-gray-200 transition hover:border-amber-400/50 hover:bg-[#221a0e]"
+                      data-testid={`free-lobby-tournament-game-${g.id}`}
                     >
-                      Tournament hub →
+                      <span className="truncate font-semibold text-amber-50">{label}</span>
+                      <span className="text-[11px] text-amber-200/70">Bracket board — open game</span>
                     </Link>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </ObligationSubsection>
+                    {tid ? (
+                      <Link
+                        href={`/tournaments/${tid}`}
+                        className="mt-1 inline-block text-[10px] font-medium text-gray-500 hover:text-amber-200/80"
+                        data-testid={`free-lobby-tournament-detail-${tid}`}
+                      >
+                        Tournament hub →
+                      </Link>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </ObligationSubsection>
+      ) : null}
 
-      <ObligationSubsection
-        title={FREE_LIVE_SECTION_TITLE}
-        hint={
-          filterLabel
-            ? `${LIVE_NOW_SECTION_HINT} Filtered to ${filterLabel} — clear mode filter to see all live boards.`
-            : LIVE_NOW_SECTION_HINT
-        }
-        viewAllHref={freeActiveGamesHref('live')}
-        testId="free-lobby-live-now"
-        titleClassName="text-sky-300/90"
-        borderClassName="border-sky-500/35 bg-[#0f141c]"
-      >
-        {!loading && freeLive.length === 0 ? (
-          <p className="text-xs text-gray-500">
-            {modeFilter ? 'No free-play live boards in this mode.' : 'No free-play live boards right now.'}
-          </p>
-        ) : null}
-        {freeLive.length > 0 ? (
-          <GameContinuityGameRows rows={freeLive} uid={uid} variant="live" testIdPrefix="free-lobby-live" compact />
-        ) : null}
-      </ObligationSubsection>
+      {showFreeLive ? (
+        <ObligationSubsection
+          title={FREE_LIVE_SECTION_TITLE}
+          hint={
+            filterLabel
+              ? `${FREE_LIVE_RECOVERY_HINT} Filtered to ${filterLabel}.`
+              : FREE_LIVE_RECOVERY_HINT
+          }
+          viewAllHref={freeActiveGamesHref('live')}
+          testId="free-lobby-live-now"
+          titleClassName="text-sky-300/90"
+          borderClassName="border-sky-500/35 bg-[#0f141c]"
+        >
+          {!loading && freeLive.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              {modeFilter
+                ? 'No live recovery items in this mode.'
+                : 'No live recovery needed — return from the board when it is your turn.'}
+            </p>
+          ) : null}
+          {freeLive.length > 0 ? (
+            <GameContinuityGameRows rows={freeLive} uid={uid} variant="live" testIdPrefix="free-lobby-live" compact />
+          ) : null}
+        </ObligationSubsection>
+      ) : null}
 
-      <ObligationSubsection
-        title={DAILY_ASYNC_YOUR_MOVE_TITLE}
-        hint={
-          filterLabel
-            ? `${DAILY_ASYNC_SECTION_HINT} Filtered to ${filterLabel}.`
-            : DAILY_ASYNC_SECTION_HINT
-        }
-        viewAllHref={freeActiveGamesHref('async')}
-        testId="free-lobby-daily-async"
-        titleClassName="text-violet-300/90"
-        borderClassName="border-violet-500/30 bg-[#0f141c]"
-      >
-        {!loading && dailyAsync.length === 0 ? (
-          <p className="text-xs text-gray-500">
-            {modeFilter ? 'No daily/async games in this mode.' : 'No daily or correspondence games waiting.'}
-          </p>
-        ) : null}
-        {dailyAsync.length > 0 ? (
-          <GameContinuityGameRows
-            rows={dailyAsync}
-            uid={uid}
-            variant="async"
-            testIdPrefix="free-lobby-async"
-            compact
-          />
-        ) : null}
-      </ObligationSubsection>
+      {showDailyAsync ? (
+        <ObligationSubsection
+          title={DAILY_ASYNC_YOUR_MOVE_TITLE}
+          hint={
+            filterLabel
+              ? `${DAILY_ASYNC_SECTION_HINT} Filtered to ${filterLabel}.`
+              : DAILY_ASYNC_SECTION_HINT
+          }
+          viewAllHref={freeActiveGamesHref('async')}
+          testId="free-lobby-daily-async"
+          titleClassName="text-violet-300/90"
+          borderClassName="border-violet-500/30 bg-[#0f141c]"
+        >
+          {!loading && dailyAsync.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              {modeFilter ? 'No daily/async games in this mode.' : 'No daily or correspondence games waiting.'}
+            </p>
+          ) : null}
+          {dailyAsync.length > 0 ? (
+            <GameContinuityGameRows
+              rows={dailyAsync}
+              uid={uid}
+              variant="async"
+              testIdPrefix="free-lobby-async"
+              compact
+            />
+          ) : null}
+        </ObligationSubsection>
+      ) : null}
     </section>
   );
 }

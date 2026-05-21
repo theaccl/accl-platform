@@ -4,7 +4,9 @@ export const YOUR_MOVE_SECTION_TITLE = 'Your move';
 export const TOURNAMENT_LIVE_SECTION_TITLE = 'Tournament — Your Move / Live';
 export const TOURNAMENT_LIVE_SECTION_HINT =
   'Your match ready — bracket boards dominate free-play queues; you will be routed to your board or event hub while live.';
-export const FREE_LIVE_SECTION_TITLE = 'Free play — Live';
+export const FREE_LIVE_SECTION_TITLE = 'Free play — Live recovery';
+export const FREE_LIVE_RECOVERY_HINT =
+  'Reconnect when it is your turn or you posted an open seat — opponent-turn live boards stay on the board itself.';
 export const DAILY_ASYNC_YOUR_MOVE_TITLE = 'Daily / Async — Your Move';
 
 export type LobbyObligationRow = GameContinuityRow & {

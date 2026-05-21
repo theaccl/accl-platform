@@ -78,7 +78,8 @@ export function FreeLobbyModeFilterStrip({ selected, onSelect, signals, loading 
         <div>
           <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-gray-300">Mode zones</h2>
           <p className="mt-1 text-xs leading-relaxed text-gray-500">
-            Tap a zone to filter live boards, open seats, and your queues on this page.
+            Tap a zone to filter <strong className="text-gray-400">your</strong> obligations on this page. Use{' '}
+            <strong className="text-gray-400">Room →</strong> for mode chat, open games, and watch discovery.
           </p>
         </div>
         {selected ? (

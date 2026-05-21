@@ -31,6 +31,7 @@ function serializeAllowed(s: Extract<TournamentSnapshotResult, { access: 'allowe
     entries: s.entries,
     matches: s.matches,
     gameStatusById: s.gameStatusById,
+    gameOpsById: s.gameOpsById,
     displayNamesByUserId: s.displayNamesByUserId,
   };
 }

@@ -181,6 +181,20 @@ export type TournamentSnapshotResult =
       }>;
       /** Minimal statuses for `matchBoardStatus` derivation — ids only, no positions. */
       gameStatusById: Record<string, string>;
+      /** Turn/clocks for tournament session rail (no FEN). */
+      gameOpsById: Record<
+        string,
+        {
+          status: string;
+          turn: string | null;
+          white_clock_ms: number | null;
+          black_clock_ms: number | null;
+          white_player_id: string;
+          black_player_id: string | null;
+          tempo: string | null;
+          live_time_control: string | null;
+        }
+      >;
       displayNamesByUserId: Record<string, string>;
     }
   | {
@@ -422,11 +436,49 @@ export async function buildTournamentSnapshot(params: {
 
   const gameIds = [...new Set(matches.map((m) => m.game_id).filter((x): x is string => Boolean(x)))];
   const gameStatusById: Record<string, string> = {};
+  const gameOpsById: Record<
+    string,
+    {
+      status: string;
+      turn: string | null;
+      white_clock_ms: number | null;
+      black_clock_ms: number | null;
+      white_player_id: string;
+      black_player_id: string | null;
+      tempo: string | null;
+      live_time_control: string | null;
+    }
+  > = {};
   if (gameIds.length > 0) {
-    const { data: games, error: gErr } = await supabase.from('games').select('id, status').in('id', gameIds);
+    const { data: games, error: gErr } = await supabase
+      .from('games')
+      .select(
+        'id,status,turn,white_clock_ms,black_clock_ms,white_player_id,black_player_id,tempo,live_time_control',
+      )
+      .in('id', gameIds);
     if (!gErr && games) {
-      for (const g of games as { id: string; status: string }[]) {
+      for (const g of games as {
+        id: string;
+        status: string;
+        turn: string | null;
+        white_clock_ms: number | null;
+        black_clock_ms: number | null;
+        white_player_id: string;
+        black_player_id: string | null;
+        tempo: string | null;
+        live_time_control: string | null;
+      }[]) {
         gameStatusById[g.id] = g.status;
+        gameOpsById[g.id] = {
+          status: g.status,
+          turn: g.turn,
+          white_clock_ms: g.white_clock_ms,
+          black_clock_ms: g.black_clock_ms,
+          white_player_id: g.white_player_id,
+          black_player_id: g.black_player_id,
+          tempo: g.tempo,
+          live_time_control: g.live_time_control,
+        };
       }
     }
   }
@@ -577,6 +629,7 @@ export async function buildTournamentSnapshot(params: {
     }),
     matches: matchesOut,
     gameStatusById,
+    gameOpsById,
     displayNamesByUserId,
   };
 }

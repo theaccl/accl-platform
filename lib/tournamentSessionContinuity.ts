@@ -228,7 +228,7 @@ export function listSameRoundTournamentBoards<M extends TournamentMatchContinuit
   for (const m of matches) {
     if (m.round_number !== roundNumber || !m.game_id) continue;
     const board = matchBoardStatus(m, gameStatusById[m.game_id]);
-    if (board !== 'live' && board !== 'ready') continue;
+    if (board !== 'live' && board !== 'ready' && board !== 'resolved') continue;
     const isYourMatch = Boolean(
       userId && (m.player1_id === userId || m.player2_id === userId),
     );

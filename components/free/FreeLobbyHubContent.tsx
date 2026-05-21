@@ -16,6 +16,10 @@ import { useLobbyTournamentLiveByMode } from '@/hooks/useLobbyTournamentLiveByMo
 import { useLobbyUserObligations } from '@/hooks/useLobbyUserObligations';
 import { useFreeOpenSeatActivity } from '@/hooks/useFreeOpenSeatActivity';
 import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
+import {
+  countHubObligationByPlatMode,
+  shouldRenderLobbyExplorationSection,
+} from '@/lib/lobbyOperationalContinuity';
 import { isPlatMode, type LobbyHubModeFilter } from '@/lib/lobbyModeFilter';
 import {
   PLAT_MODE_LABELS,
@@ -69,6 +73,25 @@ export function FreeLobbyHubContent() {
 
   const stripLoading = openLoading || watchList.loading || tournamentLive.loading || obligations.loading;
 
+  const modesForFilter = modeFilter ? [modeFilter] : PLAT_MODE_ORDER;
+  const hasWatchInFilter = modesForFilter.some((m) => (watchList.data?.byMode[m]?.length ?? 0) > 0);
+  const hasOpenInFilter = modesForFilter.some((m) => (openSeatCounts[m] ?? 0) > 0 || activity[m]);
+  const showSpectatorFeed = shouldRenderLobbyExplorationSection(
+    modeFilter,
+    hasWatchInFilter,
+    watchList.loading,
+  );
+  const showOpenPairing = shouldRenderLobbyExplorationSection(modeFilter, hasOpenInFilter, openLoading);
+
+  const hubObligationByMode = useMemo(
+    () =>
+      countHubObligationByPlatMode(
+        [...(obligations.freeRows ?? []), ...(obligations.tournamentRows ?? [])],
+        obligations.uid,
+      ),
+    [obligations.freeRows, obligations.tournamentRows, obligations.uid],
+  );
+
   return (
     <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${nexusPrestigeRoot}`}>
       <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-5 sm:px-5 sm:pt-6">
@@ -95,23 +118,27 @@ export function FreeLobbyHubContent() {
             liveByMode,
             openByMode: openSeatCounts,
             tournamentByMode: tournamentLive.counts,
-            yourMoveByMode: obligations.yourMoveByMode,
+            yourMoveByMode: hubObligationByMode,
           }}
         />
 
-        <FreeLobbySpectatorFeed
-          loading={watchList.loading}
-          error={watchList.error}
-          byMode={watchList.data?.byMode ?? null}
-          modeFilter={modeFilter}
-        />
+        {showSpectatorFeed ? (
+          <FreeLobbySpectatorFeed
+            loading={watchList.loading}
+            error={watchList.error}
+            byMode={watchList.data?.byMode ?? null}
+            modeFilter={modeFilter}
+          />
+        ) : null}
 
-        <FreePlayOpenPairingByMode
-          activity={activity}
-          openSeatCounts={openSeatCounts}
-          loading={openLoading}
-          modeFilter={modeFilter}
-        />
+        {showOpenPairing ? (
+          <FreePlayOpenPairingByMode
+            activity={activity}
+            openSeatCounts={openSeatCounts}
+            loading={openLoading}
+            modeFilter={modeFilter}
+          />
+        ) : null}
 
         <section className="mt-5" data-testid="free-lobby-hub-general-chat-section">
           <LobbyChatPanel
