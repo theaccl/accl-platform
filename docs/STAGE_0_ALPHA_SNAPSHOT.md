@@ -14,8 +14,8 @@ Operational benchmark for invited testers — **not** a feature release tag.
 | Pre–Stage 0 production tip | `d8709ad` | Mode room clock activity |
 | Stage 0 slices A–E | `da3c39c` … `9b80127` | See rollback table |
 | Overlap E2E harness | `5a4f738` | Concurrent pressure spec + runner |
-| Harness reproducibility (overlap prod routes) | *(see `main` tip after push)* | `/free/lobby/blitz`, pair-scoped teardown, hub assertions, create/find pairing |
-| **Git `main` (GitHub)** | `0f1037d` + harness commit | Freeze SHA = **Vercel production** (not GitHub tip alone) |
+| Harness reproducibility (overlap prod routes) | `ccdf8ae` | `/free/lobby/blitz`, pair-scoped teardown, hub assertions, create/find pairing |
+| **Git `main` (GitHub)** | `ccdf8ae` | Freeze SHA = **Vercel production** (may lag `main`; confirm in dashboard) |
 
 ### Rollback slices
 
