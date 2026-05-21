@@ -1,6 +1,7 @@
 /** Phase 1–2.5 NEXUS command-center payload types (distinct from legacy `NexusData` in getNexusData.ts). */
 
 import type { NexusAnnouncement, NexusLiveGame } from "@/lib/nexus/getNexusData";
+import type { NexusOperationalGameRow } from "@/lib/nexus/getUserOperationalGames";
 import type { PublicP1Read } from "@/lib/p1PublicRatingRead";
 
 export type PlaceholderState = {
@@ -129,6 +130,8 @@ export type NexusHubPayload = {
   standingContext: NexusStandingContextState;
   systemActivity: NexusSystemActivityState;
   actionCards: NexusActionCard[];
+  /** Viewer obligations only — empty when signed out or no active seats. */
+  operationalGames: NexusOperationalGameRow[];
   nexusData: NexusPreloadedData;
   meta: {
     /** Stable keys when a module is in placeholder mode, e.g. active_tournaments_empty */

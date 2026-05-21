@@ -23,6 +23,7 @@ import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import {
   fetchTournamentDirectoryRows,
 } from "@/lib/server/tournamentDirectoryReadModel";
+import { getUserOperationalGamesForNexus } from "@/lib/nexus/getUserOperationalGames";
 import { createServiceRoleClient } from "@/lib/supabaseServiceRoleClient";
 import type {
   NexusHubPayload,
@@ -275,6 +276,8 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     hasRecentFinishedWins,
   });
 
+  const operationalGames = user?.id ? await getUserOperationalGamesForNexus(user.id) : [];
+
   const nexusData: NexusHubPayload["nexusData"] = {
     matchRequests: { pendingCount: pendingMatchCount },
     games: liveGames,
@@ -300,6 +303,7 @@ export async function getNexusHubData(ecosystem: NexusEcosystem): Promise<NexusH
     standingContext,
     systemActivity,
     actionCards,
+    operationalGames,
     nexusData,
     meta: {
       placeholdersUsed,

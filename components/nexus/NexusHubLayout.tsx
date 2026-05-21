@@ -41,7 +41,10 @@ export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
       <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
         <div className="grid min-w-0 grid-cols-1 gap-4 gap-y-5 lg:grid-cols-12 lg:gap-6 lg:gap-y-6">
           <div className="min-w-0 lg:col-span-12">
-            <NexusOpenGamesColumn games={data.nexusData.games} />
+            <NexusOpenGamesColumn
+              games={data.operationalGames}
+              isLoggedIn={data.meta.isLoggedIn}
+            />
           </div>
           <div className="min-w-0 lg:col-span-12">
             <NexusActiveTournaments state={data.activeTournaments} />
