@@ -1,0 +1,121 @@
+import { writeFileSync } from 'node:fs';
+import { Chess } from 'chess.js';
+
+function sideFromTurn(turn) {
+  return turn === 'w' ? 'white' : 'black';
+}
+
+function build(spec) {
+  const start = new Chess(spec.fen);
+  if (spec.side_to_move && sideFromTurn(start.turn()) !== spec.side_to_move) {
+    throw new Error(`${spec.id}: side_to_move mismatch`);
+  }
+  const board = new Chess(spec.fen);
+  const uci = [];
+  for (const san of spec.solution_san) {
+    const m = board.move(san);
+    if (!m) throw new Error(`${spec.id}: illegal ${san} at ${board.fen()}`);
+    uci.push(m.from + m.to + (m.promotion ?? ''));
+  }
+  if (spec.category.startsWith('mate_in_') && !board.isCheckmate()) {
+    throw new Error(`${spec.id}: mate category but final position is not checkmate`);
+  }
+  return {
+    record_type: 'puzzle_candidate',
+    ...spec,
+    solution_uci: uci,
+    source_type: 'accl_generated',
+    source_label: 'ACCL-MANUAL-SEED',
+    license: 'ACCL-authored puzzle candidate',
+    verification_status: 'legal_moves_validated',
+    engine_verified: false,
+    usable_for_trainer: true,
+    usable_for_robodrill: true,
+    usable_for_achievements: false,
+    usable_for_live_competitive: false,
+    usable_for_tournament: false,
+  };
+}
+
+const specs = [
+  {
+    id: 'accl-puzzle-seed-001',
+    fen: '6k1/pppp1ppp/8/8/8/8/PPP2PPP/4R1K1 w - - 0 1',
+    side_to_move: 'white',
+    category: 'mate_in_1',
+    motif_tags: ['back_rank_mate'],
+    difficulty: 'beginner',
+    solution_san: ['Re8#'],
+  },
+  {
+    id: 'accl-puzzle-seed-002',
+    fen: '7k/5Q2/6K1/8/8/8/8/8 w - - 0 1',
+    side_to_move: 'white',
+    category: 'mate_in_1',
+    motif_tags: ['mating_net'],
+    difficulty: 'beginner',
+    solution_san: ['Qe8#'],
+  },
+  {
+    id: 'accl-puzzle-seed-003',
+    fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4',
+    side_to_move: 'white',
+    category: 'mate_in_1',
+    motif_tags: ['attraction', 'mating_net'],
+    difficulty: 'beginner',
+    solution_san: ['Qxf7#'],
+  },
+  {
+    id: 'accl-puzzle-seed-004',
+    fen: '6k1/5ppp/8/8/8/8/8/1Q4K1 w - - 0 1',
+    side_to_move: 'white',
+    category: 'mate_in_1',
+    motif_tags: ['back_rank_mate'],
+    difficulty: 'beginner',
+    solution_san: ['Qb8#'],
+  },
+  {
+    id: 'accl-puzzle-seed-005',
+    fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1',
+    side_to_move: 'white',
+    category: 'combination',
+    motif_tags: ['fork', 'discovered_attack'],
+    difficulty: 'intermediate',
+    solution_san: ['Nxe5', 'Nxe5', 'd4'],
+  },
+  {
+    id: 'accl-puzzle-seed-006',
+    fen: '6k1/5ppp/8/8/3B4/8/8/4R1K1 w - - 0 1',
+    side_to_move: 'white',
+    category: 'mate_in_1',
+    motif_tags: ['back_rank_mate', 'clearance'],
+    difficulty: 'beginner',
+    solution_san: ['Re8#'],
+  },
+  {
+    id: 'accl-puzzle-seed-007',
+    fen: '8/8/8/8/8/2k5/4P3/4K3 w - - 0 1',
+    side_to_move: 'white',
+    category: 'simple_endgame',
+    motif_tags: ['promotion_tactic'],
+    difficulty: 'beginner',
+    solution_san: ['e4', 'Kd4', 'Ke2'],
+  },
+  {
+    id: 'accl-puzzle-seed-008',
+    fen: '5k2/4pppp/8/8/8/8/8/1Q4K1 w - - 0 1',
+    side_to_move: 'white',
+    category: 'mate_in_1',
+    motif_tags: ['back_rank_mate'],
+    difficulty: 'beginner',
+    solution_san: ['Qb8#'],
+  },
+];
+
+const out = specs.map(build);
+writeFileSync(
+  'data/staging/opening-puzzle-zips/puzzles/puzzle-candidates-seed-sample.json',
+  `${JSON.stringify(out, null, 2)}\n`,
+  'utf8',
+);
+console.log(`wrote ${out.length} verified puzzle candidates`);
