@@ -110,12 +110,34 @@ Do not expand Swiss, AI mentor, emotional runtime, graphics spirals, or new rout
 
 ---
 
-## Board patch observation backlog (`fix/stage0-game-board-stability`)
+## Stage 0 Patch 1 — board stability (`alpha-stage0-patch1-20260522` → `8936377`)
 
-| ID | Severity | Area | Observed | Expected | Blocks patch? |
-|----|----------|------|----------|----------|---------------|
-| **G1** | P1/P2 | Viewport | Board/viewport drift or jump on legal moves | Stable board column on each ply | Yes — patch target |
-| **G2** | P1/P2 | Drag | Drag ghost / piece offset past ~5th rank | Clean drag on all ranks | Yes — patch target |
-| **G3** | P2/P3 | Illegal move UX | After illegal drag, pawn returns and “Illegal move” shows correctly, but board **slightly jumps/resets** on recovery | Reject illegal ply with **no** positional shift; clock OK | **No** — log for later if G1/G2 + checkmate pass |
+**Merged:** `fix/stage0-game-board-stability` → `main` (CSS + replay panel order + audit asserts).  
+**Alpha freeze tag unchanged:** `alpha-stage0-20260521` → `7c655fe`.  
+**DB finish hotfix:** applied manually outside Git (rating trigger); checkmate/timeout finish **PASS** on production.
 
-**G3 notes:** Legality and clock behavior are correct; visual-only. Likely re-render/snap-back in client drag + `chessRef` recovery path (`app/game/[id]/page.tsx`). Defer until after G1/G2 preview smoke and DB finish hotfix are green.
+### Post-patch visual smoke (2026-05-22)
+
+| Check | Result |
+|-------|--------|
+| Normal move viewport drift (G1) | **PASS** — greatly improved / effectively gone |
+| Drag ghost past rank 5 (G2) | **PASS** |
+| Play Computer checkmate → Game Over | **PASS** |
+| Post-game state load | **PASS** |
+
+**Decision:** Patch 1 remains valid. Do not reopen G1/G2. Do not expand scope.
+
+---
+
+## Board observation backlog (post–Patch 1)
+
+| ID | Severity | Status | Area | Observed | Expected | Action |
+|----|----------|--------|------|----------|----------|--------|
+| **G1** | P1/P2 | **Closed** | Viewport | Legal-move drift | Stable board on each ply | Fixed in Patch 1 |
+| **G2** | P1/P2 | **Closed** | Drag | Ghost / offset past ~5th rank | Clean drag all ranks | Fixed in Patch 1 |
+| **G3** | P2/P3 | Open | Illegal move UX | Piece returns + message OK; board/page **slightly jumps** on recovery | Reject with no visual shift | Defer — small recovery UX follow-up |
+| **G4** | P2 | Open | Startup layout | Too much chrome above board (clocks, lobby/chat, metadata, controls, next-game banner); board **below fold** on desktop/split | Board-first; compact top; secondary controls lower/collapsed | Defer — do not fix without explicit approval |
+
+**G3 notes:** Legality and clock OK. Likely client drag snap-back + `chessRef` re-render (`app/game/[id]/page.tsx`).
+
+**G4 notes:** Layout/IA only — not move authority. Defer to post-observation board UX pass.
