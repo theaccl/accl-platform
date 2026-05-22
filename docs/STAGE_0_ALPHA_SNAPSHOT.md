@@ -107,3 +107,15 @@ Stage 0 operational alpha: spine, nexus ops, battlefield, sync play computer, vi
 ## Post-alpha: observation only
 
 Do not expand Swiss, AI mentor, emotional runtime, graphics spirals, or new routes. Stage 0 success means the ecosystem is **observable under real overlap pressure**, not that more systems should be added.
+
+---
+
+## Board patch observation backlog (`fix/stage0-game-board-stability`)
+
+| ID | Severity | Area | Observed | Expected | Blocks patch? |
+|----|----------|------|----------|----------|---------------|
+| **G1** | P1/P2 | Viewport | Board/viewport drift or jump on legal moves | Stable board column on each ply | Yes — patch target |
+| **G2** | P1/P2 | Drag | Drag ghost / piece offset past ~5th rank | Clean drag on all ranks | Yes — patch target |
+| **G3** | P2/P3 | Illegal move UX | After illegal drag, pawn returns and “Illegal move” shows correctly, but board **slightly jumps/resets** on recovery | Reject illegal ply with **no** positional shift; clock OK | **No** — log for later if G1/G2 + checkmate pass |
+
+**G3 notes:** Legality and clock behavior are correct; visual-only. Likely re-render/snap-back in client drag + `chessRef` recovery path (`app/game/[id]/page.tsx`). Defer until after G1/G2 preview smoke and DB finish hotfix are green.
