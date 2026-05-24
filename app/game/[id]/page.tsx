@@ -3703,6 +3703,20 @@ export default function GamePage() {
         />
       ) : null}
 
+      {game.status !== 'finished' ? (
+        <div
+          className="accl-game-notation-strip accl-scroll-no-anchor"
+          data-testid="game-notation-strip"
+          aria-label="Live move notation"
+        >
+          {moveLogs.length === 0 ? (
+            <span className="accl-game-notation-strip__placeholder">Moves will appear here.</span>
+          ) : (
+            <span className="accl-game-notation-strip__text">{buildMovetext(moveLogs)}</span>
+          )}
+        </div>
+      ) : null}
+
       <div className="accl-game-board-row" data-testid="game-board-with-tournament-rail">
         <div
           className="accl-game-board-stage"
@@ -3851,7 +3865,7 @@ export default function GamePage() {
         ) : null}
       </div>
 
-      {moveLogs.length > 0 && (
+      {game.status === 'finished' && moveLogs.length > 0 && (
         <div
           className="accl-game-side-panel accl-game-replay-panel"
           data-testid="game-replay-panel"

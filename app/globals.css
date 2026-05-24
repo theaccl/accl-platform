@@ -385,6 +385,38 @@ html.accl-game-route body {
   overflow-anchor: none;
 }
 
+/** Active gameplay: single-line move notation — fixed height, horizontal scroll, no layout growth. */
+.accl-game-notation-strip {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 560px;
+  min-height: 2.25rem;
+  max-height: 2.25rem;
+  margin: 0 0 12px 0;
+  padding: 0 10px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #111;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overflow-anchor: none;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1;
+  font-family: ui-monospace, monospace;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.accl-game-notation-strip__placeholder {
+  color: #666;
+}
+
+.accl-game-notation-strip__text {
+  color: #eee;
+}
+
 /** Side panels (chat, replay log) — growth stays below board; no layout containment (breaks drag preview). */
 .accl-game-side-panel {
   max-width: 520px;
