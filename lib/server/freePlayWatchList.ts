@@ -1,6 +1,7 @@
 import { PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
 import { canonicalLiveTimeControlForInsert, formatGameTimeControlLabel } from '@/lib/gameTimeControl';
 import { normalizeGameTempo } from '@/lib/gameTempo';
+import { isLiveGameWatchableByClock } from '@/lib/liveClockExpiry';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 
@@ -42,9 +43,12 @@ export async function fetchFreePlaySpectatableLobby(
 }> {
   const ex = String(options?.excludeUserId ?? '').trim().toLowerCase();
   const supabase = createServiceRoleClient();
+  const nowMs = Date.now();
   const { data, error } = await supabase
     .from('games')
-    .select('id,tempo,live_time_control,white_player_id,black_player_id,updated_at')
+    .select(
+      'id,tempo,live_time_control,white_player_id,black_player_id,updated_at,status,turn,last_move_at,white_clock_ms,black_clock_ms',
+    )
     .eq('play_context', 'free')
     .is('tournament_id', null)
     // Align with getActiveFreePlayGameForUser / free lobby: live rows can be active or waiting while playable.
@@ -102,6 +106,7 @@ export async function fetchFreePlaySpectatableLobby(
     const bid = String(r.black_player_id ?? '');
     if (!wid || !bid) continue;
     if (ex && (wid.trim().toLowerCase() === ex || bid.trim().toLowerCase() === ex)) continue;
+    if (!isLiveGameWatchableByClock(r, nowMs)) continue;
     let mode = platBucketForOpenSeat(r.tempo as string | null, r.live_time_control as string | null);
     if (!mode && normalizeGameTempo(r.tempo as string | null) === 'live') {
       mode = 'rapid';

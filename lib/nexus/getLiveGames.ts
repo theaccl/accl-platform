@@ -1,15 +1,17 @@
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { NexusEcosystem, NexusLiveGame } from '@/lib/nexus/getNexusData';
+import { isLiveGameWatchableByClock } from '@/lib/liveClockExpiry';
 import { ratingFromPlayerRatingsMap } from '@/lib/p1PublicRatingRead';
 
 const WATCH_TCS = new Set(['10m', '15m', '20m', '30m', '60m']);
 
 export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLiveGame[]> {
   const supabase = createServiceRoleClient();
+  const nowMs = Date.now();
   const { data } = await supabase
     .from('games')
     .select(
-      'id,white_player_id,black_player_id,status,fen,live_time_control,tempo,play_context,ecosystem_scope,tournament_id,white_clock_ms,black_clock_ms,updated_at',
+      'id,white_player_id,black_player_id,status,fen,live_time_control,tempo,play_context,ecosystem_scope,tournament_id,white_clock_ms,black_clock_ms,updated_at,turn,last_move_at',
     )
     .eq('status', 'active')
     .eq('tempo', 'live')
@@ -17,7 +19,7 @@ export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLive
     .order('updated_at', { ascending: false })
     .limit(120);
 
-  const rows = data ?? [];
+  const rows = (data ?? []).filter((r) => isLiveGameWatchableByClock(r, nowMs));
   const preferred = rows.filter((r) => WATCH_TCS.has(String(r.live_time_control ?? '')));
   const poolRaw = (preferred.length > 0 ? preferred : rows).slice(0, 20);
   const pool = [...poolRaw].sort((a, b) => {
