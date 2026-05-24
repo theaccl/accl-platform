@@ -230,3 +230,34 @@ export function getQueueSecretValidationState(): ValidationState {
   );
 }
 
+/** Live timeout sweep accepts dedicated secret or falls back to analysis queue secret. */
+export function getLiveTimeoutSweepSecretValidationState(): ValidationState {
+  const dedicated = process.env.ACCL_LIVE_TIMEOUT_SWEEP_SECRET?.trim() ?? '';
+  if (dedicated) {
+    if (dedicated.length < 16) {
+      return {
+        key: 'ACCL_LIVE_TIMEOUT_SWEEP_SECRET',
+        ok: false,
+        category: 'invalid_env',
+        detail: 'must be at least 16 chars',
+      };
+    }
+    return { key: 'ACCL_LIVE_TIMEOUT_SWEEP_SECRET', ok: true, category: 'ok', detail: 'present' };
+  }
+  const fallback = getQueueSecretValidationState();
+  if (fallback.ok) {
+    return {
+      key: 'ACCL_LIVE_TIMEOUT_SWEEP_SECRET',
+      ok: true,
+      category: 'ok',
+      detail: 'using ACCL_ANALYSIS_QUEUE_SECRET fallback',
+    };
+  }
+  return {
+    key: 'ACCL_LIVE_TIMEOUT_SWEEP_SECRET',
+    ok: false,
+    category: 'missing_env',
+    detail: 'ACCL_LIVE_TIMEOUT_SWEEP_SECRET or ACCL_ANALYSIS_QUEUE_SECRET required',
+  };
+}
+
