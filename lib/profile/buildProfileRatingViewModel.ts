@@ -94,6 +94,8 @@ function childBuckets(
 
 /**
  * Read-only adapter: current P1 snapshot only. Rating history and per-TC splits are not fabricated.
+ * Game-by-game chart points come from a future rating-history API as RatingGamePointSnapshot rows.
+ * @see docs/profile/PROFILE_RATING_DASHBOARD_DOCTRINE.md
  */
 export function buildProfileRatingViewModel(
   p1: PublicP1Read | null | undefined,

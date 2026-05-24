@@ -70,10 +70,10 @@ export function ProfileRatingDashboard({ p1, currentStreak = 0, highestStreak = 
             Rating Dashboard
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Click a rating to explore movement, streaks, and time-control drilldowns.
+            Click a rating to explore movement, streaks, and time-control drilldowns. Each chart point will represent one finished rated game.
           </p>
         </div>
-        <p className="text-xs text-gray-600">History charts fill in as rated games accumulate — no synthetic data.</p>
+        <p className="text-xs text-gray-600">History charts fill in as rated games accumulate — no synthetic points.</p>
       </div>
 
       <div

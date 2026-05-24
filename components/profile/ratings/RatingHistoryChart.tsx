@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import type { RatingBucketView, RatingPeriodFilter, RatingPoint } from '@/lib/profile/ratingDashboardTypes';
+import type { RatingBucketView, RatingGamePointSnapshot, RatingPeriodFilter } from '@/lib/profile/ratingDashboardTypes';
+import { bucketHasAuthoritativeRatingHistory, hasEnoughRatingChartPoints } from '@/lib/profile/ratingHistoryGamePoints';
 import { RATING_MODE_ACCENTS, formatRating } from '@/lib/profile/ratingDashboardTheme';
 import { RatingEmptyState } from '@/components/profile/ratings/RatingEmptyState';
 
@@ -8,14 +9,19 @@ type Props = {
   period: RatingPeriodFilter;
 };
 
-function filterByPeriod(points: RatingPoint[], period: RatingPeriodFilter): RatingPoint[] {
+/**
+ * Stock-ticker chart: line = rating movement; each point = one finished rated game.
+ * Interactive dots/tooltips/click only when authoritative snapshots exist.
+ * @see docs/profile/PROFILE_RATING_DASHBOARD_DOCTRINE.md
+ */
+function filterByPeriod(points: RatingGamePointSnapshot[], period: RatingPeriodFilter): RatingGamePointSnapshot[] {
   if (period === 'all') return points;
   const now = Date.now();
   const days =
     period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 365;
   const cutoff = now - days * 86400000;
   return points.filter((p) => {
-    const t = new Date(p.date).getTime();
+    const t = new Date(p.finishedAt).getTime();
     return Number.isFinite(t) && t >= cutoff;
   });
 }
@@ -23,6 +29,7 @@ function filterByPeriod(points: RatingPoint[], period: RatingPeriodFilter): Rati
 export function RatingHistoryChart({ bucket, period }: Props) {
   const accent = RATING_MODE_ACCENTS[bucket.mode];
   const raw = bucket.history ?? [];
+  const authoritative = bucketHasAuthoritativeRatingHistory(bucket);
   const points = useMemo(() => filterByPeriod(raw, period), [raw, period]);
 
   if (bucket.inheritsModeBucket && !bucket.isOverall) {
@@ -34,12 +41,12 @@ export function RatingHistoryChart({ bucket, period }: Props) {
     );
   }
 
-  if (points.length < 2) {
+  if (!authoritative || !hasEnoughRatingChartPoints(points)) {
     return (
       <RatingEmptyState
         message={
           bucket.currentRating != null
-            ? `Current rating is ${formatRating(bucket.currentRating)}. Play more rated games in this bucket to see movement over time.`
+            ? `Current rating is ${formatRating(bucket.currentRating)}. Play more rated games in this bucket to see game-by-game movement — each point will represent one finished game.`
             : undefined
         }
       />
@@ -52,7 +59,7 @@ export function RatingHistoryChart({ bucket, period }: Props) {
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
 
-  const ratings = points.map((p) => p.rating);
+  const ratings = points.map((p) => p.ratingAfter);
   const minR = Math.min(...ratings);
   const maxR = Math.max(...ratings);
   const yPad = Math.max(20, Math.round((maxR - minR) * 0.08) || 20);
@@ -63,7 +70,7 @@ export function RatingHistoryChart({ bucket, period }: Props) {
   const toX = (i: number) => pad.left + (i / (points.length - 1)) * innerW;
   const toY = (r: number) => pad.top + innerH - ((r - yMin) / ySpan) * innerH;
 
-  const line = points.map((p, i) => `${toX(i)},${toY(p.rating)}`).join(' ');
+  const line = points.map((p, i) => `${toX(i)},${toY(p.ratingAfter)}`).join(' ');
   const area = `${pad.left},${pad.top + innerH} ${line} ${pad.left + innerW},${pad.top + innerH}`;
 
   const peakIdx = ratings.indexOf(maxR);
@@ -111,16 +118,16 @@ export function RatingHistoryChart({ bucket, period }: Props) {
           { idx: currentIdx, label: 'Now', color: accent.chart },
         ].map(({ idx, label, color }) => (
           <g key={label}>
-            <circle cx={toX(idx)} cy={toY(points[idx]!.rating)} r="5" fill={color} stroke="#0a1018" strokeWidth="2" />
-            <text x={toX(idx)} y={toY(points[idx]!.rating) - 10} textAnchor="middle" fill={color} fontSize="10" fontWeight="600">
+            <circle cx={toX(idx)} cy={toY(points[idx]!.ratingAfter)} r="5" fill={color} stroke="#0a1018" strokeWidth="2" />
+            <text x={toX(idx)} y={toY(points[idx]!.ratingAfter) - 10} textAnchor="middle" fill={color} fontSize="10" fontWeight="600">
               {label}
             </text>
           </g>
         ))}
       </svg>
       <p className="sr-only">
-        {bucket.label} rating history with {points.length} points from {formatRating(points[0]?.rating ?? null)} to{' '}
-        {formatRating(points[currentIdx]?.rating ?? null)}.
+        {bucket.label} rating history with {points.length} game points from {formatRating(points[0]?.ratingAfter ?? null)} to{' '}
+        {formatRating(points[currentIdx]?.ratingAfter ?? null)}.
       </p>
     </div>
   );
