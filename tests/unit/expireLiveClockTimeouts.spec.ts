@@ -56,8 +56,16 @@ test.describe('live clock timeout sweep route (static)', () => {
     expect(src).toContain('verifyLiveTimeoutSweepSecret');
     expect(src).toContain('createServiceRoleClient');
     expect(src).toContain("rpc('expire_live_clock_timeouts'");
+    expect(src).toContain('export async function GET');
+    expect(src).toContain('export async function POST');
     expect(src).toContain('finished');
     expect(src).toContain('rounds');
     expect(src).not.toContain('NEXT_PUBLIC');
+  });
+
+  test('vercel cron schedules live timeout sweep every 2 minutes', () => {
+    const vercel = readFileSync(join(process.cwd(), 'vercel.json'), 'utf8');
+    expect(vercel).toContain('/api/internal/live-clock-timeout/process');
+    expect(vercel).toContain('*/2 * * * *');
   });
 });

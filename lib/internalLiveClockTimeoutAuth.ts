@@ -18,12 +18,29 @@ export function liveTimeoutSweepSecret(): string {
   );
 }
 
+function acceptedSweepSecrets(): string[] {
+  const raw = [
+    liveTimeoutSweepSecret(),
+    process.env.CRON_SECRET?.trim() ?? '',
+  ].filter((s) => s.length >= 16);
+  return [...new Set(raw)];
+}
+
+function secretMatchesAccepted(provided: string): boolean {
+  if (!provided) return false;
+  return acceptedSweepSecrets().some((expected) => timingSafeEqualSecret(provided, expected));
+}
+
 export function verifyLiveTimeoutSweepSecret(request: Request): boolean {
   const secretState = getLiveTimeoutSweepSecretValidationState();
   if (!secretState.ok) return false;
-  const expected = liveTimeoutSweepSecret();
+
   const header = request.headers.get('x-accl-live-timeout-sweep-secret') ?? '';
-  return timingSafeEqualSecret(header, expected);
+  if (secretMatchesAccepted(header)) return true;
+
+  const auth = request.headers.get('authorization') ?? '';
+  const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim() ?? '';
+  return secretMatchesAccepted(bearer);
 }
 
 export function liveTimeoutSweepUnauthorizedJson(): Response {

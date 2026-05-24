@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/live-clock-timeout/process?batch=25",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}
