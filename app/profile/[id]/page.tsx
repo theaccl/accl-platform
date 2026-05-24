@@ -16,7 +16,7 @@ import ProfileBio from '@/components/profile/ProfileBio';
 import ProfileHeader from '@/components/profile/ProfileHeader';
 import ProfileLogOutButton from '@/components/profile/ProfileLogOutButton';
 import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
-import { ProfileRatings } from '@/components/profile/ProfileRatings';
+import { ProfileRatingDashboard } from '@/components/profile/ratings/ProfileRatingDashboard';
 import { ProfileStats } from '@/components/profile/ProfileStats';
 import { ProfileVaultButton } from '@/components/profile/ProfileVaultButton';
 import { VaultRelicsSection } from '@/components/profile/VaultRelicsSection';
@@ -274,7 +274,11 @@ export default function PublicProfilePage() {
         <ProfileBio bio={payload.profile.bio} isSelf={isSelf} />
 
         <div className="grid gap-6 rounded-2xl border border-[#243244] bg-[#111a27] p-6">
-          <ProfileRatings p1={p1Read} />
+          <ProfileRatingDashboard
+            p1={p1Read}
+            currentStreak={payload.profile.current_streak ?? 0}
+            highestStreak={payload.profile.highest_streak ?? 0}
+          />
           <ProfileStats
             gamesPlayed={gamesPlayed}
             currentStreak={payload.profile.current_streak ?? 0}
