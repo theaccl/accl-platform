@@ -209,6 +209,45 @@ async function persistBracket(supabase, tournamentId, orderedUserIds) {
   return full ?? [];
 }
 
+async function assertNoGhostTournamentGames(supabase, tournamentId) {
+  const { data: stray, error: strayErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .eq('tournament_id', tournamentId)
+    .in('status', ['active', 'waiting']);
+  if (strayErr) fail(`ghost check (active/waiting): ${strayErr.message}`);
+  if ((stray ?? []).length > 0) {
+    const detail = (stray ?? []).map((g) => `${g.id.slice(0, 8)}:${g.status}`).join(', ');
+    fail(`ghost games: ${(stray ?? []).length} active/waiting row(s): ${detail}`);
+  }
+  ok('ghost check: no active or waiting tournament games');
+
+  const { data: matchRows, error: mErr } = await supabase
+    .from('tournament_matches')
+    .select('game_id')
+    .eq('tournament_id', tournamentId)
+    .not('game_id', 'is', null);
+  if (mErr) fail(`ghost check (bracket games): ${mErr.message}`);
+
+  const gameIds = (matchRows ?? []).map((m) => m.game_id).filter(Boolean);
+  if (gameIds.length === 0) fail('ghost check: no bracket-linked game_ids');
+
+  const { data: gameRows, error: gErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .in('id', gameIds);
+  if (gErr) fail(`ghost check (game status): ${gErr.message}`);
+
+  const statusById = new Map((gameRows ?? []).map((g) => [g.id, g.status]));
+  for (const gid of gameIds) {
+    const status = statusById.get(gid);
+    if (status !== 'finished') {
+      fail(`bracket game ${gid} status ${status ?? 'missing'} (expected finished)`);
+    }
+  }
+  ok(`ghost check: all ${gameIds.length} bracket-linked games finished`);
+}
+
 async function finishGameAsWinner(supabase, gameId, winnerUserId) {
   const { data: g, error: gErr } = await supabase
     .from('games')
@@ -328,6 +367,8 @@ async function main() {
     fail(`final match winner ${finalMatch?.winner_id} (expected ${champion})`);
   }
   ok('champion: final match winner_id matches');
+
+  await assertNoGhostTournamentGames(supabase, tournamentId);
 
   const report = {
     tournamentId,
