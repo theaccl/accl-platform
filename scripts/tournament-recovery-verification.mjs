@@ -167,6 +167,54 @@ async function finishAsWinner(supabase, gameId, winnerId) {
   if (error) fail(`finish_game_system: ${error.message}`);
 }
 
+async function assertNoGhostTournamentGames(supabase, tournamentId, expectedGameCount) {
+  const { data: stray, error: strayErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .eq('tournament_id', tournamentId)
+    .in('status', ['active', 'waiting']);
+  if (strayErr) fail(`ghost check (active/waiting): ${strayErr.message}`);
+  if ((stray ?? []).length > 0) {
+    const detail = (stray ?? []).map((g) => `${g.id.slice(0, 8)}:${g.status}`).join(', ');
+    fail(`ghost games: ${(stray ?? []).length} active/waiting row(s): ${detail}`);
+  }
+  ok('ghost check: no active or waiting tournament games');
+
+  const { data: matchRows, error: mErr } = await supabase
+    .from('tournament_matches')
+    .select('game_id')
+    .eq('tournament_id', tournamentId)
+    .not('game_id', 'is', null);
+  if (mErr) fail(`ghost check (bracket games): ${mErr.message}`);
+
+  const gameIds = (matchRows ?? []).map((m) => m.game_id).filter(Boolean);
+  if (gameIds.length === 0) fail('ghost check: no bracket-linked game_ids');
+  if (gameIds.length !== expectedGameCount) {
+    fail(`ghost check: expected ${expectedGameCount} bracket-linked games, got ${gameIds.length}`);
+  }
+
+  const { data: gameRows, error: gErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .in('id', gameIds);
+  if (gErr) fail(`ghost check (game status): ${gErr.message}`);
+
+  const statusById = new Map((gameRows ?? []).map((g) => [g.id, g.status]));
+  for (const gid of gameIds) {
+    const status = statusById.get(gid);
+    if (status !== 'finished') {
+      fail(`bracket game ${gid} status ${status ?? 'missing'} (expected finished)`);
+    }
+  }
+  ok(`ghost check: all ${gameIds.length} bracket-linked games finished`);
+
+  return {
+    activeOrWaitingCount: 0,
+    bracketLinkedGameCount: gameIds.length,
+    allBracketGamesFinished: true,
+  };
+}
+
 async function loadRecoveryFingerprint(supabase, tournamentId) {
   const { data: t } = await supabase.from('tournaments').select('status').eq('id', tournamentId).single();
   const { data: matches } = await supabase
@@ -388,12 +436,15 @@ async function main() {
   if (postBootstrapErr) fail(`post-completion bootstrap: ${postBootstrapErr.message}`);
   ok('post-completion: re-bootstrap no-op safe (tournament completed)');
 
+  const ghostChecks = await assertNoGhostTournamentGames(supabase, tournament.id, 3);
+
   const report = {
     automatic_recovery: false,
     tournamentId: tournament.id,
     gameIds: { r1_0: r1m0.game_id, r1_1: r1m1.game_id, final: finalMatch.game_id },
     champion,
     freeGameId: freeGame.id,
+    ghostChecks,
   };
 
   const allGameIds = [r1m0.game_id, r1m1.game_id, finalMatch.game_id, freeGame.id];
