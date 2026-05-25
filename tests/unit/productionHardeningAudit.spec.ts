@@ -45,17 +45,20 @@ test.describe('production hardening audit (static)', () => {
   test('game route stabilizes viewport and board stage against layout jitter', () => {
     const page = src('app/game/[id]/page.tsx');
     const css = src('app/globals.css');
+    const notation = src('components/game/GameNotationStrip.tsx');
     expect(page).toContain("classList.add('accl-game-route')");
     expect(page).toContain('accl-game-board-stage');
     expect(page).toContain('accl-game-board-canvas');
     expect(page).toContain('accl-scroll-no-anchor');
+    expect(page).toContain('GameNotationStrip');
+    expect(page).toContain('accl-game-play-column');
+    expect(page).toContain('accl-game-notation-slot');
     expect(page).toContain('data-testid="game-notation-strip"');
-    expect(page).toContain('accl-game-notation-strip');
-    expect(page).toContain('Moves will appear here.');
+    expect(notation).toContain('Moves will appear here.');
     expect(page).toContain('data-testid="game-replay-panel"');
     expect(page).toContain("minHeight: '100dvh'");
     const boardIdx = page.indexOf('game-board-with-tournament-rail');
-    const notationIdx = page.indexOf('game-notation-strip');
+    const notationIdx = page.indexOf('accl-game-notation-slot');
     const replayIdx = page.indexOf('game-replay-panel');
     expect(boardIdx).toBeGreaterThan(-1);
     expect(notationIdx).toBeGreaterThan(-1);
@@ -65,7 +68,8 @@ test.describe('production hardening audit (static)', () => {
     expect(css).toContain('html.accl-game-route');
     expect(css).toContain('scrollbar-gutter: stable');
     expect(css).toContain('.accl-game-board-canvas');
-    expect(css).toContain('.accl-game-notation-strip');
+    expect(css).toContain('.accl-game-notation-slot');
+    expect(css).toContain('.accl-game-play-column');
     expect(css).not.toContain('contain: layout size style');
     expect(css).toContain('overflow-anchor: none');
     const chat = src('components/game/GameTesterChatPanels.tsx');

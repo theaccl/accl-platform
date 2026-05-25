@@ -76,6 +76,7 @@ import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 import { buildGameLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import GameTesterChatPanels from '@/components/game/GameTesterChatPanels';
+import { GameNotationStrip } from '@/components/game/GameNotationStrip';
 import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
 import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
@@ -3639,83 +3640,13 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* TEST CONTRACT: `game-turn-indicator` + `data-game-state` — E2E; UI "waiting" here does not change DB status */}
-      {game.status !== 'finished' && (
-        <p
-          data-testid="game-turn-indicator"
-          data-game-state={!bothPlayersSeated(game) ? 'waiting' : 'seated'}
-          data-spectator-readonly={isPublicViewer || (isSpectator && !!userId) ? '1' : '0'}
-          style={{
-            marginBottom: 8,
-            fontWeight: isMyTurn && !isSpectator ? 'bold' : undefined,
-            color: isMyTurn && !isSpectator ? 'red' : '#777',
-          }}
-        >
-          {isPublicViewer || (isSpectator && !!userId) ? (
-            !bothPlayersSeated(game) ? (
-              <>Waiting for players — you are watching (read-only).</>
-            ) : (
-              <>Live position — read-only for spectators.</>
-            )
-          ) : !bothPlayersSeated(game) ? (
-            'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
-          ) : !canPlayMoves(game) ? (
-            'Game is not ready for moves yet.'
-          ) : isMyTurn ? (
-            'YOUR TURN'
-          ) : (
-            "OPPONENT'S TURN"
-          )}
-        </p>
-      )}
-
-      {showAbandonOpenSeat ? (
-        <p style={{ margin: '0 0 12px 0' }}>
-          <button
-            type="button"
-            data-testid="game-abandon-open-seat"
-            onClick={() => void handleAbandonOpenSeat()}
-            disabled={resigning}
-            style={{ padding: '8px 12px' }}
-          >
-            {resigning ? 'Leaving…' : 'Leave waiting seat'}
-          </button>
-        </p>
-      ) : null}
-
-      {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
-        <TournamentFirstMoveGraceBanner
-          gameId={game.id}
-          game={{
-            play_context: game.play_context,
-            tournament_id: game.tournament_id,
-            tempo: game.tempo,
-            status: game.status,
-            white_player_id: game.white_player_id,
-            black_player_id: game.black_player_id,
-            turn: game.turn,
-            created_at: game.created_at,
-          }}
-          gameStatus={game.status}
-          moveCount={moveLogs.length}
-          userId={userId}
-          isMyTurn={Boolean(isMyTurn && !isSpectator)}
-        />
-      ) : null}
-
-      {game.status !== 'finished' ? (
-        <div
-          className="accl-game-notation-strip accl-scroll-no-anchor"
-          data-testid="game-notation-strip"
-          aria-label="Live move notation"
-        >
-          {moveLogs.length === 0 ? (
-            <span className="accl-game-notation-strip__placeholder">Moves will appear here.</span>
-          ) : (
-            <span className="accl-game-notation-strip__text">{buildMovetext(moveLogs)}</span>
-          )}
+      <div className="accl-game-play-column" data-testid="game-play-column">
+        <div className="accl-game-notation-slot">
+          <GameNotationStrip
+            movetext={buildMovetext(moveLogs)}
+            finished={game.status === 'finished'}
+          />
         </div>
-      ) : null}
 
       <div className="accl-game-board-row" data-testid="game-board-with-tournament-rail">
         <div
@@ -3864,6 +3795,72 @@ export default function GamePage() {
           />
         ) : null}
       </div>
+      </div>
+
+      {/* TEST CONTRACT: `game-turn-indicator` + `data-game-state` — E2E; UI "waiting" here does not change DB status */}
+      {game.status !== 'finished' && (
+        <p
+          data-testid="game-turn-indicator"
+          data-game-state={!bothPlayersSeated(game) ? 'waiting' : 'seated'}
+          data-spectator-readonly={isPublicViewer || (isSpectator && !!userId) ? '1' : '0'}
+          style={{
+            marginTop: 12,
+            marginBottom: 8,
+            fontWeight: isMyTurn && !isSpectator ? 'bold' : undefined,
+            color: isMyTurn && !isSpectator ? 'red' : '#777',
+          }}
+        >
+          {isPublicViewer || (isSpectator && !!userId) ? (
+            !bothPlayersSeated(game) ? (
+              <>Waiting for players — you are watching (read-only).</>
+            ) : (
+              <>Live position — read-only for spectators.</>
+            )
+          ) : !bothPlayersSeated(game) ? (
+            'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
+          ) : !canPlayMoves(game) ? (
+            'Game is not ready for moves yet.'
+          ) : isMyTurn ? (
+            'YOUR TURN'
+          ) : (
+            "OPPONENT'S TURN"
+          )}
+        </p>
+      )}
+
+      {showAbandonOpenSeat ? (
+        <p style={{ margin: '0 0 12px 0' }}>
+          <button
+            type="button"
+            data-testid="game-abandon-open-seat"
+            onClick={() => void handleAbandonOpenSeat()}
+            disabled={resigning}
+            style={{ padding: '8px 12px' }}
+          >
+            {resigning ? 'Leaving…' : 'Leave waiting seat'}
+          </button>
+        </p>
+      ) : null}
+
+      {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
+        <TournamentFirstMoveGraceBanner
+          gameId={game.id}
+          game={{
+            play_context: game.play_context,
+            tournament_id: game.tournament_id,
+            tempo: game.tempo,
+            status: game.status,
+            white_player_id: game.white_player_id,
+            black_player_id: game.black_player_id,
+            turn: game.turn,
+            created_at: game.created_at,
+          }}
+          gameStatus={game.status}
+          moveCount={moveLogs.length}
+          userId={userId}
+          isMyTurn={Boolean(isMyTurn && !isSpectator)}
+        />
+      ) : null}
 
       {game.status === 'finished' && moveLogs.length > 0 && (
         <div

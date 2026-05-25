@@ -358,7 +358,7 @@ html.accl-game-route body {
   gap: 16px;
   align-items: flex-start;
   justify-content: flex-start;
-  margin-top: 20px;
+  margin-top: 0;
   width: 100%;
   max-width: 560px;
   overflow-anchor: none;
@@ -380,8 +380,29 @@ html.accl-game-route body {
   touch-action: none;
 }
 
+/** Notation slot + board — no dynamic siblings between them. */
+.accl-game-play-column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  flex-shrink: 0;
+  overflow-anchor: none;
+}
+
 /** Chat / move-log scroll regions — prevent scroll-anchoring jitter on append. */
 .accl-scroll-no-anchor {
+  overflow-anchor: none;
+}
+
+/** Fixed slot above the board — height reserved before any moves exist. */
+.accl-game-notation-slot {
+  width: 100%;
+  max-width: 560px;
+  flex: 0 0 auto;
+  height: 2.25rem;
+  margin: 0 0 12px 0;
+  overflow: hidden;
   overflow-anchor: none;
 }
 
@@ -390,10 +411,8 @@ html.accl-game-route body {
   display: flex;
   align-items: center;
   width: 100%;
-  max-width: 560px;
+  height: 100%;
   min-height: 2.25rem;
-  max-height: 2.25rem;
-  margin: 0 0 12px 0;
   padding: 0 10px;
   border: 1px solid #333;
   border-radius: 6px;
