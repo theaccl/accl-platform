@@ -48,4 +48,10 @@ test.describe('Phase 1 — tournament spectator + reconnect (unit)', () => {
     expect(src).toContain('spectator_read_only: true');
     expect(src).toContain('new_spectator_features: false');
   });
+
+  test('public viewer must not render next-game move hint (grep game page)', () => {
+    const src = readFileSync(gamePagePath, 'utf8');
+    expect(src).toContain('!isPublicViewer && game.status !== \'finished\' && nextGameWithMyMoveId');
+    expect(src).toContain('data-testid="game-next-move-hint"');
+  });
 });

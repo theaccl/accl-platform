@@ -344,6 +344,45 @@ async function main() {
     .single();
   if (!matchAfter?.winner_id) fail('bracket winner_id not set after finish');
 
+  const { data: tDone } = await supabase.from('tournaments').select('status').eq('id', tournament.id).single();
+  if (tDone?.status !== 'completed') fail(`2P bracket status ${tDone?.status} (expected completed)`);
+  ok('tournament: 2P final finish sets status completed');
+
+  const { data: stray, error: strayErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .eq('tournament_id', tournament.id)
+    .in('status', ['active', 'waiting']);
+  if (strayErr) fail(`ghost check: ${strayErr.message}`);
+  if ((stray ?? []).length > 0) {
+    fail(`ghost check: ${(stray ?? []).length} active/waiting tournament game(s) after completion`);
+  }
+  ok('ghost check: no active or waiting tournament games after completion');
+
+  const { data: bracketGames, error: bgErr } = await supabase
+    .from('tournament_matches')
+    .select('game_id')
+    .eq('tournament_id', tournament.id)
+    .not('game_id', 'is', null);
+  if (bgErr) fail(`ghost check (bracket): ${bgErr.message}`);
+  const linkedIds = (bracketGames ?? []).map((m) => m.game_id).filter(Boolean);
+  if (linkedIds.length !== 1) fail(`ghost check: expected 1 bracket-linked game, got ${linkedIds.length}`);
+  const { data: finishedRows, error: finErr2 } = await supabase
+    .from('games')
+    .select('id, status')
+    .in('id', linkedIds);
+  if (finErr2) fail(`ghost check (status): ${finErr2.message}`);
+  for (const g of finishedRows ?? []) {
+    if (g.status !== 'finished') fail(`ghost check: bracket game ${g.id} status ${g.status}`);
+  }
+  ok('ghost check: bracket-linked game finished after spectator flow');
+
+  const ghostChecks = {
+    activeOrWaitingCount: 0,
+    bracketLinkedGameCount: linkedIds.length,
+    allBracketGamesFinished: true,
+  };
+
   const report = {
     poll_realtime_boundary:
       'Spectators: primary path is get_public_spectate_game_snapshot on loadGameSnapshot (2s poll + focus). game_move_logs realtime INSERT often blocked by RLS for non-participants.',
@@ -354,6 +393,7 @@ async function main() {
     p1,
     p2,
     spectator_churn_cycles: SPECTATOR_CHURN_COUNT,
+    ghostChecks,
   };
 
   if (!process.env.TOURNAMENT_SPECTATOR_KEEP) {

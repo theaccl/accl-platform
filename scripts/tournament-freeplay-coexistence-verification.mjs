@@ -156,6 +156,37 @@ async function loadFreeBusyIds(supabase, userId) {
   return (data ?? []).map((r) => r.id);
 }
 
+async function assertPlayContextScope(supabase, tournamentId, userId, tournamentGameId, freeGameIds) {
+  const { data: tScoped, error: tErr } = await supabase
+    .from('games')
+    .select('id, play_context, tournament_id')
+    .eq('tournament_id', tournamentId);
+  if (tErr) fail(`scope (tournament games): ${tErr.message}`);
+  for (const g of tScoped ?? []) {
+    if (g.play_context !== 'tournament') {
+      fail(`scope: game ${g.id} has tournament_id but play_context=${g.play_context}`);
+    }
+  }
+  ok(`scope: ${(tScoped ?? []).length} tournament-scoped row(s) use play_context=tournament`);
+
+  for (const fid of freeGameIds) {
+    const { data: f, error: fErr } = await supabase
+      .from('games')
+      .select('play_context, tournament_id')
+      .eq('id', fid)
+      .single();
+    if (fErr) fail(`scope (free ${fid}): ${fErr.message}`);
+    if (f?.play_context !== 'free' || f?.tournament_id != null) {
+      fail(`scope: free game ${fid} contaminated (play_context=${f?.play_context}, tournament_id=${f?.tournament_id})`);
+    }
+  }
+  ok(`scope: ${freeGameIds.length} free row(s) remain play_context=free with tournament_id null`);
+
+  const freeBusy = await loadFreeBusyIds(supabase, userId);
+  if (freeBusy.includes(tournamentGameId)) fail('scope: tournament game leaked into free busy set');
+  ok('scope: free busy query excludes tournament game');
+}
+
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -364,6 +395,12 @@ async function main() {
   const freeOpenStill = await supabase.from('games').select('status').eq('id', freeOpenId).single();
   if (freeOpenStill.data?.status !== 'active') fail('tournament finish orphaned/superseded free open seat');
   ok('orphan check: free open seat still active after partial tournament progress');
+
+  await assertPlayContextScope(supabase, tournament.id, p1, tGameId, [
+    freeOpenId,
+    freePair.id,
+    dailyGame.id,
+  ]);
 
   const gameIds = [tGameId, freeOpenId, freePair.id, dailyGame.id];
   const report = {
