@@ -237,6 +237,54 @@ async function persistBracket(supabase, tournamentId, orderedUserIds) {
   return { matches: full ?? [], totalRounds };
 }
 
+async function assertNoGhostTournamentGames(supabase, tournamentId, expectedGameCount) {
+  const { data: stray, error: strayErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .eq('tournament_id', tournamentId)
+    .in('status', ['active', 'waiting']);
+  if (strayErr) fail(`ghost check (active/waiting): ${strayErr.message}`);
+  if ((stray ?? []).length > 0) {
+    const detail = (stray ?? []).map((g) => `${g.id.slice(0, 8)}:${g.status}`).join(', ');
+    fail(`ghost games: ${(stray ?? []).length} active/waiting row(s): ${detail}`);
+  }
+  ok('ghost check: no active or waiting tournament games');
+
+  const { data: matchRows, error: mErr } = await supabase
+    .from('tournament_matches')
+    .select('game_id')
+    .eq('tournament_id', tournamentId)
+    .not('game_id', 'is', null);
+  if (mErr) fail(`ghost check (bracket games): ${mErr.message}`);
+
+  const gameIds = (matchRows ?? []).map((m) => m.game_id).filter(Boolean);
+  if (gameIds.length === 0) fail('ghost check: no bracket-linked game_ids');
+  if (gameIds.length !== expectedGameCount) {
+    fail(`ghost check: expected ${expectedGameCount} bracket-linked games, got ${gameIds.length}`);
+  }
+
+  const { data: gameRows, error: gErr } = await supabase
+    .from('games')
+    .select('id, status')
+    .in('id', gameIds);
+  if (gErr) fail(`ghost check (game status): ${gErr.message}`);
+
+  const statusById = new Map((gameRows ?? []).map((g) => [g.id, g.status]));
+  for (const gid of gameIds) {
+    const status = statusById.get(gid);
+    if (status !== 'finished') {
+      fail(`bracket game ${gid} status ${status ?? 'missing'} (expected finished)`);
+    }
+  }
+  ok(`ghost check: all ${gameIds.length} bracket-linked games finished`);
+
+  return {
+    activeOrWaitingCount: 0,
+    bracketLinkedGameCount: gameIds.length,
+    allBracketGamesFinished: true,
+  };
+}
+
 async function finishGameAsWinner(supabase, gameId, winnerUserId) {
   const { data: g, error: gErr } = await supabase
     .from('games')
@@ -385,6 +433,20 @@ async function main() {
   if (root?.round_number !== tr) fail(`root round ${root?.round_number} (expected ${tr})`);
   ok('champion: final match winner_id matches');
 
+  const ghostChecks = await assertNoGhostTournamentGames(supabase, tournamentId, 7);
+
+  const quarterfinalGameIds = matches
+    .filter((m) => m.round_number === 1)
+    .sort((a, b) => a.match_number - b.match_number)
+    .map((m) => m.game_id)
+    .filter(Boolean);
+  const semifinalGameIds = matches
+    .filter((m) => m.round_number === 2)
+    .sort((a, b) => a.match_number - b.match_number)
+    .map((m) => m.game_id)
+    .filter(Boolean);
+  const finalGameId = final.game_id;
+
   const allGameIds = matches.map((m) => m.game_id).filter(Boolean);
   const report = {
     tournamentId,
@@ -393,8 +455,13 @@ async function main() {
     bracketSize,
     matchCount: matches.length,
     gameCount: allGameIds.length,
+    quarterfinalGameIds,
+    semifinalGameIds,
+    finalGameId,
     r1Winners: r1Winners.map((w) => w.winner),
     r2Winners: r2Winners.map((w) => w.winner),
+    ghostChecks,
+    cleanup: null,
   };
 
   if (!process.env.TOURNAMENT_8P_KEEP) {
@@ -402,8 +469,10 @@ async function main() {
     await supabase.from('tournament_matches').delete().eq('tournament_id', tournamentId);
     await supabase.from('tournament_entries').delete().eq('tournament_id', tournamentId);
     await supabase.from('tournaments').delete().eq('id', tournamentId);
+    report.cleanup = 'removed verification tournament data';
     ok('cleanup: removed verification tournament data');
   } else {
+    report.cleanup = 'kept (TOURNAMENT_8P_KEEP=1)';
     console.log('KEEP: TOURNAMENT_8P_KEEP=1 — tournament left in DB');
   }
 
