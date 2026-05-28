@@ -15,11 +15,25 @@ export function boundaryStatusFromBadgeRow(input: {
   pressure_state: BadgePressureState;
 }): BoundaryStatus {
   if (input.visual_state === 'downgraded') {
-    return input.pressure_state === 'demotion_armed' ? 'recovery_needed' : 'recovery_needed';
+    return 'recovery_needed';
   }
-  if (input.pressure_state === 'promotion_armed') return 'upgrade_armed';
   if (input.pressure_state === 'demotion_armed') return 'downgrade_armed';
+  if (input.pressure_state === 'promotion_armed') return 'upgrade_armed';
+  if (input.visual_state === 'upgraded') return 'on_the_rise';
   return 'safe';
+}
+
+export function badgeStateDisplayLabel(state: BadgeState | null): string {
+  switch (state) {
+    case 'shiny':
+      return 'Shiny';
+    case 'downgraded':
+      return 'Downgraded';
+    case 'normal':
+      return 'Normal';
+    default:
+      return '—';
+  }
 }
 
 export function badgeEventFromSettlementEvent(

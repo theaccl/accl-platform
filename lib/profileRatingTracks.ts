@@ -78,28 +78,33 @@ export function subtracksForMode(
   modeRating: number | null,
   modeGames: number | null,
   exactRatings: Map<string, number> | undefined,
+  gamesCountByTrack?: Record<string, number>,
 ): SubtrackCardModel[] {
   const overallId = modeOverallRatingTrackId(mode);
   const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
+  const overallCount = gamesCountByTrack?.[overallId];
   const rows: SubtrackCardModel[] = [
     {
       ratingTrackId: overallId,
       label: `${modeLabel} overall`,
       displayLabel: `${modeLabel} Overall`,
       rating: modeRating,
-      gamesPlayed: modeGames,
+      gamesPlayed: overallCount !== undefined ? overallCount : modeGames,
       isOverall: true,
     },
   ];
+
   for (const tc of visibleTimeControlsForMode(mode)) {
+    const exactCount = gamesCountByTrack?.[tc.ratingTrackId];
     rows.push({
       ratingTrackId: tc.ratingTrackId,
       label: tc.label,
       displayLabel: tc.displayLabel,
       rating: exactRatings?.get(tc.ratingTrackId) ?? null,
-      gamesPlayed: null,
+      gamesPlayed: exactCount !== undefined ? exactCount : null,
     });
   }
+
   return rows;
 }
 

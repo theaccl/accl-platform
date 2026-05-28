@@ -2,6 +2,12 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import {
+  chartPointMarkerForPoint,
+  chartPointMarkerLegendKinds,
+  chartPointMarkerStyle,
+} from '@/lib/ratingTickerChartMarkers';
+import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import {
   RATING_CURRENT_NO_HISTORY,
@@ -12,19 +18,30 @@ type Props = {
   points: RatingHistoryPoint[];
   currentRating: number | null;
   canLinkFinishedGames: boolean;
+  /** Taller chart when opened in mobile drawer. */
+  expanded?: boolean;
 };
 
 const CHART_W = 560;
 const CHART_H = 160;
+const CHART_H_EXPANDED = 220;
 const PAD = 16;
 
-export function RatingTickerChart({ points, currentRating, canLinkFinishedGames }: Props) {
+export function RatingTickerChart({
+  points,
+  currentRating,
+  canLinkFinishedGames,
+  expanded = false,
+}: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const chartH = expanded ? CHART_H_EXPANDED : CHART_H;
 
   const sorted = useMemo(
     () => [...points].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt)),
     [points],
   );
+
+  const legendKinds = useMemo(() => chartPointMarkerLegendKinds(sorted), [sorted]);
 
   if (sorted.length === 0) {
     const msg =
@@ -54,7 +71,7 @@ export function RatingTickerChart({ points, currentRating, canLinkFinishedGames 
       : PAD + (i / (sorted.length - 1)) * (CHART_W - PAD * 2);
   const toY = (r: number) => {
     const t = (r - yMin) / (yMax - yMin);
-    return CHART_H - PAD - t * (CHART_H - PAD * 2);
+    return chartH - PAD - t * (chartH - PAD * 2);
   };
 
   const polyline =
@@ -63,42 +80,74 @@ export function RatingTickerChart({ points, currentRating, canLinkFinishedGames 
       : sorted.map((p, i) => `${toX(i)},${toY(p.ratingAfter)}`).join(' ');
 
   const active = sorted.find((p) => p.id === activeId) ?? sorted[sorted.length - 1];
+  const activeMarker = active ? chartPointMarkerForPoint(active) : 'none';
 
   return (
     <div data-testid="rating-ticker-chart" className="space-y-2">
+      {legendKinds.length > 0 ? (
+        <ul
+          className="m-0 flex list-none flex-wrap gap-2 p-0 text-[10px] text-gray-400"
+          data-testid="rating-ticker-chart-legend"
+        >
+          {legendKinds.map((kind) => {
+            const sample = sorted.find((p) => chartPointMarkerForPoint(p) === kind);
+            const label = sample ? chartPointMarkerStyle(sample, false).label : kind;
+            return (
+              <li key={kind} className="rounded border border-[#2f3f54] px-1.5 py-0.5">
+                {label}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       <svg
-        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+        viewBox={`0 0 ${CHART_W} ${chartH}`}
         className="w-full max-w-full rounded-lg border border-[#2f3f54] bg-[#0b121c]"
         role="img"
         aria-label="Rating history chart"
       >
-        <polyline
-          fill="none"
-          stroke="#38bdf8"
-          strokeWidth="2"
-          points={polyline}
-        />
-        {sorted.map((p, i) => (
-          <circle
-            key={p.id}
-            cx={toX(i)}
-            cy={toY(p.ratingAfter)}
-            r={active?.id === p.id ? 6 : 4}
-            fill={active?.id === p.id ? '#fbbf24' : '#38bdf8'}
-            className="cursor-pointer"
-            onClick={() => setActiveId(p.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') setActiveId(p.id);
-            }}
-            role="button"
-            tabIndex={0}
-            aria-label={`Rating ${p.ratingAfter} on ${new Date(p.occurredAt).toLocaleDateString()}`}
-          />
-        ))}
+        <polyline fill="none" stroke="#38bdf8" strokeWidth="2" points={polyline} />
+        {sorted.map((p, i) => {
+          const style = chartPointMarkerStyle(p, active?.id === p.id);
+          const r = active?.id === p.id ? 7 : style.showRing ? 5 : 4;
+          return (
+            <g key={p.id}>
+              {style.showRing ? (
+                <circle
+                  cx={toX(i)}
+                  cy={toY(p.ratingAfter)}
+                  r={r + 3}
+                  fill="none"
+                  stroke={style.stroke}
+                  strokeWidth="1.5"
+                  opacity={0.85}
+                />
+              ) : null}
+              <circle
+                cx={toX(i)}
+                cy={toY(p.ratingAfter)}
+                r={r}
+                fill={style.fill}
+                stroke={style.stroke}
+                strokeWidth="1"
+                data-marker-kind={style.kind}
+                className="cursor-pointer"
+                onClick={() => setActiveId(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setActiveId(p.id);
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`Rating ${p.ratingAfter}${style.label ? `, ${style.label}` : ''}`}
+              />
+            </g>
+          );
+        })}
       </svg>
       {active ? (
         <div
           data-testid="rating-ticker-point-detail"
+          data-marker-kind={activeMarker}
           className="rounded-lg border border-[#2f3f54] bg-[#0f1723] px-3 py-2 text-sm text-gray-200"
         >
           <p className="m-0 tabular-nums">
@@ -111,14 +160,23 @@ export function RatingTickerChart({ points, currentRating, canLinkFinishedGames 
           <p className="mt-1 text-xs text-gray-400">
             {new Date(active.occurredAt).toLocaleString()} · {active.result}
             {active.badgeStateAfter ? ` · badge ${active.badgeStateAfter}` : ''}
+            {active.badgeEvent && active.badgeEvent !== 'none' ? ` · ${active.badgeEvent}` : ''}
+            {active.streakAfter != null ? ` · streak ${active.streakAfter}` : ''}
           </p>
           {canLinkFinishedGames && active.gameId ? (
-            <p className="mt-2 mb-0">
-              <Link href={`/game/${active.gameId}`} className="font-semibold text-sky-300">
-                Open finished game
+            <p className="mt-2 mb-0 flex flex-wrap gap-x-3 gap-y-1">
+              <Link
+                href={finishedGameHref(active.gameId)}
+                data-testid="rating-point-finished-link"
+                className="font-semibold text-sky-300"
+              >
+                Finished game
               </Link>
-              {' · '}
-              <Link href="/trainer/review" className="font-semibold text-sky-300">
+              <Link
+                href={finishedGameTrainHref(active.gameId)}
+                data-testid="rating-point-train-link"
+                className="font-semibold text-sky-300"
+              >
                 Trainer review
               </Link>
             </p>

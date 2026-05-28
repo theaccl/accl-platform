@@ -29,6 +29,15 @@ export function RatingSubtrackGrid({ subtracks, selectedTrackId, onSelect }: Pro
           <p className="m-0 mt-1 tabular-nums text-base font-semibold text-gray-100">
             {formatTrackRating(s.rating)}
           </p>
+          {s.gamesPlayed != null ? (
+            <p className="m-0 mt-1 text-[11px] text-gray-500" data-testid="rating-subtrack-games-count">
+              {s.gamesPlayed === 0
+                ? s.isOverall
+                  ? 'No rated games yet'
+                  : 'No exact-track games yet'
+                : `${s.gamesPlayed} rated games`}
+            </p>
+          ) : null}
         </button>
       ))}
     </div>

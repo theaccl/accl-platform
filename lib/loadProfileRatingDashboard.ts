@@ -4,6 +4,7 @@ import type { PlayerBadgeStateRow } from '@/lib/badgeSettlement';
 import type { FreeBadgeTrackKey } from '@/lib/badgeTracks';
 import { timeControlByBadgeTrackKey } from '@/lib/acclTimeControls';
 import { buildRatingHistoryPointsForTrack, type ProfileHistoryGameRow } from '@/lib/profileRatingHistoryBuild';
+import { mergeAuthoritativeTrackGameCounts } from '@/lib/profileRatingTrackGameCounts';
 import {
   buildRatingHistoryPointsFromLedger,
   type RatingHistoryLedgerRow,
@@ -15,6 +16,7 @@ export type ProfileBadgeStateByTrack = Partial<Record<string, PlayerBadgeStateRo
 export type ProfileRatingDashboardData = {
   historyByTrack: Record<string, RatingHistoryPoint[]>;
   badgeByTrack: ProfileBadgeStateByTrack;
+  gamesCountByTrack: Record<string, number>;
 };
 
 const HISTORY_GAME_LIMIT = 120;
@@ -30,7 +32,7 @@ export async function loadProfileRatingDashboardData(
   trackIds: string[],
 ): Promise<ProfileRatingDashboardData> {
   if (!isSelf) {
-    return { historyByTrack: {}, badgeByTrack: {} };
+    return { historyByTrack: {}, badgeByTrack: {}, gamesCountByTrack: {} };
   }
 
   const [gamesRes, badgeRes, ledgerRes] = await Promise.all([
@@ -87,5 +89,12 @@ export async function loadProfileRatingDashboardData(
     }
   }
 
-  return { historyByTrack, badgeByTrack };
+  const gamesCountByTrack = mergeAuthoritativeTrackGameCounts(
+    ledgerRows,
+    games,
+    profileUserId,
+    trackIds,
+  );
+
+  return { historyByTrack, badgeByTrack, gamesCountByTrack };
 }

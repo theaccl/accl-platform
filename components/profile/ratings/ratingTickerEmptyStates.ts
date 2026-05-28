@@ -12,3 +12,11 @@ export const RATING_BADGE_UNAVAILABLE =
 
 export const RATING_EXACT_SELF_ONLY =
   'Exact-track settlement ratings are visible on your profile when signed in.';
+
+export function exactTrackNoGamesLabel(displayLabel: string): string {
+  return `No rated ${displayLabel} games recorded yet.`;
+}
+
+export function exactTrackHistoryEmptyLabel(displayLabel: string): string {
+  return `Exact-track history will appear here after rated games are recorded for ${displayLabel}.`;
+}

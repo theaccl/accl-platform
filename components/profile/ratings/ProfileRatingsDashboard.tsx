@@ -44,6 +44,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
   const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof loadProfileRatingDashboardData>>>({
     historyByTrack: {},
     badgeByTrack: {},
+    gamesCountByTrack: {},
   });
 
   useEffect(() => {
@@ -74,8 +75,14 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
 
   const subtracks = useMemo(() => {
     if (!mode || !activeCard) return null;
-    return subtracksForMode(mode, activeCard.rating, activeCard.gamesPlayed, isSelf ? exactRatings : undefined);
-  }, [mode, activeCard, exactRatings, isSelf]);
+    return subtracksForMode(
+      mode,
+      activeCard.rating,
+      activeCard.gamesPlayed,
+      isSelf ? exactRatings : undefined,
+      isSelf ? dashboard.gamesCountByTrack : undefined,
+    );
+  }, [mode, activeCard, exactRatings, isSelf, dashboard.gamesCountByTrack]);
 
   const detailRating = useMemo(() => {
     if (subtracks) {
