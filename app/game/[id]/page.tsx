@@ -51,6 +51,11 @@ import {
   classifyGameForRating,
   ratingClassificationSummaryLine,
 } from '@/lib/ratingClassification';
+import {
+  badgeTickerForUser,
+  parseBadgeBlockFromRatingUpdate,
+} from '@/lib/badgeSettlementRead';
+import RatingBadgeTicker from '@/components/game/RatingBadgeTicker';
 import { START_FEN } from '@/lib/startFen';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { formatCreateSeatedGameGuardError } from '@/lib/formatCreateSeatedGameGuardError';
@@ -2575,6 +2580,16 @@ export default function GamePage() {
 
   const finishedRatingClass = game.status === 'finished' ? classifyGameForRating(game) : null;
 
+  const finishedBadgeTicker =
+    game.status === 'finished' && userId
+      ? badgeTickerForUser(
+          parseBadgeBlockFromRatingUpdate(game.rating_last_update),
+          userId,
+          game.white_player_id,
+          game.black_player_id,
+        )
+      : null;
+
   const showAbandonOpenSeat =
     !isSpectator &&
     !!userId &&
@@ -3134,6 +3149,9 @@ export default function GamePage() {
           >
             {finishedRatingClass ? ratingClassificationSummaryLine(finishedRatingClass) : null}
           </p>
+          ) : null}
+          {!isPublicViewer && finishedBadgeTicker ? (
+            <RatingBadgeTicker ticker={finishedBadgeTicker} />
           ) : null}
           {!isPublicViewer ? (
           <pre
