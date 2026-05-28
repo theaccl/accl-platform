@@ -11,7 +11,8 @@ export type RatingHistoryEventType =
   | 'game'
   | 'tournament_batch'
   | 'bracket_settlement'
-  | 'manual_admin_adjustment';
+  | 'manual_admin_adjustment'
+  | 'backfill';
 
 export type RatingHistoryResult = 'win' | 'loss' | 'draw' | 'event_settlement';
 
@@ -26,6 +27,7 @@ export type BadgeEvent =
   | 'recovered_to_normal'
   | 'shiny_earned'
   | 'shiny_lost'
+  | 'manual_adjustment'
   | null;
 
 export type BoundaryStatus =

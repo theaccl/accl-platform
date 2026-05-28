@@ -4,6 +4,10 @@ import type { PlayerBadgeStateRow } from '@/lib/badgeSettlement';
 import type { FreeBadgeTrackKey } from '@/lib/badgeTracks';
 import { timeControlByBadgeTrackKey } from '@/lib/acclTimeControls';
 import { buildRatingHistoryPointsForTrack, type ProfileHistoryGameRow } from '@/lib/profileRatingHistoryBuild';
+import {
+  buildRatingHistoryPointsFromLedger,
+  type RatingHistoryLedgerRow,
+} from '@/lib/ratingHistoryLedgerBuild';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 export type ProfileBadgeStateByTrack = Partial<Record<string, PlayerBadgeStateRow>>;
@@ -29,7 +33,7 @@ export async function loadProfileRatingDashboardData(
     return { historyByTrack: {}, badgeByTrack: {} };
   }
 
-  const [gamesRes, badgeRes] = await Promise.all([
+  const [gamesRes, badgeRes, ledgerRes] = await Promise.all([
     supabase
       .from('games')
       .select(
@@ -46,12 +50,23 @@ export async function loadProfileRatingDashboardData(
         'track_key,settlement_rating,active_rank_band,visual_state,pressure_state,pressure_border,win_streak',
       )
       .eq('user_id', profileUserId),
+    supabase
+      .from('player_rating_history_ledger')
+      .select(
+        'id,player_id,rating_track_id,ecosystem,rating_scope,mode,time_control,badge_track_key,event_type,game_id,tournament_id,bracket_id,opponent_id,opponent_username,result,rating_before,rating_after,rating_delta,occurred_at,badge_state_before,badge_state_after,badge_event,streak_before,streak_after,is_backfilled,metadata',
+      )
+      .eq('player_id', profileUserId)
+      .order('occurred_at', { ascending: true })
+      .limit(500),
   ]);
 
   const games = (gamesRes.data ?? []) as ProfileHistoryGameRow[];
+  const ledgerRows = (ledgerRes.error ? [] : (ledgerRes.data ?? [])) as RatingHistoryLedgerRow[];
   const historyByTrack: Record<string, RatingHistoryPoint[]> = {};
   for (const trackId of trackIds) {
-    historyByTrack[trackId] = buildRatingHistoryPointsForTrack(games, profileUserId, trackId);
+    const fromLedger = buildRatingHistoryPointsFromLedger(ledgerRows, profileUserId, trackId);
+    const fromGames = buildRatingHistoryPointsForTrack(games, profileUserId, trackId);
+    historyByTrack[trackId] = fromLedger.length > 0 ? fromLedger : fromGames;
   }
 
   const badgeByTrack: ProfileBadgeStateByTrack = {};
