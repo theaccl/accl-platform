@@ -374,12 +374,14 @@ function DigitalChessClock({
   activeTurn,
   isCorrespondence,
   paceLabel,
+  className,
 }: {
   whiteMs: number;
   blackMs: number;
   activeTurn: 'white' | 'black' | null;
   isCorrespondence?: boolean;
   paceLabel?: string;
+  className?: string;
 }) {
   const whiteActive = activeTurn === 'white';
   const blackActive = activeTurn === 'black';
@@ -405,6 +407,7 @@ function DigitalChessClock({
     <div
       data-testid="digital-chess-clock"
       data-clock-ticking={activeTurn != null ? 'true' : 'false'}
+      className={['accl-game-clock', className].filter(Boolean).join(' ')}
       style={{
         display: 'flex',
         gap: 16,
@@ -2700,8 +2703,15 @@ export default function GamePage() {
 
   const maxReplayStep = moveLogs.length;
 
+  const whiteActiveLabel =
+    displayNameById[game.white_player_id] ?? game.white_player_id;
+  const blackActiveLabel = game.black_player_id
+    ? displayNameById[game.black_player_id] ?? game.black_player_id
+    : '—';
+
   return (
     <div className="accl-game-shell">
+      <div className="accl-game-preamble">
       <h1 style={{ marginBottom: 6 }}>Game Board</h1>
       <p
         role="status"
@@ -2723,17 +2733,6 @@ export default function GamePage() {
         </span>
         {modeBannerText}
       </p>
-      {showAnyClocks && (
-        <DigitalChessClock
-          whiteMs={whiteClockMs}
-          blackMs={blackClockMs}
-          activeTurn={
-            showCorrespondenceClocks ? clockTurn : liveDailyTicking ? clockTurn : null
-          }
-          isCorrespondence={showCorrespondenceClocks}
-          paceLabel={correspondencePaceLabel}
-        />
-      )}
       <p
         style={{
           margin: showAnyClocks ? '10px 0 4px 0' : '0 0 4px 0',
@@ -3658,7 +3657,68 @@ export default function GamePage() {
         </div>
       )}
 
+      </div>
+
       <div className="accl-game-play-column" data-testid="game-play-column">
+        <div className="accl-game-active-hud" data-testid="game-active-hud">
+          {showAnyClocks ? (
+            <DigitalChessClock
+              className="accl-game-clock--play-hud"
+              whiteMs={whiteClockMs}
+              blackMs={blackClockMs}
+              activeTurn={
+                showCorrespondenceClocks ? clockTurn : liveDailyTicking ? clockTurn : null
+              }
+              isCorrespondence={showCorrespondenceClocks}
+              paceLabel={correspondencePaceLabel}
+            />
+          ) : null}
+          <p
+            className="accl-game-active-players"
+            data-testid="game-active-players"
+          >
+            <span>
+              <strong style={{ color: '#e2e8f0' }}>White</strong> {whiteActiveLabel}
+            </span>
+            <span style={{ margin: '0 8px', color: '#475569' }}>·</span>
+            <span>
+              <strong style={{ color: '#e2e8f0' }}>Black</strong> {blackActiveLabel}
+            </span>
+            {myColor ? (
+              <span style={{ marginLeft: 8, color: '#64748b' }}>
+                (you: {myColor})
+              </span>
+            ) : null}
+          </p>
+          {game.status !== 'finished' ? (
+            <p
+              className="accl-game-turn-line"
+              data-testid="game-turn-indicator"
+              data-game-state={!bothPlayersSeated(game) ? 'waiting' : 'seated'}
+              data-spectator-readonly={isPublicViewer || (isSpectator && !!userId) ? '1' : '0'}
+              style={{
+                fontWeight: isMyTurn && !isSpectator ? 'bold' : undefined,
+                color: isMyTurn && !isSpectator ? 'red' : '#777',
+              }}
+            >
+              {isPublicViewer || (isSpectator && !!userId) ? (
+                !bothPlayersSeated(game) ? (
+                  <>Waiting for players — you are watching (read-only).</>
+                ) : (
+                  <>Live position — read-only for spectators.</>
+                )
+              ) : !bothPlayersSeated(game) ? (
+                'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
+              ) : !canPlayMoves(game) ? (
+                'Game is not ready for moves yet.'
+              ) : isMyTurn ? (
+                'YOUR TURN'
+              ) : (
+                "OPPONENT'S TURN"
+              )}
+            </p>
+          ) : null}
+        </div>
         <div className="accl-game-notation-slot">
           <GameNotationStrip
             movetext={buildMovetext(moveLogs)}
@@ -3815,37 +3875,7 @@ export default function GamePage() {
       </div>
       </div>
 
-      {/* TEST CONTRACT: `game-turn-indicator` + `data-game-state` — E2E; UI "waiting" here does not change DB status */}
-      {game.status !== 'finished' && (
-        <p
-          data-testid="game-turn-indicator"
-          data-game-state={!bothPlayersSeated(game) ? 'waiting' : 'seated'}
-          data-spectator-readonly={isPublicViewer || (isSpectator && !!userId) ? '1' : '0'}
-          style={{
-            marginTop: 12,
-            marginBottom: 8,
-            fontWeight: isMyTurn && !isSpectator ? 'bold' : undefined,
-            color: isMyTurn && !isSpectator ? 'red' : '#777',
-          }}
-        >
-          {isPublicViewer || (isSpectator && !!userId) ? (
-            !bothPlayersSeated(game) ? (
-              <>Waiting for players — you are watching (read-only).</>
-            ) : (
-              <>Live position — read-only for spectators.</>
-            )
-          ) : !bothPlayersSeated(game) ? (
-            'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
-          ) : !canPlayMoves(game) ? (
-            'Game is not ready for moves yet.'
-          ) : isMyTurn ? (
-            'YOUR TURN'
-          ) : (
-            "OPPONENT'S TURN"
-          )}
-        </p>
-      )}
-
+      <div className="accl-game-shell-tail">
       {showAbandonOpenSeat ? (
         <p style={{ margin: '0 0 12px 0' }}>
           <button
@@ -4025,20 +4055,28 @@ export default function GamePage() {
         </div>
       ) : null}
       {!isPublicViewer && game ? (
-        <div className="accl-game-side-panel">
-        <GameTesterChatPanels
-          key={`chat-${game.id}-${chatViewerRole}-${isSpectator ? 'spec' : 'seat'}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
-          gameId={game.id}
-          gameStatus={game.status}
-          gameTempo={game.tempo ?? null}
-          userId={userId}
-          viewerChatRole={chatViewerRole}
-          isBoardSpectator={isSpectator}
-          viewerEcosystem={viewerEcosystem}
-          accessToken={chatAccessToken}
-        />
-        </div>
+        <details
+          className="accl-game-chat-fold"
+          data-testid="game-chat-fold"
+          open={game.status === 'finished' ? true : undefined}
+        >
+          <summary className="accl-game-chat-fold__summary">Game chat</summary>
+          <div className="accl-game-side-panel">
+            <GameTesterChatPanels
+              key={`chat-${game.id}-${chatViewerRole}-${isSpectator ? 'spec' : 'seat'}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
+              gameId={game.id}
+              gameStatus={game.status}
+              gameTempo={game.tempo ?? null}
+              userId={userId}
+              viewerChatRole={chatViewerRole}
+              isBoardSpectator={isSpectator}
+              viewerEcosystem={viewerEcosystem}
+              accessToken={chatAccessToken}
+            />
+          </div>
+        </details>
       ) : null}
+      </div>
       {isEngineProhibited && (
         <p style={{ marginTop: 20, color: '#e57373', fontSize: 12 }}>
           Analysis features are strictly disabled for this live PIT match.
