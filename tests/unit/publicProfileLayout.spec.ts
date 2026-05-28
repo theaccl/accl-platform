@@ -12,6 +12,7 @@ test.describe('public profile [id] layout (static)', () => {
     expect(src).toContain('data-profile-layout="v2"');
     expect(src).toContain('authReady');
     expect(src).toContain('ProfileHeader');
+    expect(src).toContain('ProfileRatings');
     expect(src).toContain('ProfileActionSlot');
     expect(src).toContain('isSelf ?');
     expect(src).toContain('resolvePublicProfileIdFromRoute');

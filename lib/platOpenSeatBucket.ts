@@ -11,13 +11,13 @@ export function platBucketForOpenSeat(tempo: string | null, liveTimeControl: str
     .toLowerCase()
     .trim();
   if (t === 'daily') {
-    if (c === '1d' || c === '2d' || c === '3d') return 'daily';
+    if (c === '1d' || c === '2d' || c === '3d' || c === '7d' || c === '5d') return 'daily';
     if (c === '30m' || c === '60m') return 'rapid';
     return 'daily';
   }
   if (t === 'correspondence') return null;
   if (t !== 'live') return null;
-  if (c === '1m' || c === '1+1' || c === '2+1') return 'bullet';
+  if (c === '1m' || c === '1+1' || c === '2m' || c === '2+0' || c === '2+1') return 'bullet';
   if (c === '3m' || c === '3+2' || c === '5m' || c === '5+5') return 'blitz';
   if (c === '10m' || c === '15m' || c === '20m' || c === '30m' || c === '60m') return 'rapid';
   return null;

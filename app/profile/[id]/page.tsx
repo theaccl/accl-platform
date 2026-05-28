@@ -274,7 +274,11 @@ export default function PublicProfilePage() {
         <ProfileBio bio={payload.profile.bio} isSelf={isSelf} />
 
         <div className="grid gap-6 rounded-2xl border border-[#243244] bg-[#111a27] p-6">
-          <ProfileRatings p1={p1Read} />
+          <ProfileRatings
+            p1={p1Read}
+            profileUserId={payload.profile.id}
+            isSelf={isSelf}
+          />
           <ProfileStats
             gamesPlayed={gamesPlayed}
             currentStreak={payload.profile.current_streak ?? 0}

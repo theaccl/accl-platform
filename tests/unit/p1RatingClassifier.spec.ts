@@ -7,9 +7,11 @@ test.describe('P1 rating classifier (locked TC map)', () => {
     expect(classifyP1RatingBucket('tournament', 'live', '5m')).toBe(P1_TOURNAMENT_BUCKET);
   });
 
-  test('bullet: 1m, 1+1, 2+1', () => {
+  test('bullet: 1m, 1+1, 2m, 2+0, 2+1', () => {
     expect(classifyP1RatingBucket('free', 'live', '1m')).toBe('free_bullet');
     expect(classifyP1RatingBucket('free', 'live', '1+1')).toBe('free_bullet');
+    expect(classifyP1RatingBucket('free', 'live', '2m')).toBe('free_bullet');
+    expect(classifyP1RatingBucket('free', 'live', '2+0')).toBe('free_bullet');
     expect(classifyP1RatingBucket('free', 'live', '2+1')).toBe('free_bullet');
   });
 
@@ -20,7 +22,7 @@ test.describe('P1 rating classifier (locked TC map)', () => {
     expect(classifyP1RatingBucket('free', 'live', '5+5')).toBe('free_blitz');
   });
 
-  test('rapid: 10–60m', () => {
+  test('rapid: 10–60m (20m legacy)', () => {
     expect(classifyP1RatingBucket('free', 'live', '10m')).toBe('free_rapid');
     expect(classifyP1RatingBucket('free', 'live', '15m')).toBe('free_rapid');
     expect(classifyP1RatingBucket('free', 'live', '20m')).toBe('free_rapid');
@@ -33,10 +35,12 @@ test.describe('P1 rating classifier (locked TC map)', () => {
     expect(classifyP1RatingBucket('free', 'daily', '60m')).toBe('free_rapid');
   });
 
-  test('calendar: 1d–3d and correspondence → free_day', () => {
+  test('calendar: 1d–7d and correspondence → free_day', () => {
     expect(classifyP1RatingBucket('free', 'live', '1d')).toBe(P1_FREE_DAY_BUCKET);
     expect(classifyP1RatingBucket('free', 'live', '2d')).toBe(P1_FREE_DAY_BUCKET);
     expect(classifyP1RatingBucket('free', 'live', '3d')).toBe(P1_FREE_DAY_BUCKET);
+    expect(classifyP1RatingBucket('free', 'live', '7d')).toBe(P1_FREE_DAY_BUCKET);
+    expect(classifyP1RatingBucket('free', 'daily', '7d')).toBe(P1_FREE_DAY_BUCKET);
     expect(classifyP1RatingBucket('free', 'correspondence', '')).toBe(P1_FREE_DAY_BUCKET);
   });
 
@@ -46,7 +50,6 @@ test.describe('P1 rating classifier (locked TC map)', () => {
   });
 
   test('unknown TC → null', () => {
-    expect(classifyP1RatingBucket('free', 'live', '2m')).toBeNull();
     expect(classifyP1RatingBucket('free', 'live', '4+4')).toBeNull();
   });
 });

@@ -101,6 +101,7 @@ begin
       when '2d' then 'daily_2_day'
       when '3d' then 'daily_3_day'
       when '5d' then 'daily_5_day'
+      when '7d' then 'daily_7_day'
       else null
     end;
   end if;

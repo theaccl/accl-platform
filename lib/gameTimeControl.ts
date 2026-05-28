@@ -4,6 +4,8 @@ import { normalizeGameTempo } from './gameTempo';
 export type LiveClockValue =
   | '1m'
   | '1+1'
+  | '2m'
+  | '2+0'
   | '2+1'
   | '3m'
   | '3+2'
@@ -15,7 +17,7 @@ export type LiveClockValue =
   | '30m'
   | '60m';
 export type DailyClockValue = '30m' | '60m';
-export type CorrespondencePaceValue = '1d' | '2d' | '3d';
+export type CorrespondencePaceValue = '1d' | '2d' | '3d' | '5d' | '7d';
 export type GameTimeControlToken = LiveClockValue | DailyClockValue | CorrespondencePaceValue;
 
 /**
@@ -83,6 +85,10 @@ export function liveFischerIncrementMsFromToken(liveTimeControl: string | null |
 
 export function correspondenceMoveDeadlineMs(liveTimeControl: string | null | undefined): number {
   const token = String(liveTimeControl ?? '').toLowerCase();
+  const dayMatch = /^(\d+)d$/.exec(token);
+  if (dayMatch) {
+    return Math.max(1, Number(dayMatch[1])) * 24 * 60 * 60 * 1000;
+  }
   if (token === '2d') return 2 * 24 * 60 * 60 * 1000;
   if (token === '3d') return 3 * 24 * 60 * 60 * 1000;
   return 24 * 60 * 60 * 1000;

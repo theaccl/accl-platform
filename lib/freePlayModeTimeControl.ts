@@ -1,12 +1,17 @@
 /**
- * Free-play PLAT lobby: single source of truth for mode ↔ legal time controls.
- * Used by Free play queue UI + `runFreePlayCreateGame` / `runFreePlayFindMatchAutomatic` + Direct Challenge inserts.
+ * Free-play PLAT lobby: bridges UI + game creation to `lib/acclTimeControls.ts` (canonical).
+ * Used by Free play queue UI + `runFreePlayCreateGame` / `runFreePlayFindMatchAutomatic` + Direct Challenge.
  */
 
+import {
+  allKnownPlatTokensForMode,
+  freePlayOptionsForMode,
+  type RatingMode,
+} from '@/lib/acclTimeControls';
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import type { GameTempo } from '@/lib/gameTempo';
 
-export type PlatMode = 'bullet' | 'blitz' | 'rapid' | 'daily';
+export type PlatMode = RatingMode;
 
 /** UI order for mode chips (matches free-play lobby). */
 export const PLAT_MODE_ORDER: readonly PlatMode[] = ['bullet', 'blitz', 'rapid', 'daily'];
@@ -21,31 +26,20 @@ export const PLAT_MODE_LABELS: Record<PlatMode, string> = {
   daily: 'Daily',
 };
 
-export const PLAT_MODE_TIME_OPTIONS: Record<PlatMode, readonly { id: PlatTimeControlId; label: string }[]> = {
-  bullet: [
-    { id: '1m', label: '1 min' },
-    { id: '1+1', label: '1+1' },
-    { id: '2+1', label: '2+1' },
-  ],
-  blitz: [
-    { id: '3m', label: '3 min' },
-    { id: '3+2', label: '3+2' },
-    { id: '5m', label: '5 min' },
-    { id: '5+5', label: '5+5' },
-  ],
-  rapid: [
-    { id: '10m', label: '10 min' },
-    { id: '15m', label: '15 min' },
-    { id: '20m', label: '20 min' },
-    { id: '30m', label: '30 min' },
-    { id: '60m', label: '60 min' },
-  ],
-  daily: [
-    { id: '1d', label: '1 day' },
-    { id: '2d', label: '2 day' },
-    { id: '3d', label: '3 day' },
-  ],
-};
+function buildPlatModeTimeOptions(): Record<PlatMode, ReadonlyArray<{ id: PlatTimeControlId; label: string }>> {
+  return {
+    bullet: freePlayOptionsForMode('bullet'),
+    blitz: freePlayOptionsForMode('blitz'),
+    rapid: freePlayOptionsForMode('rapid'),
+    daily: freePlayOptionsForMode('daily'),
+  };
+}
+
+/** Official ACCL free-play clocks per mode (from registry). */
+export const PLAT_MODE_TIME_OPTIONS: Record<
+  PlatMode,
+  readonly { id: PlatTimeControlId; label: string }[]
+> = buildPlatModeTimeOptions();
 
 export function platTimeOptionsForMode(mode: PlatMode): readonly { id: PlatTimeControlId; label: string }[] {
   return PLAT_MODE_TIME_OPTIONS[mode];
@@ -58,12 +52,15 @@ export function defaultPlatTimeControl(mode: PlatMode): PlatTimeControlId {
 
 export function isValidPlatTimeForMode(mode: PlatMode, id: string): boolean {
   const s = String(id ?? '').trim();
-  return PLAT_MODE_TIME_OPTIONS[mode].some((o) => o.id === s);
+  if (PLAT_MODE_TIME_OPTIONS[mode].some((o) => o.id === s)) return true;
+  return allKnownPlatTokensForMode(mode).includes(s);
 }
 
-/** If current is illegal for `mode`, return the mode’s first legal id. */
+/** If current is illegal for `mode`, return the mode’s first official id. */
 export function coercePlatTimeForMode(mode: PlatMode, current: string): PlatTimeControlId {
-  if (isValidPlatTimeForMode(mode, current)) return String(current).trim();
+  if (PLAT_MODE_TIME_OPTIONS[mode].some((o) => o.id === String(current ?? '').trim())) {
+    return String(current).trim();
+  }
   return defaultPlatTimeControl(mode);
 }
 
@@ -73,7 +70,7 @@ export function platModeLabel(mode: PlatMode): string {
 
 /**
  * Maps PLAT mode + clock to `games` / `match_requests` tempo + live_time_control.
- * Bullet/blitz/rapid → `live`; daily → `daily` with 1d/2d/3d.
+ * Bullet/blitz/rapid → `live`; daily → `daily` with 1d/2d/3d/7d.
  */
 export function platSelectionToStoredGameFields(mode: PlatMode, clock: string): {
   tempo: GameTempo;

@@ -68,6 +68,7 @@ export const FREE_BADGE_TRACK_KEYS = [
   'daily_2_day',
   'daily_3_day',
   'daily_5_day',
+  'daily_7_day',
 ] as const;
 export type FreeBadgeTrackKey = (typeof FREE_BADGE_TRACK_KEYS)[number];
 
@@ -91,6 +92,7 @@ const LIVE_TRACK_BY_TOKEN: Record<string, FreeBadgeTrackKey> = {
   '2d': 'daily_2_day',
   '3d': 'daily_3_day',
   '5d': 'daily_5_day',
+  '7d': 'daily_7_day',
 };
 
 function normLc(raw: string | null | undefined): string {

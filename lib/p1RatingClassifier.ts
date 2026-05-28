@@ -45,7 +45,7 @@ export function classifyP1RatingBucket(
   if (t === 'correspondence') {
     return P1_FREE_DAY_BUCKET;
   }
-  if (lc === '1d' || lc === '2d' || lc === '3d') {
+  if (lc === '1d' || lc === '2d' || lc === '3d' || lc === '7d' || lc === '5d') {
     return P1_FREE_DAY_BUCKET;
   }
 
@@ -53,6 +53,7 @@ export function classifyP1RatingBucket(
   if (inc) {
     const [a, b] = inc;
     if (a === 1 && b === 1) return 'free_bullet';
+    if (a === 2 && b === 0) return 'free_bullet';
     if (a === 2 && b === 1) return 'free_bullet';
     if (a === 3 && b === 2) return 'free_blitz';
     if (a === 5 && b === 5) return 'free_blitz';
@@ -61,7 +62,7 @@ export function classifyP1RatingBucket(
 
   const mins = parseSimpleMinutes(lc);
   if (mins !== null) {
-    if (mins === 1) return 'free_bullet';
+    if (mins === 1 || mins === 2) return 'free_bullet';
     if (mins === 3 || mins === 5) return 'free_blitz';
     if (mins === 10 || mins === 15 || mins === 20 || mins === 30 || mins === 60) return 'free_rapid';
     return null;
@@ -69,7 +70,7 @@ export function classifyP1RatingBucket(
 
   if (t === 'daily') {
     if (lc === '30m' || lc === '60m') return 'free_rapid';
-    if (lc === '1d' || lc === '2d' || lc === '3d') return P1_FREE_DAY_BUCKET;
+    if (lc === '1d' || lc === '2d' || lc === '3d' || lc === '7d' || lc === '5d') return P1_FREE_DAY_BUCKET;
     return null;
   }
 
