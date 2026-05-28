@@ -54,12 +54,48 @@ test.describe('ratingClassification', () => {
     expect(c.updateTiming).toBe('immediate');
   });
 
-  test('finished rated invalid time control (+) → invalid_time_control', () => {
+  test('free live 5+5 rated → free_live (SQL parity)', () => {
+    const c = classifyGameForRating({
+      ...baseFinished,
+      play_context: 'free',
+      tempo: 'live',
+      live_time_control: '5+5',
+    });
+    expect(c.bucket).toBe('free_live');
+    expect(c.updateTiming).toBe('immediate');
+    expect(shouldApplyImmediateFreePlayRating(c)).toBe(true);
+  });
+
+  test('free daily 1d rated → free_daily (SQL parity)', () => {
+    const c = classifyGameForRating({
+      ...baseFinished,
+      play_context: 'free',
+      tempo: 'daily',
+      live_time_control: '1d',
+    });
+    expect(c.bucket).toBe('free_daily');
+    expect(c.updateTiming).toBe('immediate');
+    expect(shouldApplyImmediateFreePlayRating(c)).toBe(true);
+  });
+
+  test('free live 5m+3s rated → free_live (official legacy token)', () => {
     const c = classifyGameForRating({
       ...baseFinished,
       play_context: 'free',
       tempo: 'live',
       live_time_control: '5m+3s',
+    });
+    expect(c.bucket).toBe('free_live');
+    expect(c.updateTiming).toBe('immediate');
+    expect(shouldApplyImmediateFreePlayRating(c)).toBe(true);
+  });
+
+  test('finished rated unknown time control → invalid_time_control', () => {
+    const c = classifyGameForRating({
+      ...baseFinished,
+      play_context: 'free',
+      tempo: 'live',
+      live_time_control: '99m',
     });
     expect(c.bucket).toBeNull();
     expect(c.skipReason).toBe('invalid_time_control');
