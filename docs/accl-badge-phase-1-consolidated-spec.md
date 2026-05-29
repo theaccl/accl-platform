@@ -575,4 +575,94 @@ Stop and escalate **before** implementation if:
 
 ---
 
+## Appendix C — Visual Anchor Concepts v1
+
+**Status:** Docs-only direction. Accepted polished concept exploration (Manus). **None of these are final production assets.** Source exploration: `ACCL_Anchor_Badge_Polished_Concept_Explorations.pdf` (external reference; not stored as a production asset).
+
+### C.1 Gold Global ACCL Shield
+
+- **Shape:** heraldic heater shield
+- **Material:** forged gold
+- **Purpose:** official ACCL identity badge
+- **ACCL micro-mark:** central and protected
+- **No globe** as primary symbol
+- Maps to family `global` (§2) / heater-shield form (§5.1)
+- **Not a final production asset**
+
+### C.2 Blitz 5+5 Exact Time-Control Badge — State Set
+
+- **Shape:** octagonal forged plate
+- **Mode:** Blitz (electric amber / gold rim, per §5.2)
+- **Symbol:** one simplified chess clock
+- **5+5 detail:** large-size-only
+- **ACCL micro-mark:** protected in lower notch
+- Maps to family `exact_time_control` (§2), `track_key = blitz_5_5`, `asset_slug = 5p5` (§6)
+- **States:**
+  - **normal:** clean forged plate, no glow
+  - **shiny:** contained reflective highlight sweep
+  - **downgraded:** full color / full size, one clean scar, ACCL mark untouched
+  - **recovery:** same scar sealing with controlled forge-glow
+  - **peak:** outer historic frame / aura (not a shiny reflection)
+- **Not a final production asset**
+
+### C.3 Vault Codex / Tablet Artifact
+
+- **Shape:** broken codex / tablet / keystone fragment (**not a coin**)
+- **Purpose:** archived game relic
+- **Wear language:** archival chips / patina, **not active damage**
+- **ACCL micro-mark:** the clearest preserved element
+- Maps to family `vault_artifact` (§2) / relic-plate form (§5.1)
+- **Not a final production asset**
+
+### C.4 Production warnings
+
+- **Do not** trace generated images directly into production.
+- Rebuild as **layered SVGs**.
+- Generated metal texture / patina is **direction only**.
+- The **ACCL micro-mark needs an official vector definition** before any asset ships.
+- State overlays must be **reusable layers**, not hand-rendered one-offs.
+- Vault break silhouette needs a **simplified small-size variant**.
+
+### C.5 Recommended SVG layer model
+
+**Gold Global shield**
+1. base heater shield silhouette
+2. outer gold rim
+3. inner inset plate
+4. protected ACCL micro-mark
+5. highlight layer
+6. optional patina / noise layer
+7. small-size simplified variant
+
+**Blitz 5+5**
+1. base octagonal plate
+2. amber rim
+3. clock glyph
+4. optional 5+5 text layer (gated by size)
+5. protected ACCL micro-mark
+6. state overlay layers:
+   - shiny reflection
+   - downgrade scar
+   - recovery forge-glow
+   - peak outer frame / aura
+
+**Vault artifact**
+1. base codex / tablet silhouette
+2. chipped-edge mask
+3. inner border grooves
+4. protected ACCL micro-mark
+5. subtle relic engraving layer
+6. patina / noise layer
+7. small-size simplified fragment variant
+
+### C.6 Left open (no decision in v1)
+
+- Final ACCL micro-mark geometry
+- Final SVG dimensions
+- Exact tier material palette (relates to §5.3 Iron→Obsidian and U7)
+- Exact small-size variants
+- Whether generated concept images are stored in docs or only referenced externally
+
+---
+
 *End of ACCL Badge Phase 1 Consolidated Registry & Implementation Spec*
