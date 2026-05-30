@@ -101,11 +101,17 @@ function parseInsertRowToMsg(row: Record<string, unknown>): ChatMsg | null {
 function appendIncomingFromRealtime(
   setMessages: Dispatch<SetStateAction<ChatMsg[]>>,
   newRow: Record<string, unknown>,
-  expectedChannel: 'game_spectator' | 'game_player'
+  expectedChannel: 'game_spectator' | 'game_player',
+  opts?: { currentUserId?: string | null; onOpponentMessage?: () => void }
 ) {
   if (String(newRow.channel ?? '') !== expectedChannel) return;
   const m = parseInsertRowToMsg(newRow);
   if (!m) return;
+  // Attention signal for the unread light: only for messages from the *other*
+  // seated player. Own-message realtime echoes never light the dot.
+  if (opts?.onOpponentMessage && m.sender_id && m.sender_id !== opts.currentUserId) {
+    opts.onOpponentMessage();
+  }
   setMessages((prev: ChatMsg[]) =>
     prev.some((x) => x.id === m.id) ? prev : sortChatChronological([...prev, m])
   );
@@ -134,6 +140,7 @@ function ChatStrip({
   maxLen,
   onSenderClick,
   sendTestId,
+  readOnly = false,
 }: {
   title: string;
   subtitle: string;
@@ -151,8 +158,18 @@ function ChatStrip({
   /** When set, clicking the sender display name opens the public identity card. */
   onSenderClick?: (senderId: string) => void;
   sendTestId: 'player' | 'spectator';
+  /** When true, render an archive view: no composer, no send action. */
+  readOnly?: boolean;
 }) {
   const remaining = maxLen - draft.length;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const latestMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+  // Pin the internal chat list to the newest message when one is appended. Acts
+  // only on this overflow container's scrollTop — never scrolls the page/board.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [latestMessageId]);
   return (
     <section
       className="accl-game-side-panel"
@@ -166,12 +183,33 @@ function ChatStrip({
       }}
     >
       <div style={{ padding: '8px 12px', borderBottom: `1px solid ${accent}`, background: '#0c0e12' }}>
-        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', color: '#e2e8f0' }}>
-          {title}
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', color: '#e2e8f0' }}>
+            {title}
+          </p>
+          {readOnly ? (
+            <span
+              data-testid="game-chat-readonly-indicator"
+              style={{
+                flex: '0 0 auto',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: '#94a3b8',
+                border: '1px solid #334155',
+                borderRadius: 999,
+                padding: '2px 8px',
+              }}
+            >
+              Read-only
+            </span>
+          ) : null}
+        </div>
         <p style={{ margin: '4px 0 0 0', fontSize: 11, color: '#94a3b8', lineHeight: 1.35 }}>{subtitle}</p>
       </div>
       <div
+        ref={scrollRef}
         className="accl-scroll-no-anchor"
         style={{
           maxHeight: 160,
@@ -235,42 +273,51 @@ function ChatStrip({
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 8, padding: 8, borderTop: '1px solid #1e293b', alignItems: 'flex-end' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <textarea
-            value={draft}
-            maxLength={maxLen}
-            onChange={(e) => onDraft(e.target.value.slice(0, maxLen))}
-            rows={2}
-            placeholder="Message (testers only)…"
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              resize: 'vertical',
-              minHeight: 44,
-              maxHeight: 120,
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 6,
-              border: '1px solid #334155',
-              background: '#0f172a',
-              color: '#e2e8f0',
-            }}
-          />
-          <span style={{ fontSize: 10, color: remaining < 80 ? '#fbbf24' : '#64748b' }}>
-            {draft.length}/{maxLen}
-          </span>
-        </div>
-        <button
-          type="button"
-          data-testid={`game-chat-send-${sendTestId}`}
-          onClick={() => void onSend()}
-          disabled={sending || !draft.trim()}
-          style={{ padding: '8px 12px', alignSelf: 'stretch' }}
+      {readOnly ? (
+        <div
+          data-testid="game-chat-archive-footer"
+          style={{ padding: '8px 12px', borderTop: '1px solid #1e293b', fontSize: 11, color: '#64748b' }}
         >
-          {sending ? 'Sending…' : 'Send'}
-        </button>
-      </div>
+          Archived game chat — this channel is read-only and closed to new messages.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, padding: 8, borderTop: '1px solid #1e293b', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <textarea
+              value={draft}
+              maxLength={maxLen}
+              onChange={(e) => onDraft(e.target.value.slice(0, maxLen))}
+              rows={2}
+              placeholder="Message (testers only)…"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                resize: 'vertical',
+                minHeight: 44,
+                maxHeight: 120,
+                padding: 8,
+                fontSize: 13,
+                borderRadius: 6,
+                border: '1px solid #334155',
+                background: '#0f172a',
+                color: '#e2e8f0',
+              }}
+            />
+            <span style={{ fontSize: 10, color: remaining < 80 ? '#fbbf24' : '#64748b' }}>
+              {draft.length}/{maxLen}
+            </span>
+          </div>
+          <button
+            type="button"
+            data-testid={`game-chat-send-${sendTestId}`}
+            onClick={() => void onSend()}
+            disabled={sending || !draft.trim()}
+            style={{ padding: '8px 12px', alignSelf: 'stretch' }}
+          >
+            {sending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -329,7 +376,14 @@ function TesterSpectatorChatLane({ gameId, accessToken, viewerEcosystem }: LaneS
         return;
       }
       const j = (await res.json()) as { messages?: ChatMsg[] };
-      setMessages(j.messages ?? []);
+      // Merge by id (server row wins) so a slow/stale load never clobbers a
+      // realtime-appended message that arrived while this load was in flight.
+      const incoming = j.messages ?? [];
+      setMessages((prev) => {
+        const byId = new Map(prev.map((message) => [message.id, message]));
+        for (const message of incoming) byId.set(message.id, message);
+        return sortChatChronological([...byId.values()]);
+      });
       if (process.env.NODE_ENV === 'development') {
         console.log('[game-chat-devtrace] spectator-lane:load', {
           source: opts?.source ?? 'initial',
@@ -451,7 +505,13 @@ function TesterPlayerGameChatLane({
   accessToken,
   viewerEcosystem,
   variant,
-}: LaneSharedProps & { variant: 'live' | 'postgame' | 'async_play' }) {
+  currentUserId,
+  onOpponentMessage,
+}: LaneSharedProps & {
+  variant: 'live' | 'postgame' | 'async_play';
+  currentUserId?: string | null;
+  onOpponentMessage?: () => void;
+}) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -460,6 +520,11 @@ function TesterPlayerGameChatLane({
   const [reportingId, setReportingId] = useState<string | null>(null);
   const sendLock = useRef(false);
   const openIdentity = useOpenPublicIdentityCard();
+  // Refs keep the realtime subscription stable (no resubscribe when these change).
+  const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
+  const onOpponentMessageRef = useRef(onOpponentMessage);
+  onOpponentMessageRef.current = onOpponentMessage;
 
   const load = useCallback(
     async (opts?: { source?: GameChatLoadSource; bypassVisibility?: boolean }) => {
@@ -496,7 +561,14 @@ function TesterPlayerGameChatLane({
         return;
       }
       const j = (await res.json()) as { messages?: ChatMsg[] };
-      setMessages(j.messages ?? []);
+      // Merge by id (server row wins) so a slow/stale load never clobbers a
+      // realtime-appended message that arrived while this load was in flight.
+      const incoming = j.messages ?? [];
+      setMessages((prev) => {
+        const byId = new Map(prev.map((message) => [message.id, message]));
+        for (const message of incoming) byId.set(message.id, message);
+        return sortChatChronological([...byId.values()]);
+      });
       if (process.env.NODE_ENV === 'development') {
         console.log('[game-chat-devtrace] player-lane:load', {
           source: opts?.source ?? 'initial',
@@ -523,7 +595,11 @@ function TesterPlayerGameChatLane({
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'tester_chat_messages', filter },
         (payload) => {
-          appendIncomingFromRealtime(setMessages, payload.new as Record<string, unknown>, 'game_player');
+          appendIncomingFromRealtime(setMessages, payload.new as Record<string, unknown>, 'game_player', {
+            currentUserId: currentUserIdRef.current,
+            // Postgame archive is read-only — never raise an unread signal there.
+            onOpponentMessage: variant === 'postgame' ? undefined : onOpponentMessageRef.current,
+          });
         }
       )
       .subscribe();
@@ -543,6 +619,8 @@ function TesterPlayerGameChatLane({
   }, [load]);
 
   const send = async () => {
+    // Postgame archive is read-only — never append new messages, even if a stale handler fires.
+    if (variant === 'postgame') return;
     const body = draft.trim();
     if (!body || sending || sendLock.current) return;
     sendLock.current = true;
@@ -624,6 +702,7 @@ function TesterPlayerGameChatLane({
         maxLen={CHAT_BODY_MAX}
         onSenderClick={openIdentity ?? undefined}
         sendTestId="player"
+        readOnly={variant === 'postgame'}
       />
     </div>
   );
@@ -638,6 +717,7 @@ export default function GameTesterChatPanels({
   isBoardSpectator,
   viewerEcosystem,
   accessToken,
+  onOpponentMessage,
 }: {
   gameId: string;
   gameStatus: string;
@@ -648,6 +728,8 @@ export default function GameTesterChatPanels({
   isBoardSpectator: boolean;
   viewerEcosystem: 'adult' | 'k12';
   accessToken: string | null;
+  /** Raised when an active-lane opponent message arrives (unread-light attention only). */
+  onOpponentMessage?: () => void;
 }) {
   if (!gameTempo) {
     console.warn('Game missing tempo:', gameId);
@@ -733,6 +815,8 @@ export default function GameTesterChatPanels({
           key={`player-table-${gameId}-${isLive ? 'live' : 'async'}`}
           {...laneProps}
           variant={isLive ? 'live' : 'async_play'}
+          currentUserId={userId}
+          onOpponentMessage={onOpponentMessage}
         />
       ) : null}
       {effectiveLane === 'postgame_player' ? (

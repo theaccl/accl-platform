@@ -55,9 +55,34 @@ test.describe('production hardening audit (static)', () => {
     expect(page).toContain('accl-game-notation-slot');
     expect(page).toContain('accl-game-active-hud');
     expect(page).toContain('data-testid="game-active-hud"');
+    // Player identity renders beside the clocks (white name with white clock,
+    // black name with black clock) without wrapping or jumping the board.
+    expect(page).toContain('data-testid="clock-white-name"');
+    expect(page).toContain('data-testid="clock-black-name"');
+    expect(page).toContain('whiteName={whiteActiveLabel}');
+    expect(page).toContain('blackName={blackActiveLabel}');
+    expect(page).toContain("whiteSpace: 'nowrap'");
+    expect(page).toContain("textOverflow: 'ellipsis'");
     expect(page).toContain('accl-game-preamble');
     expect(page).toContain('accl-game-shell-tail');
-    expect(page).toContain('accl-game-chat-fold');
+    // Board-first stage wraps the play column + the chat rail (siblings) so chat
+    // growth lives in its own track and never moves the board.
+    expect(page).toContain('accl-game-stage');
+    expect(page).toContain('data-testid="game-stage"');
+    expect(page).toContain('accl-game-stage-row');
+    expect(page).toContain('accl-game-chat-sheet');
+    expect(page).toContain('data-testid="game-chat-region"');
+    // Essential active-game actions live in a compact console row below the board.
+    expect(page).toContain('accl-game-actions');
+    expect(page).toContain('data-testid="game-actions"');
+    // Human chat is suppressed for Play Computer (bot) games — no empty rail.
+    expect(page).toContain("game.source_type !== 'bot_game'");
+    // Chat toggle label: active/waiting => "Game chat"; finished => "Game chat history".
+    expect(page).toContain("game.status === 'finished' ? 'Game chat history' : 'Game chat'");
+    expect(page).toContain("chatOpen ? '▴' : '▾'");
+    // Secondary metadata collapses behind a disclosure during play.
+    expect(page).toContain('accl-game-details');
+    expect(page).toContain('Game details');
     expect(notation).toContain('data-testid="game-notation-strip"');
     expect(notation).toContain('Moves will appear here.');
     expect(page).toContain('data-testid="game-replay-panel"');
@@ -84,6 +109,13 @@ test.describe('production hardening audit (static)', () => {
     expect(css).toContain('.accl-game-play-column');
     expect(css).toContain('.accl-game-active-hud');
     expect(css).toContain('@media (max-width: 768px)');
+    // Board-first shell + desktop board/chat row + clock digit stability.
+    expect(css).toContain('.accl-game-stage');
+    expect(css).toContain('.accl-game-stage-row');
+    expect(css).toContain('.accl-game-actions');
+    expect(css).toContain('.accl-game-chat-sheet');
+    expect(css).toContain('@media (min-width: 960px)');
+    expect(css).toContain('font-variant-numeric: tabular-nums');
     expect(css).not.toContain('contain: layout size style');
     expect(css).toContain('overflow-anchor: none');
     const chat = src('components/game/GameTesterChatPanels.tsx');

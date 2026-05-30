@@ -332,16 +332,26 @@ body {
 /** Reserve scrollbar width on game routes — avoids board column width flicker (desktop). */
 html.accl-game-route {
   scrollbar-gutter: stable;
+  /* Active game has no persistent app header/nav rail above the shell; the only
+     element rendered above it (pending-requests banner) is suppressed below, so
+     the usable viewport for the shell is the full dynamic viewport height. */
+  --app-header-height: 0px;
 }
 
 html.accl-game-route body {
   overflow-anchor: none;
 }
 
+/** Board-first: suppress the global pending-requests banner on the active-game
+    route so the playable shell can claim the top of the viewport. */
+html.accl-game-route .accl-nav-pending-banner {
+  display: none;
+}
+
 /** Minimal game page shell — stable viewport + board column; meta/chat may grow below without resizing the board. */
 .accl-game-shell {
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--app-header-height, 0px));
   background: var(--accl-bg-game);
   color: var(--accl-text-primary);
   padding: var(--accl-space-6);
@@ -349,6 +359,26 @@ html.accl-game-route body {
   overflow-x: clip;
   overflow-anchor: none;
   box-sizing: border-box;
+  /* Board-first at all widths: the playable stage leads the shell; the
+     secondary context/preamble and the tail flow below it via flex order.
+     The board is never pushed down by above-board document content.
+     The shell is not hard-clipped (overflow:hidden) because finished-game
+     review (replay, analysis, Trainer) and nav live in the preamble/tail and
+     must remain reachable by scrolling below the board. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.accl-game-shell > .accl-game-stage {
+  order: 1;
+}
+.accl-game-shell > .accl-game-preamble {
+  order: 2;
+}
+.accl-game-shell > .accl-game-shell-tail {
+  order: 3;
 }
 
 /** Flex row: board stage stays fixed width; tournament rail wraps without shrinking the board. */
@@ -388,6 +418,163 @@ html.accl-game-route body {
   max-width: 560px;
   flex-shrink: 0;
   overflow-anchor: none;
+}
+
+/** Stage column: holds the board+chat row, then the compact action console row
+    below it. Keeps the board-first console contained in one vertical track. */
+.accl-game-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+  overflow-anchor: none;
+}
+
+/** Board + chat row. Column (board over chat) until desktop, where chat becomes
+    a fixed-width right rail beside the board. Board and chat are siblings here
+    so chat growth lives in its own track and can never move/resize the board. */
+.accl-game-stage-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  overflow-anchor: none;
+}
+
+/** Compact essential-action console row — sits directly below the board so
+    resign/draw/export/return/report are reachable without scrolling. */
+.accl-game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2px;
+  overflow-anchor: none;
+}
+
+.accl-game-action-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: #e2e8f0;
+  background: #0c0e12;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.accl-game-action-btn:hover {
+  background: #141821;
+}
+
+.accl-game-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.accl-game-action-btn--danger {
+  border-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+.accl-game-action-btn--report {
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+
+.accl-game-action-note {
+  align-self: center;
+  font-size: 13px;
+  color: #9aa5b1;
+}
+
+/** Secondary game metadata — collapsed by default during play; nothing removed. */
+.accl-game-details {
+  width: 100%;
+  max-width: 560px;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  background: #0c0e12;
+  padding: 0 12px;
+  overflow-anchor: none;
+}
+
+.accl-game-details > *:not(summary) {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.accl-game-details__summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  list-style: revert;
+}
+
+/** Chat region (toggle + sheet). Secondary utility — never above the board. */
+.accl-game-chat {
+  width: 100%;
+  max-width: 560px;
+  overflow-anchor: none;
+}
+
+.accl-game-chat__toggle {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #0c0e12;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.accl-game-chat__toggle-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reserved unread-light slot: fixed size so appearing/disappearing never shifts
+   the label, the toggle height, or the board. Hidden (not removed) when no unread. */
+.accl-game-chat__unread {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: transparent;
+  visibility: hidden;
+}
+
+.accl-game-chat__unread[data-unread='1'] {
+  visibility: visible;
+  background: #22d3ee;
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.7);
+}
+
+.accl-game-chat-sheet {
+  width: 100%;
 }
 
 /** Chat / move-log scroll regions — prevent scroll-anchoring jitter on append. */
@@ -453,6 +640,10 @@ html.accl-game-route body {
 
 .accl-game-active-hud .accl-game-clock--play-hud {
   padding: 10px 0;
+  /* RC-08: fixed digit width so clock countdown never reflows the clock bar
+     height and creeps the board. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 .accl-game-turn-line {
@@ -460,10 +651,15 @@ html.accl-game-route body {
   text-align: center;
   line-height: 1.35;
   font-size: 14px;
+  /* Reserve height so the turn string toggling (YOUR TURN / waiting) does not
+     change the above-board zone height. */
+  min-height: 1.35rem;
 }
 
+/* Fallback identity line — only rendered when no clock is shown (the clock bar
+   now carries player names beside each side). */
 .accl-game-active-players {
-  display: none;
+  display: block;
   margin: 0 0 8px 0;
   font-size: 12px;
   color: #94a3b8;
@@ -476,24 +672,70 @@ html.accl-game-route body {
   width: 100%;
 }
 
-.accl-game-chat-fold {
-  width: 100%;
-  max-width: 520px;
-  margin-top: 12px;
+/** Desktop (>=960px): board + chat side by side; chat is a fixed-width right
+    rail whose height tracks the board column. Internal scroll only.
+    Breakpoint chosen by geometry: board 520 + gap 20 + chat 264 = 804px of
+    content + shell padding (~48px) + stable scrollbar gutter (~15px) ≈ 867px,
+    which fits inside a 960px viewport with comfortable slack and keeps the board
+    square (min(100%, 520px)) with no horizontal overflow. 900px leaves almost no
+    slack once the scrollbar gutter is reserved, so 960px is the lowest safe rail
+    activation width. */
+@media (min-width: 960px) {
+  .accl-game-stage {
+    max-width: none;
+  }
+
+  .accl-game-stage-row {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .accl-game-stage-row > .accl-game-play-column {
+    flex: 0 0 auto;
+  }
+
+  .accl-game-chat {
+    flex: 0 0 264px;
+    width: 264px;
+    max-width: 264px;
+    align-self: stretch;
+  }
+
+  .accl-game-chat__toggle {
+    display: none;
+  }
+
+  .accl-game-chat-sheet {
+    display: block;
+    max-height: min(74vh, 680px);
+    overflow-y: auto;
+    overflow-anchor: none;
+  }
+
+  .accl-game-shell > .accl-game-preamble {
+    max-width: 880px;
+  }
 }
 
-.accl-game-chat-fold__summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: #94a3b8;
-  padding: 8px 0;
-  list-style: none;
-  user-select: none;
-}
+/** Narrow desktop / tablet (<=959px): chat collapses below the board behind a
+    tap target; expanded chat is a fixed-height internal-scroll strip. */
+@media (max-width: 959px) {
+  .accl-game-chat__toggle {
+    display: flex;
+  }
 
-.accl-game-chat-fold__summary::-webkit-details-marker {
-  display: none;
+  .accl-game-chat[data-chat-open='0'] .accl-game-chat-sheet {
+    display: none;
+  }
+
+  .accl-game-chat[data-chat-open='1'] .accl-game-chat-sheet {
+    margin-top: 8px;
+    max-height: 40vh;
+    overflow-y: auto;
+    overflow-anchor: none;
+  }
 }
 
 @media (max-width: 768px) {
@@ -504,17 +746,8 @@ html.accl-game-route body {
     gap: 6px;
   }
 
-  .accl-game-play-column {
-    order: 1;
-  }
-
-  .accl-game-preamble {
-    order: 2;
-  }
-
-  .accl-game-shell-tail {
-    order: 3;
-  }
+  /* Board-first ordering (stage / preamble / tail) is set on the base
+     .accl-game-shell rule and applies at every width. */
 
   .accl-game-active-hud {
     position: sticky;
@@ -555,5 +788,41 @@ html.accl-game-route body {
 
   .accl-game-notation-slot {
     margin-bottom: 8px;
+  }
+}
+
+/** Mobile (<600px): expanded chat is a fixed bottom sheet (out of flow) so
+    opening/closing chat can never move, shrink, or resize the board. */
+@media (max-width: 599px) {
+  .accl-game-chat[data-chat-open='1'] .accl-game-chat-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin-top: 0;
+    max-height: 45dvh;
+    z-index: 400;
+    background: var(--accl-bg-game);
+    border-top: 1px solid #334155;
+    box-shadow: 0 -10px 24px -10px rgba(0, 0, 0, 0.92);
+    padding: 8px 10px;
+  }
+
+  .accl-game-chat[data-chat-open='1'] .accl-game-chat__toggle {
+    position: relative;
+    z-index: 401;
+  }
+
+  /* Phone: keep the action console on one swipeable line instead of wrapping
+     into several rows that push review content further down. */
+  .accl-game-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .accl-game-actions > * {
+    flex: 0 0 auto;
   }
 }

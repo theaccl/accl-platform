@@ -375,6 +375,8 @@ function DigitalChessClock({
   isCorrespondence,
   paceLabel,
   className,
+  whiteName,
+  blackName,
 }: {
   whiteMs: number;
   blackMs: number;
@@ -382,6 +384,8 @@ function DigitalChessClock({
   isCorrespondence?: boolean;
   paceLabel?: string;
   className?: string;
+  whiteName?: string | null;
+  blackName?: string | null;
 }) {
   const whiteActive = activeTurn === 'white';
   const blackActive = activeTurn === 'black';
@@ -419,7 +423,25 @@ function DigitalChessClock({
         boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
       }}
     >
-      <div data-testid="clock-white" style={{ textAlign: 'center', flex: 1 }}>
+      <div data-testid="clock-white" style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+        <div
+          data-testid="clock-white-name"
+          title={whiteName ?? ''}
+          style={{
+            height: 18,
+            lineHeight: '18px',
+            maxWidth: '100%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#e2e8f0',
+            marginBottom: 2,
+          }}
+        >
+          {whiteName || '\u00A0'}
+        </div>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
           WHITE {isCorrespondence && paceLabel ? `(${paceLabel})` : ''}
         </div>
@@ -470,7 +492,25 @@ function DigitalChessClock({
         }}
       />
 
-      <div data-testid="clock-black" style={{ textAlign: 'center', flex: 1 }}>
+      <div data-testid="clock-black" style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+        <div
+          data-testid="clock-black-name"
+          title={blackName ?? ''}
+          style={{
+            height: 18,
+            lineHeight: '18px',
+            maxWidth: '100%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#e2e8f0',
+            marginBottom: 2,
+          }}
+        >
+          {blackName || '\u00A0'}
+        </div>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
           BLACK {isCorrespondence && paceLabel ? `(${paceLabel})` : ''}
         </div>
@@ -796,6 +836,20 @@ export default function GamePage() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState('');
   const [chatAccessToken, setChatAccessToken] = useState<string | null>(null);
+  /** Active-game chat is a secondary utility: a right rail on desktop and a
+      collapsed-by-default tap target on narrow/mobile (expands without moving
+      the board). Desktop ignores this flag (the rail is always shown via CSS). */
+  const [chatOpen, setChatOpen] = useState(false);
+  // Local UI attention state only — no persistence, no count, no DB. Lit when an
+  // opponent message arrives while the chat is not visibly open (collapsed sheet).
+  const [hasUnreadChat, setHasUnreadChat] = useState(false);
+  // True when the always-visible desktop chat rail is shown (>=960px). When the
+  // rail is visible the player can already see incoming messages, so no light.
+  const [chatRailVisible, setChatRailVisible] = useState(false);
+  const chatOpenRef = useRef(chatOpen);
+  chatOpenRef.current = chatOpen;
+  const chatRailVisibleRef = useRef(chatRailVisible);
+  chatRailVisibleRef.current = chatRailVisible;
   const [savingMove, setSavingMove] = useState(false);
   const [resigning, setResigning] = useState(false);
   const [drawBusy, setDrawBusy] = useState(false);
@@ -1111,6 +1165,29 @@ export default function GamePage() {
     setEngineAnalysisRows(null);
     setEngineAnalysisBusy(false);
   }, [isPublicViewer]);
+
+  // Track whether the always-visible desktop chat rail (>=960px) is shown. Mirrors
+  // the CSS breakpoint that hides the collapse toggle and renders chat as a rail.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(min-width: 960px)');
+    const update = () => setChatRailVisible(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // Clear the unread light as soon as chat becomes visible (sheet opened or the
+  // desktop rail appears). No reply is required to clear.
+  useEffect(() => {
+    if (chatOpen || chatRailVisible) setHasUnreadChat(false);
+  }, [chatOpen, chatRailVisible]);
+
+  // Stable callback handed to the active player chat lane. Lights the unread dot
+  // only when an opponent message arrives while chat is not visibly open.
+  const handleOpponentChatMessage = useCallback(() => {
+    if (!chatOpenRef.current && !chatRailVisibleRef.current) setHasUnreadChat(true);
+  }, []);
 
   /** Server-side analysis artifacts: participants only, never on public replay. */
   const canLoadFinishedGameArtifacts =
@@ -2712,6 +2789,8 @@ export default function GamePage() {
   return (
     <div className="accl-game-shell">
       <div className="accl-game-preamble">
+      <details className="accl-game-details" data-testid="game-details">
+      <summary className="accl-game-details__summary">Game details</summary>
       <h1 style={{ marginBottom: 6 }}>Game Board</h1>
       <p
         role="status"
@@ -2765,6 +2844,7 @@ export default function GamePage() {
       <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#777', lineHeight: 1.45 }}>
         {gameTimingRuleSummaryLine(normalizeGameTempo(game.tempo))}
       </p>
+      </details>
       {game.tournament_id ? (
         <TournamentCoexistenceNotice
           mode="on_tournament_board"
@@ -3348,55 +3428,6 @@ export default function GamePage() {
       ) : null}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <button
-          type="button"
-          onClick={() => router.push('/')}
-          style={{ padding: '8px 12px' }}
-        >
-          Back to home
-        </button>
-        <Link
-          href={lobbyReturnHref}
-          data-testid="game-back-to-lobby"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            padding: '8px 12px',
-            border: '1px solid #64748b',
-            borderRadius: 4,
-            color: '#e2e8f0',
-            textDecoration: 'none',
-            fontSize: 14,
-          }}
-        >
-          Back to lobby
-        </Link>
-        {!isPublicViewer ? (
-        <button
-          type="button"
-          data-testid="game-export-pgn"
-          onClick={() => {
-            if (
-              !isPgnExportLimitBypassed() &&
-              game.status === 'finished' &&
-              readPgnExportCount() >= PGN_EXPORT_FREE_LIMIT
-            ) {
-              return;
-            }
-            const pgn = buildPgn(game, moveLogs, displayNameById);
-            if (game.status === 'finished' && !isPgnExportLimitBypassed()) {
-              const next = readPgnExportCount() + 1;
-              localStorage.setItem(PGN_EXPORT_LS_KEY, String(next));
-              setPgnExportCount(next);
-            }
-            downloadPgn(`game-${game.id.slice(0, 8)}.pgn`, pgn);
-          }}
-          disabled={finishedPgnBlocked}
-          style={{ padding: '8px 12px' }}
-        >
-          Export PGN
-        </button>
-        ) : null}
         {!isPublicViewer && !isEngineProhibited && game.status === 'finished' && (
           <button
             type="button"
@@ -3463,57 +3494,6 @@ export default function GamePage() {
                 <RequestSuccessBanner headline="Rematch request sent." />
               </div>
             ) : null}
-          </>
-        )}
-        {showPlayerActions && (
-          <>
-            <button
-              type="button"
-              data-testid="resign-button"
-              onClick={handleResign}
-              disabled={resigning}
-              style={{ padding: '8px 12px' }}
-            >
-              Resign
-            </button>
-            {canOfferDraw && (
-              <button
-                type="button"
-                data-testid="offer-draw-button"
-                onClick={handleOfferDraw}
-                disabled={drawBusy}
-                style={{ padding: '8px 12px' }}
-              >
-                Offer Draw
-              </button>
-            )}
-            {opponentOfferedDraw && (
-              <>
-                <button
-                  type="button"
-                  data-testid="draw-accept-button"
-                  onClick={handleAcceptDraw}
-                  disabled={drawBusy}
-                  style={{ padding: '8px 12px' }}
-                >
-                  Accept Draw
-                </button>
-                <button
-                  type="button"
-                  data-testid="draw-decline-button"
-                  onClick={handleDeclineDraw}
-                  disabled={drawBusy}
-                  style={{ padding: '8px 12px' }}
-                >
-                  Decline Draw
-                </button>
-              </>
-            )}
-            {youOfferedDraw && (
-              <span style={{ alignSelf: 'center', color: '#9aa5b1' }}>
-                Draw offer sent — awaiting response
-              </span>
-            )}
           </>
         )}
       </div>
@@ -3659,6 +3639,8 @@ export default function GamePage() {
 
       </div>
 
+      <div className="accl-game-stage" data-testid="game-stage">
+      <div className="accl-game-stage-row" data-testid="game-stage-row">
       <div className="accl-game-play-column" data-testid="game-play-column">
         <div className="accl-game-active-hud" data-testid="game-active-hud">
           {showAnyClocks ? (
@@ -3671,8 +3653,11 @@ export default function GamePage() {
               }
               isCorrespondence={showCorrespondenceClocks}
               paceLabel={correspondencePaceLabel}
+              whiteName={whiteActiveLabel}
+              blackName={blackActiveLabel}
             />
           ) : null}
+          {!showAnyClocks ? (
           <p
             className="accl-game-active-players"
             data-testid="game-active-players"
@@ -3690,6 +3675,7 @@ export default function GamePage() {
               </span>
             ) : null}
           </p>
+          ) : null}
           {game.status !== 'finished' ? (
             <p
               className="accl-game-turn-line"
@@ -3874,6 +3860,149 @@ export default function GamePage() {
         ) : null}
       </div>
       </div>
+      {game && chatViewerRole !== 'none' && game.source_type !== 'bot_game' ? (
+        <div
+          className="accl-game-chat"
+          data-testid="game-chat-region"
+          data-chat-open={chatOpen ? '1' : '0'}
+        >
+          <button
+            type="button"
+            className="accl-game-chat__toggle"
+            data-testid="game-chat-toggle"
+            aria-expanded={chatOpen}
+            aria-label={
+              hasUnreadChat && !chatOpen
+                ? `${game.status === 'finished' ? 'Game chat history' : 'Game chat'} — new message`
+                : undefined
+            }
+            onClick={() => setChatOpen((o) => !o)}
+          >
+            <span className="accl-game-chat__toggle-label">
+              {`${game.status === 'finished' ? 'Game chat history' : 'Game chat'} ${chatOpen ? '▴' : '▾'}`}
+            </span>
+            <span
+              className="accl-game-chat__unread"
+              data-testid="game-chat-unread-light"
+              data-unread={hasUnreadChat && !chatOpen ? '1' : '0'}
+              aria-hidden="true"
+            />
+          </button>
+          <div className="accl-game-chat-sheet accl-game-side-panel">
+            <GameTesterChatPanels
+              key={`chat-${game.id}-${chatViewerRole}-${isSpectator ? 'spec' : 'seat'}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
+              gameId={game.id}
+              gameStatus={game.status}
+              gameTempo={game.tempo ?? null}
+              userId={userId}
+              viewerChatRole={chatViewerRole}
+              isBoardSpectator={isSpectator}
+              viewerEcosystem={viewerEcosystem}
+              accessToken={chatAccessToken}
+              onOpponentMessage={handleOpponentChatMessage}
+            />
+          </div>
+        </div>
+      ) : null}
+      </div>
+      <div className="accl-game-actions" data-testid="game-actions">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="accl-game-action-btn"
+        >
+          Home
+        </button>
+        <Link
+          href={lobbyReturnHref}
+          data-testid="game-back-to-lobby"
+          className="accl-game-action-btn"
+        >
+          Lobby
+        </Link>
+        {!isPublicViewer ? (
+          <button
+            type="button"
+            data-testid="game-export-pgn"
+            onClick={() => {
+              if (
+                !isPgnExportLimitBypassed() &&
+                game.status === 'finished' &&
+                readPgnExportCount() >= PGN_EXPORT_FREE_LIMIT
+              ) {
+                return;
+              }
+              const pgn = buildPgn(game, moveLogs, displayNameById);
+              if (game.status === 'finished' && !isPgnExportLimitBypassed()) {
+                const next = readPgnExportCount() + 1;
+                localStorage.setItem(PGN_EXPORT_LS_KEY, String(next));
+                setPgnExportCount(next);
+              }
+              downloadPgn(`game-${game.id.slice(0, 8)}.pgn`, pgn);
+            }}
+            disabled={finishedPgnBlocked}
+            className="accl-game-action-btn"
+          >
+            Export PGN
+          </button>
+        ) : null}
+        {showPlayerActions && (
+          <>
+            <button
+              type="button"
+              data-testid="resign-button"
+              onClick={handleResign}
+              disabled={resigning}
+              className="accl-game-action-btn accl-game-action-btn--danger"
+            >
+              Resign
+            </button>
+            {canOfferDraw && (
+              <button
+                type="button"
+                data-testid="offer-draw-button"
+                onClick={handleOfferDraw}
+                disabled={drawBusy}
+                className="accl-game-action-btn"
+              >
+                Offer Draw
+              </button>
+            )}
+            {opponentOfferedDraw && (
+              <>
+                <button
+                  type="button"
+                  data-testid="draw-accept-button"
+                  onClick={handleAcceptDraw}
+                  disabled={drawBusy}
+                  className="accl-game-action-btn"
+                >
+                  Accept Draw
+                </button>
+                <button
+                  type="button"
+                  data-testid="draw-decline-button"
+                  onClick={handleDeclineDraw}
+                  disabled={drawBusy}
+                  className="accl-game-action-btn"
+                >
+                  Decline Draw
+                </button>
+              </>
+            )}
+            {youOfferedDraw && (
+              <span className="accl-game-action-note">Draw offer sent — awaiting response</span>
+            )}
+          </>
+        )}
+        {userId ? (
+          <TesterBugReportTrigger
+            label="Report issue"
+            className="accl-game-action-btn accl-game-action-btn--report"
+          />
+        ) : null}
+      </div>
+      </div>
 
       <div className="accl-game-shell-tail">
       {showAbandonOpenSeat ? (
@@ -4046,36 +4175,6 @@ export default function GamePage() {
         </div>
       )}
 
-      {userId ? (
-        <div style={{ marginTop: 20, maxWidth: 520 }}>
-          <TesterBugReportTrigger
-            label="Report issue"
-            className="rounded-md border border-amber-500/35 bg-amber-950/20 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/35"
-          />
-        </div>
-      ) : null}
-      {!isPublicViewer && game ? (
-        <details
-          className="accl-game-chat-fold"
-          data-testid="game-chat-fold"
-          open={game.status === 'finished' ? true : undefined}
-        >
-          <summary className="accl-game-chat-fold__summary">Game chat</summary>
-          <div className="accl-game-side-panel">
-            <GameTesterChatPanels
-              key={`chat-${game.id}-${chatViewerRole}-${isSpectator ? 'spec' : 'seat'}-${String(game.white_player_id)}-${String(game.black_player_id ?? '')}`}
-              gameId={game.id}
-              gameStatus={game.status}
-              gameTempo={game.tempo ?? null}
-              userId={userId}
-              viewerChatRole={chatViewerRole}
-              isBoardSpectator={isSpectator}
-              viewerEcosystem={viewerEcosystem}
-              accessToken={chatAccessToken}
-            />
-          </div>
-        </details>
-      ) : null}
       </div>
       {isEngineProhibited && (
         <p style={{ marginTop: 20, color: '#e57373', fontSize: 12 }}>
