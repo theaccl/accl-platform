@@ -108,6 +108,29 @@ function slotBlocksAgainstGameRow(
   return false;
 }
 
+/**
+ * P0 cross-slot authority: a user seated in **any** active two-player human live
+ * free-play game must not create/seat another live board — across every mode, every
+ * exact time control, rated or unrated. This is intentionally NOT slot-scoped.
+ *
+ * Returns the first matching seated live row, else null. Excludes unmatched waiting
+ * seats (a host alone is not "seated"), daily/correspondence/async, finished rows,
+ * tournament rows (filtered upstream), and unrelated players.
+ */
+export function freePlayUserSeatedInAnyActiveLiveGame<T extends MinimalGameForSlot>(
+  rows: T[],
+  userId: string
+): T | null {
+  for (const g of rows) {
+    if (!isActiveOrWaiting(g)) continue;
+    if (!isSeatedTwoPlayer(g)) continue;
+    if (!userParticipates(userId, g)) continue;
+    if (normalizeGameTempo(g.tempo) !== 'live') continue;
+    return g;
+  }
+  return null;
+}
+
 /** Open-seat + seated rules for create/find/open-games gate (excludes unscoped daily). */
 export function freePlayUserBlockedForTargetSlot(
   userId: string,

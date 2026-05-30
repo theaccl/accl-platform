@@ -5,7 +5,10 @@ import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 import { invalidateLiveQueueAvailabilityForUsers } from '@/lib/server/invalidateLiveQueueAvailability';
 import { freePlayTargetSlotFromGameOrRequestFields } from '@/lib/hasActiveWaitingLiveFreeGame';
-import { userInSeatedInSamePlatQueueSlotAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
+import {
+  userInSeatedInSamePlatQueueSlotAdmin,
+  userSeatedInAnyActiveLiveFreeGameAdmin,
+} from '@/lib/server/userHasLiveFreeSessionAdmin';
 import { getClientIp } from '@/lib/server/clientIp';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
@@ -108,6 +111,19 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (rowIndicatesLiveFreePlayPacing(r)) {
+    // P0 cross-slot authority: neither participant (joiner or lister) may be seated in
+    // ANY active live game — this route inserts a seated game directly.
+    for (const participantId of [userId, String(r.from_user_id ?? '').trim()]) {
+      if (!participantId) continue;
+      const seated = await userSeatedInAnyActiveLiveFreeGameAdmin(participantId);
+      if (seated && 'queryError' in seated) {
+        return jsonResponse({ error: 'Could not verify your active games.' }, 503);
+      }
+      if (seated) {
+        return jsonResponse({ error: LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE }, 409);
+      }
+    }
+
     const slot = freePlayTargetSlotFromGameOrRequestFields({
       tempo: r.tempo,
       live_time_control: r.live_time_control,

@@ -20,7 +20,7 @@ import {
 import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOpenSeatsFilter';
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { freePlayTargetSlot, openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
-import { userHasConflictingPlatQueueSlot } from '@/lib/hasActiveWaitingLiveFreeGame';
+import { userBlockedFromNewLiveSeatOrSlot } from '@/lib/hasActiveWaitingLiveFreeGame';
 import type { QueueConflict } from '@/lib/classifyFreePlayQueueConflict';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 
@@ -91,7 +91,8 @@ export async function checkUserFreePlayQueueEligible(
     coercePlatTimeForMode(target.mode, target.clock),
     target.rated
   );
-  const hit = await userHasConflictingPlatQueueSlot(supabase, userId, slot);
+  // Global seated-live block (cross-slot) first, then the existing slot-scoped rule.
+  const hit = await userBlockedFromNewLiveSeatOrSlot(supabase, userId, slot);
   if (hit && 'queryError' in hit) {
     return { error: 'Could not verify your active games.' };
   }
@@ -239,7 +240,7 @@ export async function runFreePlayCreateGame(
   const { data: created, error: insErr } = await supabase.from('games').insert(row).select('id').single();
   if (insErr) {
     const slot = freePlayTargetSlot(mode, normalizedClock, rated);
-    const resume = await userHasConflictingPlatQueueSlot(supabase, userId, slot);
+    const resume = await userBlockedFromNewLiveSeatOrSlot(supabase, userId, slot);
     if (resume && 'gameId' in resume) {
       return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: resume.gameId, conflict: resume };
     }

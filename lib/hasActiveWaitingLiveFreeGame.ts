@@ -4,6 +4,7 @@ import { coercePlatTimeForMode, type PlatMode } from '@/lib/freePlayModeTimeCont
 import {
   type FreePlayQueueTargetSlot,
   freePlayUserBlockedForTargetSlot,
+  freePlayUserSeatedInAnyActiveLiveGame,
   freePlayUserSeatedInConflictingSlot,
 } from '@/lib/freePlayQueueSlotConflict';
 import {
@@ -104,6 +105,73 @@ export async function userHasConflictingPlatQueueSlot(
   if (error) {
     return { queryError: true };
   }
+  for (const g of rows) {
+    if (freePlayUserBlockedForTargetSlot(userId, g, target)) {
+      const kind =
+        classifyFreePlayQueueConflict(
+          {
+            white_player_id: g.white_player_id,
+            black_player_id: g.black_player_id,
+            status: g.status ?? null,
+            tempo: g.tempo,
+          },
+          userId
+        ) ?? 'seated_live_game';
+      return {
+        gameId: g.id,
+        kind,
+        whitePlayerId: g.white_player_id,
+        blackPlayerId: g.black_player_id,
+        tempo: g.tempo,
+        liveTimeControl: g.live_time_control,
+        rated: g.rated,
+      };
+    }
+  }
+  return null;
+}
+
+function seatedLiveConflict(g: FreePlayBusyUserGameRow): QueueConflict {
+  return {
+    gameId: g.id,
+    kind: 'seated_live_game',
+    whitePlayerId: g.white_player_id,
+    blackPlayerId: g.black_player_id,
+    tempo: g.tempo,
+    liveTimeControl: g.live_time_control,
+    rated: g.rated,
+  };
+}
+
+/**
+ * P0 create/find gate: load the user's free busy games once, then enforce two rules:
+ *
+ * 1. **Global seated-live block (cross-slot):** if the user is seated in ANY active
+ *    two-player live game, block every new live seat — regardless of mode/clock/rated.
+ * 2. **Slot-scoped block:** the existing same-slot open-seat / seated rule for the
+ *    requested target (preserves multi-slot waiting-seat doctrine when NOT seated).
+ *
+ * Returns an enriched {@link QueueConflict} when blocked, else null. Daily targets are
+ * never blocked here.
+ */
+export async function userBlockedFromNewLiveSeatOrSlot(
+  supabase: SupabaseClient,
+  userId: string,
+  target: FreePlayQueueTargetSlot
+): Promise<QueueConflict | null | { queryError: true }> {
+  if (target.mode === 'daily') {
+    return null;
+  }
+  const { rows, error } = await loadFreePlayBusyUserGames(supabase, userId);
+  if (error) {
+    return { queryError: true };
+  }
+
+  const seatedLive = freePlayUserSeatedInAnyActiveLiveGame(rows, userId);
+  if (seatedLive) {
+    return seatedLiveConflict(seatedLive);
+  }
+
   for (const g of rows) {
     if (freePlayUserBlockedForTargetSlot(userId, g, target)) {
       const kind =

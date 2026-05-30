@@ -3,8 +3,19 @@ import { expect, test } from '@playwright/test';
 import {
   freePlayTargetSlot,
   freePlayUserBlockedForTargetSlot,
+  freePlayUserSeatedInAnyActiveLiveGame,
   freePlayUserSeatedInConflictingSlot,
 } from '../../lib/freePlayQueueSlotConflict';
+
+const seatedRapid10 = {
+  id: 'live10',
+  white_player_id: 'u1',
+  black_player_id: 'u2',
+  tempo: 'live',
+  live_time_control: '10m',
+  rated: true,
+  status: 'active',
+} as const;
 
 test.describe('freePlayQueueSlotConflict', () => {
   test('same live mode+clock+rated blocks, different mode does not', () => {
@@ -105,6 +116,37 @@ test.describe('freePlayQueueSlotConflict', () => {
         },
         target10m
       )
-    ).toBe(false);
+      ).toBe(false);
+  });
+});
+
+test.describe('freePlayUserSeatedInAnyActiveLiveGame (P0 cross-slot)', () => {
+  test('matches a seated two-player active live game the user is in', () => {
+    expect(freePlayUserSeatedInAnyActiveLiveGame([seatedRapid10], 'u1')?.id).toBe('live10');
+    expect(freePlayUserSeatedInAnyActiveLiveGame([{ ...seatedRapid10, white_player_id: 'x', black_player_id: 'u1' }], 'u1')?.id).toBe('live10');
+  });
+
+  test('does NOT match an unmatched waiting seat (host alone)', () => {
+    expect(
+      freePlayUserSeatedInAnyActiveLiveGame(
+        [{ ...seatedRapid10, black_player_id: null }],
+        'u1'
+      )
+    ).toBeNull();
+  });
+
+  test('does NOT match daily / correspondence / async rows', () => {
+    expect(
+      freePlayUserSeatedInAnyActiveLiveGame([{ ...seatedRapid10, tempo: 'daily', live_time_control: '1d' }], 'u1')
+    ).toBeNull();
+    expect(
+      freePlayUserSeatedInAnyActiveLiveGame([{ ...seatedRapid10, tempo: 'correspondence', live_time_control: '3d' }], 'u1')
+    ).toBeNull();
+  });
+
+  test('does NOT match finished rows or unrelated players', () => {
+    expect(freePlayUserSeatedInAnyActiveLiveGame([{ ...seatedRapid10, status: 'finished' }], 'u1')).toBeNull();
+    expect(freePlayUserSeatedInAnyActiveLiveGame([seatedRapid10], 'u3')).toBeNull();
+    expect(freePlayUserSeatedInAnyActiveLiveGame([], 'u1')).toBeNull();
   });
 });

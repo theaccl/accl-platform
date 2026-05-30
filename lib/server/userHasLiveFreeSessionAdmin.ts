@@ -4,6 +4,7 @@ import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import {
   type FreePlayQueueTargetSlot,
   freePlayUserBlockedForTargetSlot,
+  freePlayUserSeatedInAnyActiveLiveGame,
   freePlayUserSeatedInConflictingSlot,
 } from '@/lib/freePlayQueueSlotConflict';
 
@@ -69,6 +70,27 @@ export async function userHasConflictingPlatQueueSlotAdmin(
     }
   }
   return null;
+}
+
+/**
+ * P0 cross-slot authority (service-role): is the user seated in ANY active two-player
+ * live free-play game? Used by the direct-insert API routes (challenge accept /
+ * open-listing join) which bypass `create_seated_game_guard`. Returns the seated game
+ * id, null, or a query error. Not slot-scoped — mirrors the create-side gate.
+ */
+export async function userSeatedInAnyActiveLiveFreeGameAdmin(
+  userId: string
+): Promise<{ seatedGameId: string } | null | { queryError: true }> {
+  const uid = userId.trim();
+  if (!uid) {
+    return null;
+  }
+  const { rows, error } = await loadFreePlayBusyUserGamesAdmin(uid);
+  if (error) {
+    return { queryError: true };
+  }
+  const seated = freePlayUserSeatedInAnyActiveLiveGame(rows, uid);
+  return seated ? { seatedGameId: seated.id } : null;
 }
 
 export async function userInSeatedInSamePlatQueueSlotAdmin(
