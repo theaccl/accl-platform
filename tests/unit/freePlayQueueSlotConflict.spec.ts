@@ -120,6 +120,37 @@ test.describe('freePlayQueueSlotConflict', () => {
   });
 });
 
+test.describe('rated / unrated are separate lanes (pre-seating doctrine)', () => {
+  const ratedWaiting10 = {
+    id: 'r10',
+    white_player_id: 'u1',
+    black_player_id: null,
+    tempo: 'live',
+    live_time_control: '10m',
+    rated: true,
+    status: 'active',
+  } as const;
+
+  test('Rapid 10m Rated waiting seat does NOT block a Rapid 10m Unrated post', () => {
+    expect(
+      freePlayUserBlockedForTargetSlot(ratedWaiting10.white_player_id, ratedWaiting10, freePlayTargetSlot('rapid', '10m', false))
+    ).toBe(false);
+  });
+
+  test('Rapid 10m Unrated waiting seat does NOT block a Rapid 10m Rated post', () => {
+    const unratedWaiting10 = { ...ratedWaiting10, id: 'u10', rated: false };
+    expect(
+      freePlayUserBlockedForTargetSlot(unratedWaiting10.white_player_id, unratedWaiting10, freePlayTargetSlot('rapid', '10m', true))
+    ).toBe(false);
+  });
+
+  test('a second SAME-lane Rapid 10m Rated post is blocked (identical key)', () => {
+    expect(
+      freePlayUserBlockedForTargetSlot(ratedWaiting10.white_player_id, ratedWaiting10, freePlayTargetSlot('rapid', '10m', true))
+    ).toBe(true);
+  });
+});
+
 test.describe('freePlayUserSeatedInAnyActiveLiveGame (P0 cross-slot)', () => {
   test('matches a seated two-player active live game the user is in', () => {
     expect(freePlayUserSeatedInAnyActiveLiveGame([seatedRapid10], 'u1')?.id).toBe('live10');

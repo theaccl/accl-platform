@@ -88,6 +88,79 @@ test.describe('userBlockedFromNewLiveSeatOrSlot — P0 create/find gate', () => 
   });
 });
 
+test.describe('rated / unrated lane doctrine through the create/find gate', () => {
+  test('an unmatched RATED Rapid 10m waiting seat allows posting the UNRATED Rapid 10m lane', async () => {
+    const ratedWaiting: Row = { ...seatedRapid10, id: 'r10', black_player_id: null, rated: true };
+    const hit = await userBlockedFromNewLiveSeatOrSlot(fakeSupabase([ratedWaiting]), 'u1', freePlayTargetSlot('rapid', '10m', false));
+    expect(hit).toBeNull();
+  });
+
+  test('an unmatched UNRATED Rapid 10m waiting seat allows posting the RATED Rapid 10m lane', async () => {
+    const unratedWaiting: Row = { ...seatedRapid10, id: 'u10', black_player_id: null, rated: false };
+    const hit = await userBlockedFromNewLiveSeatOrSlot(fakeSupabase([unratedWaiting]), 'u1', freePlayTargetSlot('rapid', '10m', true));
+    expect(hit).toBeNull();
+  });
+
+  test('a second SAME-lane Rapid 10m Rated post is blocked (waiting_seat)', async () => {
+    const ratedWaiting: Row = { ...seatedRapid10, id: 'r10', black_player_id: null, rated: true };
+    const hit = await userBlockedFromNewLiveSeatOrSlot(fakeSupabase([ratedWaiting]), 'u1', freePlayTargetSlot('rapid', '10m', true));
+    expect(hit && 'kind' in hit ? hit.kind : null).toBe('waiting_seat');
+  });
+
+  test('once SEATED in a rated live game, BOTH rated and unrated live lanes are blocked', async () => {
+    const ratedTarget = await userBlockedFromNewLiveSeatOrSlot(fakeSupabase([seatedRapid10]), 'u1', freePlayTargetSlot('rapid', '15m', true));
+    const unratedTarget = await userBlockedFromNewLiveSeatOrSlot(fakeSupabase([seatedRapid10]), 'u1', freePlayTargetSlot('rapid', '15m', false));
+    expect(ratedTarget && 'kind' in ratedTarget ? ratedTarget.kind : null).toBe('seated_live_game');
+    expect(unratedTarget && 'kind' in unratedTarget ? unratedTarget.kind : null).toBe('seated_live_game');
+  });
+});
+
+test.describe('supersede sweep is lane-agnostic (static SQL)', () => {
+  test('supersede_stale_free_open_seats_for_users matches by host only, no rated/clock/mode filter', () => {
+    const full = src('supabase/migrations/20260528160000_free_play_supersede_not_daily_and_host_busy_skip_async.sql');
+    const start = full.indexOf('create or replace function public.supersede_stale_free_open_seats_for_users');
+    expect(start).toBeGreaterThanOrEqual(0);
+    // Isolate the supersede function body (stop before the next function definition).
+    const rest = full.slice(start + 1);
+    const nextFn = rest.indexOf('create or replace function');
+    const body = nextFn >= 0 ? rest.slice(0, nextFn) : rest;
+
+    expect(body).toContain('white_player_id in (p_user_a, p_user_b)');
+    expect(body).toContain('black_player_id is null');
+    // No lane / exact-clock / mode narrowing inside the sweep.
+    expect(body).not.toContain('rated');
+    expect(body).not.toContain('live_time_control');
+    expect(body).not.toContain('free_play_queue_slot_key');
+  });
+});
+
+test.describe('direct-insert accept supersede reliability (static)', () => {
+  test('invalidate helper retries supersede and returns a structured result', () => {
+    const lib = src('lib/server/invalidateLiveQueueAvailability.ts');
+    expect(lib).toContain('SUPERSEDE_MAX_ATTEMPTS');
+    expect(lib).toContain('supersedeOk');
+    expect(lib).toContain('InvalidateLiveQueueResult');
+    expect(lib).toContain("rpc('supersede_stale_free_open_seats_for_users'");
+  });
+
+  test('accept route invokes supersede for both players and logs incompleteness', () => {
+    const route = src('app/api/match-requests/accept/route.ts');
+    expect(route).toContain('invalidateLiveQueueAvailabilityForUsers');
+    expect(route).toContain('inv.supersedeOk');
+    expect(route).toContain('console.error');
+    // Invoked before the success response.
+    expect(route.indexOf('invalidateLiveQueueAvailabilityForUsers')).toBeLessThan(route.lastIndexOf("ok: true"));
+  });
+
+  test('open-listing route invokes supersede for both players and logs incompleteness', () => {
+    const route = src('app/api/match-requests/join-open-listing/route.ts');
+    expect(route).toContain('invalidateLiveQueueAvailabilityForUsers');
+    expect(route).toContain('inv.supersedeOk');
+    expect(route).toContain('console.error');
+    expect(route.indexOf('invalidateLiveQueueAvailabilityForUsers')).toBeLessThan(route.lastIndexOf("ok: true"));
+  });
+});
+
 test.describe('create / find gate wiring (static)', () => {
   test('checkUserFreePlayQueueEligible and create-insert recovery use the global gate', () => {
     const find = src('lib/freePlayFindMatch.ts');

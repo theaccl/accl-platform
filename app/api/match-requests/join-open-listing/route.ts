@@ -209,14 +209,35 @@ export async function POST(request: Request): Promise<Response> {
   // Only **live** activations void other live open seats + cancel pending live match_requests.
   // Daily/correspondence acceptance must not call `invalidate` (it runs `supersede` server-side).
   if (normalizeGameTempo(claimedRow.tempo) === 'live') {
+    // Supersede every other unmatched live seat for BOTH seated players before responding.
+    // Best-effort (non-transactional): never block a created game, but log incompleteness loudly.
     try {
-      await invalidateLiveQueueAvailabilityForUsers({
+      const inv = await invalidateLiveQueueAvailabilityForUsers({
         userIds: [...new Set([hostId, userId].filter(Boolean))],
         excludeGameId: rawId,
         excludeRequestId: requestId,
       });
+      if (!inv.supersedeOk) {
+        console.error('[match-requests.join-open-listing] supersede cleanup INCOMPLETE after seating', {
+          gameId: rawId,
+          requestId,
+          attempts: inv.supersedeAttempts,
+          error: inv.supersedeError,
+        });
+      }
+      if (!inv.requestsCancelled) {
+        console.error('[match-requests.join-open-listing] pending live match_requests cancel failed', {
+          gameId: rawId,
+          requestId,
+          error: inv.requestsError,
+        });
+      }
     } catch (e) {
-      console.warn('[match-requests.join-open-listing] live queue invalidation failed', e);
+      console.error('[match-requests.join-open-listing] live queue invalidation threw', {
+        gameId: rawId,
+        requestId,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 

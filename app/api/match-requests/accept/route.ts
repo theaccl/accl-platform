@@ -195,14 +195,35 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (isDirectOrPrivateLivePacedMatchRequest(r)) {
+    // Supersede every other unmatched live seat for BOTH seated players before responding.
+    // Best-effort (non-transactional): never block a created game, but log incompleteness loudly.
     try {
-      await invalidateLiveQueueAvailabilityForUsers({
+      const inv = await invalidateLiveQueueAvailabilityForUsers({
         userIds: [r.white_player_id, r.black_player_id],
         excludeGameId: gid,
         excludeRequestId: requestId,
       });
+      if (!inv.supersedeOk) {
+        console.error('[match-requests.accept] supersede cleanup INCOMPLETE after seating', {
+          gameId: gid,
+          requestId,
+          attempts: inv.supersedeAttempts,
+          error: inv.supersedeError,
+        });
+      }
+      if (!inv.requestsCancelled) {
+        console.error('[match-requests.accept] pending live match_requests cancel failed', {
+          gameId: gid,
+          requestId,
+          error: inv.requestsError,
+        });
+      }
     } catch (e) {
-      console.warn('[match-requests.accept] live queue invalidation failed', e);
+      console.error('[match-requests.accept] live queue invalidation threw', {
+        gameId: gid,
+        requestId,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
