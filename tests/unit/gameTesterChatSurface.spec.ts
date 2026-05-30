@@ -120,14 +120,45 @@ test.describe('active-game chat unread indicator light', () => {
     expect(src).toContain('accl-game-chat__toggle-label');
   });
 
-  test('unread light is suppressed for Play Computer (chat region gated by source_type)', () => {
+  test('Play Computer: entire chat surface is the single bot-gated region (zero chat for bots)', () => {
     const src = readFileSync(gamePagePath, 'utf8');
-    // The whole chat region (toggle + light) only renders for non-bot games.
-    expect(src).toContain("game.source_type !== 'bot_game'");
-    const gateIdx = src.indexOf("game.source_type !== 'bot_game'");
-    const lightIdx = src.indexOf('data-testid="game-chat-unread-light"');
-    expect(gateIdx).toBeGreaterThan(-1);
-    expect(lightIdx).toBeGreaterThan(gateIdx);
+    // There is exactly one chat region in the page, and it is governed by a gate
+    // that excludes bot games. So a bot game renders zero chat regions, zero chat
+    // toggle, and zero unread indicator — the suppression cannot be bypassed by a
+    // second, ungated chat surface.
+    const gate = "chatViewerRole !== 'none' && game.source_type !== 'bot_game' ?";
+    const gateIdx = src.indexOf(gate);
+    expect(gateIdx, 'chat region must be gated by the bot-game exclusion').toBeGreaterThan(-1);
+    // The chat conditional closes right before the always-on action row.
+    const actionsIdx = src.indexOf('data-testid="game-actions"');
+    expect(actionsIdx).toBeGreaterThan(gateIdx);
+
+    for (const marker of [
+      'data-testid="game-chat-region"',
+      'data-testid="game-chat-toggle"',
+      'data-testid="game-chat-unread-light"',
+      '<GameTesterChatPanels',
+    ]) {
+      const first = src.indexOf(marker);
+      const last = src.lastIndexOf(marker);
+      expect(first, `${marker} must exist`).toBeGreaterThan(-1);
+      expect(last, `${marker} must appear exactly once (no second ungated chat surface)`).toBe(first);
+      expect(first, `${marker} must render inside the bot-gated chat block`).toBeGreaterThan(gateIdx);
+      expect(first, `${marker} must close before the action row (inside the chat conditional)`).toBeLessThan(
+        actionsIdx,
+      );
+    }
+  });
+
+  test('human game: chat surface is reachable (gate also admits non-none viewer roles)', () => {
+    const src = readFileSync(gamePagePath, 'utf8');
+    // The same gate that excludes bots admits human games whose viewer resolves to
+    // a real lane (player table or spectator), so player chat remains available.
+    expect(src).toContain("chatViewerRole !== 'none' && game.source_type !== 'bot_game'");
+    // The lane that drives player chat is resolved by resolveTesterChatLane and
+    // passed straight into the mounted panel for human games.
+    expect(src).toContain('viewerChatRole={chatViewerRole}');
+    expect(src).toContain('onOpponentMessage={handleOpponentChatMessage}');
   });
 
   test('unread light slot is fixed-size and reserved (no layout shift on appear)', () => {

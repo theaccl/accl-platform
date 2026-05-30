@@ -122,6 +122,41 @@ test.describe('production hardening audit (static)', () => {
     expect(chat).toContain('accl-scroll-no-anchor');
   });
 
+  test('game details disclosure encloses secondary metadata, keeps operational/E2E nodes outside', () => {
+    const page = src('app/game/[id]/page.tsx');
+    const detailsOpen = page.indexOf('data-testid="game-details"');
+    const detailsClose = page.indexOf('</details>', detailsOpen);
+    expect(detailsOpen, 'game-details disclosure must exist').toBeGreaterThan(-1);
+    expect(detailsClose, 'game-details disclosure must close').toBeGreaterThan(detailsOpen);
+
+    // Secondary metadata must live INSIDE the disclosure so a collapsed console
+    // (player + spectator) never re-exposes redundant ID/Status/seat/turn text.
+    for (const marker of [
+      'data-testid="game-row-id"',
+      'data-testid="game-row-status"',
+      'data-testid="game-player-name-white"',
+      'data-testid="game-player-name-black"',
+      '<strong>You are:</strong>',
+      '<strong>Turn:</strong>',
+      'data-testid="game-spectator-guest-hint"',
+    ]) {
+      const idx = page.indexOf(marker);
+      expect(idx, `${marker} must render inside game-details`).toBeGreaterThan(detailsOpen);
+      expect(idx, `${marker} must render inside game-details`).toBeLessThan(detailsClose);
+    }
+
+    // The hidden E2E startup snapshot and immediate-attention operational nodes must
+    // stay OUTSIDE the disclosure so automation + banners are never toggled off.
+    for (const marker of [
+      'data-testid="game-startup-snapshot"',
+      'data-testid="game-active-hud"',
+      'data-testid="game-actions"',
+    ]) {
+      const idx = page.indexOf(marker);
+      expect(idx, `${marker} must render outside (after) game-details`).toBeGreaterThan(detailsClose);
+    }
+  });
+
   test('tester chat uses send locks and max body length', () => {
     const s = src('components/game/GameTesterChatPanels.tsx');
     expect(s).toContain('CHAT_BODY_MAX');

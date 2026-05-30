@@ -2844,14 +2844,6 @@ export default function GamePage() {
       <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#777', lineHeight: 1.45 }}>
         {gameTimingRuleSummaryLine(normalizeGameTempo(game.tempo))}
       </p>
-      </details>
-      {game.tournament_id ? (
-        <TournamentCoexistenceNotice
-          mode="on_tournament_board"
-          tournamentId={String(game.tournament_id)}
-          excludeGameId={game.id}
-        />
-      ) : null}
       {!isPublicViewer ? (
         <div
           style={{
@@ -2902,40 +2894,6 @@ export default function GamePage() {
           </Link>
         </div>
       ) : null}
-      {showCorrespondenceClocks &&
-        game.move_deadline_at &&
-        normalizeGameTempo(game.tempo) === 'correspondence' && (
-          <p
-            data-testid="correspondence-deadline"
-            style={{ margin: '0 0 12px 0', fontSize: 11, color: '#666', lineHeight: 1.35 }}
-          >
-            Move due: {formatMoveDeadlineLocal(game.move_deadline_at)}
-          </p>
-        )}
-      <DisplayNameLoadNotice visible={showDisplayNameLoadNotice} />
-
-      {isPublicViewer ? (
-        <p
-          data-testid="spectate-signup-cta"
-          style={{
-            margin: '0 0 12px 0',
-            padding: '10px 12px',
-            maxWidth: 560,
-            fontSize: 13,
-            lineHeight: 1.45,
-            color: '#cbd5e1',
-            border: '1px solid #334155',
-            borderRadius: 8,
-            background: '#0f172a',
-          }}
-        >
-          <strong style={{ color: '#e2e8f0' }}>Spectate mode</strong> — create an account to play rated games and track
-          progress. <strong style={{ color: '#e2e8f0' }}>Play your first game</strong> after signup — no advantage sold,
-          same rules for everyone. Use <strong style={{ color: '#e2e8f0' }}>Sign Up</strong> or{' '}
-          <strong style={{ color: '#e2e8f0' }}>Log In</strong> in the top navigation bar.
-        </p>
-      ) : null}
-
       {isSpectator && !isPublicViewer && (
         <p style={{ marginBottom: 8 }} data-testid="game-logged-in-spectator-label">
           <strong>Spectating</strong>
@@ -2971,7 +2929,6 @@ export default function GamePage() {
           .
         </p>
       ) : null}
-
       <p data-testid="game-row-id">
         <strong>Game ID:</strong>{' '}
         {isPublicViewer ? (
@@ -2983,22 +2940,6 @@ export default function GamePage() {
       <p data-testid="game-row-status">
         <strong>Status:</strong> {game.status}
       </p>
-      <div
-        data-testid="game-startup-snapshot"
-        data-fen={game.fen}
-        data-turn={game.status === 'finished' ? '' : game.turn}
-        data-last-move-at={game.last_move_at ?? ''}
-        data-move-deadline-at={game.move_deadline_at ?? ''}
-        style={{
-          position: 'absolute',
-          width: 1,
-          height: 1,
-          overflow: 'hidden',
-          clip: 'rect(0,0,0,0)',
-          pointerEvents: 'none',
-        }}
-        aria-hidden
-      />
       <p>
         <strong>White:</strong>{' '}
         {openIdentity ? (
@@ -3047,6 +2988,62 @@ export default function GamePage() {
             : game.turn}
         </p>
       )}
+      </details>
+      {game.tournament_id ? (
+        <TournamentCoexistenceNotice
+          mode="on_tournament_board"
+          tournamentId={String(game.tournament_id)}
+          excludeGameId={game.id}
+        />
+      ) : null}
+      {isPublicViewer ? (
+        <p
+          data-testid="spectate-signup-cta"
+          style={{
+            margin: '0 0 12px 0',
+            padding: '10px 12px',
+            maxWidth: 560,
+            fontSize: 13,
+            lineHeight: 1.45,
+            color: '#cbd5e1',
+            border: '1px solid #334155',
+            borderRadius: 8,
+            background: '#0f172a',
+          }}
+        >
+          <strong style={{ color: '#e2e8f0' }}>Spectate mode</strong> — create an account to play rated games and track
+          progress. <strong style={{ color: '#e2e8f0' }}>Play your first game</strong> after signup — no advantage sold,
+          same rules for everyone. Use <strong style={{ color: '#e2e8f0' }}>Sign Up</strong> or{' '}
+          <strong style={{ color: '#e2e8f0' }}>Log In</strong> in the top navigation bar.
+        </p>
+      ) : null}
+      {showCorrespondenceClocks &&
+        game.move_deadline_at &&
+        normalizeGameTempo(game.tempo) === 'correspondence' && (
+          <p
+            data-testid="correspondence-deadline"
+            style={{ margin: '0 0 12px 0', fontSize: 11, color: '#666', lineHeight: 1.35 }}
+          >
+            Move due: {formatMoveDeadlineLocal(game.move_deadline_at)}
+          </p>
+        )}
+      <DisplayNameLoadNotice visible={showDisplayNameLoadNotice} />
+      <div
+        data-testid="game-startup-snapshot"
+        data-fen={game.fen}
+        data-turn={game.status === 'finished' ? '' : game.turn}
+        data-last-move-at={game.last_move_at ?? ''}
+        data-move-deadline-at={game.move_deadline_at ?? ''}
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          pointerEvents: 'none',
+        }}
+        aria-hidden
+      />
       {!isPublicViewer && game.status !== 'finished' && nextGameWithMyMoveId ? (
         <div
           data-testid="game-next-move-hint"
