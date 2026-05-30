@@ -6,6 +6,10 @@ import {
   freePlayUserBlockedForTargetSlot,
   freePlayUserSeatedInConflictingSlot,
 } from '@/lib/freePlayQueueSlotConflict';
+import {
+  type QueueConflict,
+  classifyFreePlayQueueConflict,
+} from '@/lib/classifyFreePlayQueueConflict';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 
 const BUSY_LOOKBACK = 120;
@@ -84,13 +88,15 @@ export async function userInSeatedInSamePlatQueueSlot(
 }
 
 /**
- * Open seat or full table in the same slot — for Create/Find/accept. Returns resume game id when blocked.
+ * Open seat or full table in the same slot — for Create/Find/accept. Returns an enriched
+ * {@link QueueConflict} when blocked so callers can distinguish an own unmatched waiting
+ * seat from a seated live game. Authority is unchanged: this still blocks identically.
  */
 export async function userHasConflictingPlatQueueSlot(
   supabase: SupabaseClient,
   userId: string,
   target: FreePlayQueueTargetSlot
-): Promise<string | null | { queryError: true }> {
+): Promise<QueueConflict | null | { queryError: true }> {
   if (target.mode === 'daily') {
     return null;
   }
@@ -100,7 +106,25 @@ export async function userHasConflictingPlatQueueSlot(
   }
   for (const g of rows) {
     if (freePlayUserBlockedForTargetSlot(userId, g, target)) {
-      return g.id;
+      const kind =
+        classifyFreePlayQueueConflict(
+          {
+            white_player_id: g.white_player_id,
+            black_player_id: g.black_player_id,
+            status: g.status ?? null,
+            tempo: g.tempo,
+          },
+          userId
+        ) ?? 'seated_live_game';
+      return {
+        gameId: g.id,
+        kind,
+        whitePlayerId: g.white_player_id,
+        blackPlayerId: g.black_player_id,
+        tempo: g.tempo,
+        liveTimeControl: g.live_time_control,
+        rated: g.rated,
+      };
     }
   }
   return null;

@@ -3917,6 +3917,17 @@ export default function GamePage() {
         >
           Lobby
         </Link>
+        {showAbandonOpenSeat ? (
+          <button
+            type="button"
+            data-testid="game-abandon-open-seat"
+            onClick={() => void handleAbandonOpenSeat()}
+            disabled={resigning}
+            className="accl-game-action-btn accl-game-action-btn--danger"
+          >
+            {resigning ? 'Leaving…' : 'Leave waiting seat'}
+          </button>
+        ) : null}
         {!isPublicViewer ? (
           <button
             type="button"
@@ -4002,20 +4013,6 @@ export default function GamePage() {
       </div>
 
       <div className="accl-game-shell-tail">
-      {showAbandonOpenSeat ? (
-        <p style={{ margin: '0 0 12px 0' }}>
-          <button
-            type="button"
-            data-testid="game-abandon-open-seat"
-            onClick={() => void handleAbandonOpenSeat()}
-            disabled={resigning}
-            style={{ padding: '8px 12px' }}
-          >
-            {resigning ? 'Leaving…' : 'Leave waiting seat'}
-          </button>
-        </p>
-      ) : null}
-
       {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
         <TournamentFirstMoveGraceBanner
           gameId={game.id}

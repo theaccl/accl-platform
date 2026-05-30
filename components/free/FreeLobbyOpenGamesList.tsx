@@ -10,6 +10,7 @@ import { ModeRoomClockActivityRow } from '@/components/free/ModeRoomClockActivit
 import { type FreeLobbyOpenSeatRow, useFreeLobbyOpenSeats } from '@/hooks/useFreeLobbyOpenSeats';
 import { formatWaitingDuration } from '@/lib/formatWaitingDuration';
 import { checkUserFreePlayQueueEligible } from '@/lib/freePlayFindMatch';
+import type { QueueConflictKind } from '@/lib/classifyFreePlayQueueConflict';
 import { supabase } from '@/lib/supabaseClient';
 import {
   PLAT_MODE_LABELS,
@@ -52,6 +53,7 @@ export function FreeLobbyOpenGamesList({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preJoinError, setPreJoinError] = useState<string | null>(null);
   const [preJoinResumeId, setPreJoinResumeId] = useState<string | null>(null);
+  const [preJoinConflictKind, setPreJoinConflictKind] = useState<QueueConflictKind | null>(null);
 
   const tcLabel =
     platTimeOptionsForMode(mode).find((o) => o.id === selectedClock)?.label ?? selectedClock;
@@ -68,6 +70,7 @@ export function FreeLobbyOpenGamesList({
   const onRowActivate = useCallback((r: FreeLobbyOpenSeatRow) => {
     setPreJoinError(null);
     setPreJoinResumeId(null);
+    setPreJoinConflictKind(null);
     setSelectedId((cur) => (cur === r.id ? null : r.id));
   }, []);
 
@@ -75,6 +78,7 @@ export function FreeLobbyOpenGamesList({
     if (!selected) return;
     setPreJoinError(null);
     setPreJoinResumeId(null);
+    setPreJoinConflictKind(null);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
       setPreJoinError('Sign in to accept a game.');
@@ -89,6 +93,7 @@ export function FreeLobbyOpenGamesList({
     if ('error' in gate) {
       setPreJoinError(gate.error);
       setPreJoinResumeId(gate.resumeGameId ?? null);
+      setPreJoinConflictKind(gate.conflict?.kind ?? null);
       return;
     }
     router.push(`/game/${selected.id}?join=1`);
@@ -196,12 +201,21 @@ export function FreeLobbyOpenGamesList({
             >
               <p>{preJoinError}</p>
               {preJoinResumeId ? (
-                <p className="mt-2 text-xs text-amber-200/80">
-                  <Link href={`/game/${preJoinResumeId}`} className="font-semibold text-sky-300 underline hover:text-sky-200">
-                    Go to your game
-                  </Link>{' '}
-                  to return to your live seat or leave it before joining another.
-                </p>
+                preJoinConflictKind === 'waiting_seat' ? (
+                  <p className="mt-2 text-xs text-amber-200/80">
+                    <Link href={`/game/${preJoinResumeId}`} className="font-semibold text-sky-300 underline hover:text-sky-200">
+                      Return to waiting seat
+                    </Link>{' '}
+                    to leave that seat before joining another game.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-amber-200/80">
+                    <Link href={`/game/${preJoinResumeId}`} className="font-semibold text-sky-300 underline hover:text-sky-200">
+                      Return to live game
+                    </Link>{' '}
+                    to return to your live seat before joining another.
+                  </p>
+                )
               ) : null}
             </div>
           ) : null}

@@ -21,9 +21,11 @@ import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOp
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { freePlayTargetSlot, openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
 import { userHasConflictingPlatQueueSlot } from '@/lib/hasActiveWaitingLiveFreeGame';
+import type { QueueConflict } from '@/lib/classifyFreePlayQueueConflict';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export type { PlatMode } from '@/lib/freePlayModeTimeControl';
+export type { QueueConflict } from '@/lib/classifyFreePlayQueueConflict';
 
 export type FreePlayQueueArgs = {
   userId: string;
@@ -34,7 +36,7 @@ export type FreePlayQueueArgs = {
 
 export type FreePlayQueueResult =
   | { gameId: string; /** True when this session just **posted** a live open seat (not joined someone else's). */ hostLiveOpenSeat?: boolean }
-  | { error: string; resumeGameId?: string; suggestCreate?: boolean }; // suggestCreate reserved for non–find-match errors
+  | { error: string; resumeGameId?: string; suggestCreate?: boolean; conflict?: QueueConflict }; // suggestCreate reserved for non–find-match errors
 
 type OpenSeatCandidate = {
   id: string;
@@ -47,6 +49,13 @@ type OpenSeatCandidate = {
 /** Shown when Create / Find / manual accept would violate one-active-or-waiting rule. */
 export const FREE_PLAY_QUEUE_BUSY_MESSAGE =
   'You already have an active or waiting live game. Return to that board or leave the seat before joining another.';
+
+/** Shown when the blocking row is the player's own unmatched waiting seat (no opponent yet). */
+export const FREE_PLAY_WAITING_SEAT_BUSY_MESSAGE =
+  'You already have an open waiting seat. Leave that seat before joining another game.';
+
+/** Shown when the blocking row is a seated live game (an opponent has already joined). */
+export const FREE_PLAY_SEATED_LIVE_BUSY_MESSAGE = 'You already have an active live game.';
 
 function buildOpenSeatRow(
   userId: string,
@@ -69,7 +78,7 @@ export async function checkUserFreePlayQueueEligible(
   supabase: SupabaseClient,
   userId: string,
   target: { mode: PlatMode; clock: string; rated: boolean; tempo?: string | null }
-): Promise<{ ok: true } | { error: string; resumeGameId?: string }> {
+): Promise<{ ok: true } | { error: string; resumeGameId?: string; conflict?: QueueConflict }> {
   const normalizedTempo =
     target.tempo == null
       ? (target.mode === 'daily' ? 'daily' : 'live')
@@ -83,11 +92,11 @@ export async function checkUserFreePlayQueueEligible(
     target.rated
   );
   const hit = await userHasConflictingPlatQueueSlot(supabase, userId, slot);
-  if (hit && typeof hit === 'object' && 'queryError' in hit) {
+  if (hit && 'queryError' in hit) {
     return { error: 'Could not verify your active games.' };
   }
-  if (typeof hit === 'string' && hit) {
-    return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: hit };
+  if (hit) {
+    return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: hit.gameId, conflict: hit };
   }
   return { ok: true };
 }
@@ -223,7 +232,7 @@ export async function runFreePlayCreateGame(
     rated,
   });
   if (!('ok' in gate)) {
-    return { error: gate.error, resumeGameId: gate.resumeGameId };
+    return { error: gate.error, resumeGameId: gate.resumeGameId, conflict: gate.conflict };
   }
 
   const row = buildOpenSeatRow(userId, mode, normalizedClock, rated);
@@ -231,8 +240,8 @@ export async function runFreePlayCreateGame(
   if (insErr) {
     const slot = freePlayTargetSlot(mode, normalizedClock, rated);
     const resume = await userHasConflictingPlatQueueSlot(supabase, userId, slot);
-    if (typeof resume === 'string' && resume.trim()) {
-      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: resume };
+    if (resume && 'gameId' in resume) {
+      return { error: FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: resume.gameId, conflict: resume };
     }
     return { error: insErr.message || 'Could not create open seat.' };
   }
@@ -261,7 +270,7 @@ export async function runFreePlayFindMatchAutomatic(
     rated,
   });
   if (!('ok' in gate)) {
-    return { error: gate.error, resumeGameId: gate.resumeGameId };
+    return { error: gate.error, resumeGameId: gate.resumeGameId, conflict: gate.conflict };
   }
 
   const { rows, error: fetchErr } = await fetchCompatibleOpenSeats(supabase, {

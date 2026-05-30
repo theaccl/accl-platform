@@ -10,7 +10,13 @@ import { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { FreePlayQueueResult } from '@/lib/freePlayFindMatch';
-import { runFreePlayCreateGame, runFreePlayFindMatchAutomatic } from '@/lib/freePlayFindMatch';
+import {
+  FREE_PLAY_SEATED_LIVE_BUSY_MESSAGE,
+  FREE_PLAY_WAITING_SEAT_BUSY_MESSAGE,
+  runFreePlayCreateGame,
+  runFreePlayFindMatchAutomatic,
+} from '@/lib/freePlayFindMatch';
+import type { QueueConflictKind } from '@/lib/classifyFreePlayQueueConflict';
 import { registerHostLiveOpenSeatFollow } from '@/lib/hostLiveOpenSeatFollow';
 import {
   type PlatMode,
@@ -20,7 +26,7 @@ import {
   platTimeOptionsForMode,
 } from '@/lib/freePlayModeTimeControl';
 import { supabase } from '@/lib/supabaseClient';
-import { USER_FACING_RESUME_HINT } from '@/lib/userFacingQueueError';
+import { USER_FACING_RESUME_HINT, formatUserFacingQueueError } from '@/lib/userFacingQueueError';
 
 function chipStyle(active: boolean, disabled: boolean, compactChips?: boolean): CSSProperties {
   return {
@@ -69,6 +75,8 @@ export function FreePlayMatchPanel({
   const queueActionLockRef = useRef(false);
   const [message, setMessage] = useState('');
   const [resumeGameId, setResumeGameId] = useState<string | null>(null);
+  const [conflictKind, setConflictKind] = useState<QueueConflictKind | null>(null);
+  const [cancellingSeat, setCancellingSeat] = useState(false);
   const [suggestCreate, setSuggestCreate] = useState(false);
 
   const busy = busyCreate || busyFind;
@@ -79,17 +87,29 @@ export function FreePlayMatchPanel({
     (res: FreePlayQueueResult) => {
       if ('error' in res) {
         if ('resumeGameId' in res && res.resumeGameId) {
+          const kind = res.conflict?.kind ?? null;
           setResumeGameId(res.resumeGameId);
-          setMessage(`${res.error}${USER_FACING_RESUME_HINT}`);
+          setConflictKind(kind);
+          // Own unmatched waiting seat gets its own copy + Return/Cancel block; a seated
+          // live game keeps the live-resume copy. Unknown kind falls back to the generic.
+          if (kind === 'waiting_seat') {
+            setMessage(FREE_PLAY_WAITING_SEAT_BUSY_MESSAGE);
+          } else if (kind === 'seated_live_game') {
+            setMessage(FREE_PLAY_SEATED_LIVE_BUSY_MESSAGE);
+          } else {
+            setMessage(`${res.error}${USER_FACING_RESUME_HINT}`);
+          }
           setSuggestCreate(false);
           return;
         }
         setResumeGameId(null);
+        setConflictKind(null);
         setSuggestCreate(Boolean(res.suggestCreate));
         setMessage(res.error);
         return;
       }
       setResumeGameId(null);
+      setConflictKind(null);
       setSuggestCreate(false);
       if (res.hostLiveOpenSeat) {
         registerHostLiveOpenSeatFollow(res.gameId);
@@ -99,11 +119,37 @@ export function FreePlayMatchPanel({
     [router]
   );
 
+  /**
+   * Lobby-side cancel of the player's own unmatched waiting seat. Reuses the same
+   * authenticated `finish_game` semantics as the board's `handleAbandonOpenSeat`
+   * (white vacates → black_win / resign). Never auto-creates a replacement seat.
+   */
+  const cancelWaitingSeat = useCallback(async () => {
+    if (!resumeGameId || cancellingSeat) return;
+    setCancellingSeat(true);
+    const { error } = await supabase.rpc('finish_game', {
+      p_game_id: resumeGameId,
+      p_result: 'black_win',
+      p_end_reason: 'resign',
+    });
+    setCancellingSeat(false);
+    if (error) {
+      setMessage(formatUserFacingQueueError(error.message));
+      return;
+    }
+    // Clear the conflict so a fresh Create / Find re-checks eligibility (now unblocked).
+    setMessage('');
+    setResumeGameId(null);
+    setConflictKind(null);
+    setSuggestCreate(false);
+  }, [resumeGameId, cancellingSeat]);
+
   const createGame = useCallback(async () => {
     if (busy || queueActionLockRef.current) return;
     queueActionLockRef.current = true;
     setMessage('');
     setResumeGameId(null);
+    setConflictKind(null);
     setSuggestCreate(false);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
@@ -133,6 +179,7 @@ export function FreePlayMatchPanel({
     queueActionLockRef.current = true;
     setMessage('');
     setResumeGameId(null);
+    setConflictKind(null);
     setSuggestCreate(false);
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
@@ -230,7 +277,26 @@ export function FreePlayMatchPanel({
         {message ? (
           <div data-testid="free-plat-play-message" className="space-y-1">
             <p className={`text-sm ${suggestCreate ? 'text-amber-200/95' : 'text-red-300'}`}>{message}</p>
-            {resumeGameId ? (
+            {resumeGameId && conflictKind === 'waiting_seat' ? (
+              <div className="flex flex-wrap gap-3 text-xs" data-testid="free-plat-waiting-seat-actions">
+                <Link
+                  href={`/game/${resumeGameId}`}
+                  className="font-medium text-sky-300 underline hover:text-sky-200"
+                  data-testid="free-plat-return-waiting-seat"
+                >
+                  Return to waiting seat
+                </Link>
+                <button
+                  type="button"
+                  data-testid="free-plat-cancel-waiting-seat"
+                  disabled={cancellingSeat}
+                  onClick={() => void cancelWaitingSeat()}
+                  className="font-medium text-red-300 underline hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {cancellingSeat ? 'Cancelling…' : 'Cancel waiting seat'}
+                </button>
+              </div>
+            ) : resumeGameId ? (
               <p className="text-xs">
                 <Link
                   href={`/game/${resumeGameId}`}
