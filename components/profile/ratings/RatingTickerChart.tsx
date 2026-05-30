@@ -82,6 +82,11 @@ export function RatingTickerChart({
   const active = sorted.find((p) => p.id === activeId) ?? sorted[sorted.length - 1];
   const activeMarker = active ? chartPointMarkerForPoint(active) : 'none';
 
+  const peakIdx = ratings.reduce((bi, r, i) => (r > ratings[bi] ? i : bi), 0);
+  const lowIdx = ratings.reduce((bi, r, i) => (r < ratings[bi] ? i : bi), 0);
+  const lastIdx = sorted.length - 1;
+  const clampLabelX = (x: number) => Math.min(CHART_W - PAD, Math.max(PAD, x));
+
   return (
     <div data-testid="rating-ticker-chart" className="space-y-2">
       {legendKinds.length > 0 ? (
@@ -138,11 +143,86 @@ export function RatingTickerChart({
                 }}
                 role="button"
                 tabIndex={0}
+                data-badge-event={p.badgeEvent && p.badgeEvent !== 'none' ? p.badgeEvent : undefined}
                 aria-label={`Rating ${p.ratingAfter}${style.label ? `, ${style.label}` : ''}`}
               />
             </g>
           );
         })}
+        {/* Peak marker (highest visible authoritative point). */}
+        <g data-testid="rating-ticker-peak-marker">
+          <circle
+            cx={toX(peakIdx)}
+            cy={toY(ratings[peakIdx])}
+            r={4}
+            fill="#4ade80"
+            stroke="#ffffff"
+            strokeWidth="1"
+          />
+          <text
+            x={clampLabelX(toX(peakIdx))}
+            y={Math.max(10, toY(ratings[peakIdx]) - 7)}
+            textAnchor="middle"
+            fontSize="10"
+            fontWeight="700"
+            fill="#86efac"
+          >
+            {ratings[peakIdx].toLocaleString()}
+          </text>
+        </g>
+        {/* Lowest marker (lowest visible authoritative point). */}
+        <g data-testid="rating-ticker-low-marker">
+          <circle
+            cx={toX(lowIdx)}
+            cy={toY(ratings[lowIdx])}
+            r={4}
+            fill="#f87171"
+            stroke="#ffffff"
+            strokeWidth="1"
+          />
+          <text
+            x={clampLabelX(toX(lowIdx))}
+            y={Math.min(chartH - 4, toY(ratings[lowIdx]) + 14)}
+            textAnchor="middle"
+            fontSize="10"
+            fontWeight="700"
+            fill="#fca5a5"
+          >
+            {ratings[lowIdx].toLocaleString()}
+          </text>
+        </g>
+        {/* Current-rating pill on the final visible point. */}
+        {(() => {
+          const cx = toX(lastIdx);
+          const cy = toY(ratings[lastIdx]);
+          const label = ratings[lastIdx].toLocaleString();
+          const w = 10 + label.length * 7;
+          const px = Math.min(CHART_W - w - 2, Math.max(2, cx + 8));
+          const py = Math.min(chartH - 18, Math.max(2, cy - 9));
+          return (
+            <g data-testid="rating-ticker-current-pill">
+              <circle
+                cx={cx}
+                cy={cy}
+                r={4}
+                fill="#38bdf8"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+              />
+              <rect x={px} y={py} width={w} height={16} rx={4} fill="#0369a1" />
+              <text
+                x={px + w / 2}
+                y={py + 11}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="800"
+                fill="#e0f2fe"
+              >
+                {label}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
       {active ? (
         <div

@@ -13,6 +13,20 @@ export const RATING_BADGE_UNAVAILABLE =
 export const RATING_EXACT_SELF_ONLY =
   'Exact-track settlement ratings are visible on your profile when signed in.';
 
+/** Selected lane window has no authoritative points (other lanes may still have data). */
+export const RATING_LANE_EMPTY = 'No rating movement in this lane yet.';
+
+/** Track has a current rating but not enough movement to draw a chart in this view. */
+export const RATING_MORE_GAMES_NEEDED =
+  'More rated games are needed before this chart can be drawn.';
+
+/** No rated games at all for this track. */
+export const RATING_NO_RATED_GAMES = 'No rated games yet.';
+
+export function resultFilterEmptyLabel(filterLabel: string): string {
+  return `No ${filterLabel.toLowerCase()} in this lane yet.`;
+}
+
 export function exactTrackNoGamesLabel(displayLabel: string): string {
   return `No rated ${displayLabel} games recorded yet.`;
 }
