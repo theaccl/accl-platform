@@ -13,7 +13,12 @@ import type { PlatMode } from '@/lib/freePlayModeTimeControl';
 
 /**
  * Live free-play rows that belong in hub obligations (recovery), not passive parking.
- * Seated games surface only on your turn; open seats only when you are the host.
+ *
+ * Presence-based for seated boards: a seated live game the user is in is an active
+ * obligation while in play, **regardless of whose move it is** — the clock keeps
+ * running while the opponent thinks, so the board must not disappear on the
+ * opponent's turn. Open seats remain host-only. Daily/async and finished rows are
+ * excluded upstream (live partition only).
  */
 export function isLiveFreeRecoveryObligation(
   row: Pick<GameContinuityRow, 'tempo' | 'live_time_control' | 'turn' | 'white_player_id' | 'black_player_id'>,
@@ -21,7 +26,7 @@ export function isLiveFreeRecoveryObligation(
 ): boolean {
   if (!uid || !isLiveContinuityGame(row)) return false;
   if (isOpenSeatRow(row)) return row.white_player_id === uid;
-  return isLobbyYourMove(row, uid);
+  return row.white_player_id === uid || row.black_player_id === uid;
 }
 
 /** All Modes overview shows every subsection; filtered lanes hide empty shells. */

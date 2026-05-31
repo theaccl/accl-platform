@@ -16,44 +16,44 @@ import {
 import { clockUrgencyTier } from '../../lib/tournamentRailPresentation';
 
 test.describe('lobbyOperationalContinuity', () => {
-  test('live recovery shows your-turn seated and your open seats only', () => {
-    const uid = 'u1';
+  test('seated live recovery is presence-based: visible to both players regardless of turn', () => {
+    const seated = {
+      tempo: 'live',
+      live_time_control: '5m',
+      turn: 'white',
+      white_player_id: 'u1',
+      black_player_id: 'u2',
+    };
+    expect(isLiveFreeRecoveryObligation(seated, 'u1')).toBe(true);
+    expect(isLiveFreeRecoveryObligation(seated, 'u2')).toBe(true);
+    const blackToMove = { ...seated, turn: 'black' };
+    expect(isLiveFreeRecoveryObligation(blackToMove, 'u1')).toBe(true);
+    expect(isLiveFreeRecoveryObligation(blackToMove, 'u2')).toBe(true);
+    expect(isLiveFreeRecoveryObligation(seated, 'u3')).toBe(false);
+  });
+
+  test('open waiting seat stays host-only; daily/async excluded', () => {
+    const openSeat = {
+      tempo: 'live',
+      live_time_control: '5m',
+      turn: 'white',
+      white_player_id: 'u1',
+      black_player_id: null,
+    };
+    expect(isLiveFreeRecoveryObligation(openSeat, 'u1')).toBe(true);
+    expect(isLiveFreeRecoveryObligation(openSeat, 'u2')).toBe(false);
     expect(
       isLiveFreeRecoveryObligation(
-        {
-          tempo: 'live',
-          live_time_control: '5m',
-          turn: 'white',
-          white_player_id: uid,
-          black_player_id: 'u2',
-        },
-        uid,
-      ),
-    ).toBe(true);
-    expect(
-      isLiveFreeRecoveryObligation(
-        {
-          tempo: 'live',
-          live_time_control: '5m',
-          turn: 'white',
-          white_player_id: uid,
-          black_player_id: 'u2',
-        },
-        'u2',
+        { tempo: 'daily', live_time_control: '1d', turn: 'white', white_player_id: 'u1', black_player_id: 'u2' },
+        'u1',
       ),
     ).toBe(false);
     expect(
       isLiveFreeRecoveryObligation(
-        {
-          tempo: 'live',
-          live_time_control: '5m',
-          turn: 'white',
-          white_player_id: uid,
-          black_player_id: null,
-        },
-        uid,
+        { tempo: 'correspondence', live_time_control: '3d', turn: 'black', white_player_id: 'u1', black_player_id: 'u2' },
+        'u2',
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test('own open live seat is not counted as your-move for hub mode badges', () => {
