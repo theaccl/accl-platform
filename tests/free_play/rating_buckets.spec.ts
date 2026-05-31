@@ -4,20 +4,17 @@ import { hasTwoUserE2ECredentials } from '../fixtures/env';
 import { expectFinishedParitySummary } from '../helpers/finishedGameUi';
 import { setupAcceptedFreeDirectChallenge } from '../helpers/freeRatedChallengePair';
 
-const FREE_BUCKET_RE = /^(free_live|free_daily|free_correspondence)$/;
-
-async function expectRatingSegregationOnFinishedPage(page: Page): Promise<void> {
-  const row = page.getByTestId('rating-classification-debug');
-  await expect(row).toBeVisible({ timeout: 25_000 });
-  await expect(row).toHaveAttribute('data-rating-play-context', 'free');
-  await expect(row).toHaveAttribute('data-rating-bucket', FREE_BUCKET_RE);
+async function expectFinishedRatingSummaryVisible(page: Page): Promise<void> {
+  await expect(page.getByTestId('finished-game-rating-summary')).toBeVisible({ timeout: 25_000 });
+  await expect(page.getByTestId('finished-game-rating-mode-line')).toBeVisible();
+  await expect(page.getByTestId('rating-update-debug')).toHaveCount(0);
 }
 
 test.describe('rating segregation (free-play buckets)', () => {
   test.skip(!hasTwoUserE2ECredentials(), 'Set all four E2E_USER_* and E2E_USER_B_* env vars');
   test.describe.configure({ mode: 'serial', timeout: 200_000 });
 
-  test('free live rated finished → classification maps to free_live; immediate; not tournament', async ({
+  test('free live rated finished → human summary with white and black deltas', async ({
     browser,
   }) => {
     const { pageA, pageB, dispose } = await setupAcceptedFreeDirectChallenge(browser, {
@@ -29,20 +26,16 @@ test.describe('rating segregation (free-play buckets)', () => {
       await pageB.getByTestId('resign-button').click();
       await expectFinishedParitySummary(pageA, { result: 'black_win', endReason: 'resign' }, { bannerTimeoutMs: 45_000 });
 
-      const dbg = pageA.getByTestId('rating-classification-debug');
-      await expectRatingSegregationOnFinishedPage(pageA);
-      await expect(dbg).toHaveAttribute('data-rating-bucket', 'free_live');
-      await expect(dbg).toHaveAttribute('data-rating-update-timing', 'immediate');
-      await expect(dbg).toHaveAttribute('data-rating-skip-reason', '');
-      await expect(dbg).toHaveAttribute('data-rating-pace', 'live');
-      await expect(dbg).toHaveAttribute('data-rating-white-eligible', 'true');
-      await expect(dbg).toHaveAttribute('data-rating-black-eligible', 'true');
+      await expectFinishedRatingSummaryVisible(pageA);
+      await expect(pageA.getByTestId('finished-game-rating-mode-line')).toContainText('Rated');
+      await expect(pageA.getByTestId('finished-game-rating-white-line')).toBeVisible();
+      await expect(pageA.getByTestId('finished-game-rating-black-line')).toBeVisible();
     } finally {
       await dispose();
     }
   });
 
-  test('free live unrated finished → no rating eligibility; skipReason unrated; still free context', async ({
+  test('free live unrated finished → summary note; no raw JSON debug', async ({
     browser,
   }) => {
     const { pageA, pageB, dispose } = await setupAcceptedFreeDirectChallenge(browser, {
@@ -54,22 +47,14 @@ test.describe('rating segregation (free-play buckets)', () => {
       await pageB.getByTestId('resign-button').click();
       await expectFinishedParitySummary(pageA, { result: 'black_win', endReason: 'resign' }, { bannerTimeoutMs: 45_000 });
 
-      const dbg = pageA.getByTestId('rating-classification-debug');
-      await expectRatingSegregationOnFinishedPage(pageA);
-      await expect(dbg).toHaveAttribute('data-rating-update-timing', 'none');
-      await expect(dbg).toHaveAttribute('data-rating-skip-reason', 'unrated');
-      await expect(dbg).toHaveAttribute('data-rating-white-eligible', 'false');
-      await expect(dbg).toHaveAttribute('data-rating-black-eligible', 'false');
-      await expect(dbg).toHaveAttribute('data-rating-pace', 'live');
-      await expect(pageA.getByTestId('rating-update-debug')).toContainText('No rating snapshot', {
-        timeout: 15_000,
-      });
+      await expectFinishedRatingSummaryVisible(pageA);
+      await expect(pageA.getByTestId('finished-game-rating-note')).toContainText(/Unrated/i);
     } finally {
       await dispose();
     }
   });
 
-  test('free daily rated finished → classification maps to free_daily', async ({ browser }) => {
+  test('free daily rated finished → summary visible with rated mode line', async ({ browser }) => {
     const { pageA, pageB, dispose } = await setupAcceptedFreeDirectChallenge(browser, {
       rated: true,
       tempo: 'daily',
@@ -79,17 +64,16 @@ test.describe('rating segregation (free-play buckets)', () => {
       await pageB.getByTestId('resign-button').click();
       await expectFinishedParitySummary(pageA, { result: 'black_win', endReason: 'resign' }, { bannerTimeoutMs: 45_000 });
 
-      const dbg = pageA.getByTestId('rating-classification-debug');
-      await expectRatingSegregationOnFinishedPage(pageA);
-      await expect(dbg).toHaveAttribute('data-rating-bucket', 'free_daily');
-      await expect(dbg).toHaveAttribute('data-rating-pace', 'daily');
-      await expect(dbg).toHaveAttribute('data-rating-update-timing', 'immediate');
+      await expectFinishedRatingSummaryVisible(pageA);
+      await expect(pageA.getByTestId('finished-game-rating-mode-line')).toContainText('Rated');
     } finally {
       await dispose();
     }
   });
 
-  test('free correspondence rated finished → classification maps to free_correspondence', async ({ browser }) => {
+  test('free correspondence rated finished → summary visible with rated mode line', async ({
+    browser,
+  }) => {
     const { pageA, pageB, dispose } = await setupAcceptedFreeDirectChallenge(browser, {
       rated: true,
       tempo: 'correspondence',
@@ -99,11 +83,8 @@ test.describe('rating segregation (free-play buckets)', () => {
       await pageB.getByTestId('resign-button').click();
       await expectFinishedParitySummary(pageA, { result: 'black_win', endReason: 'resign' }, { bannerTimeoutMs: 45_000 });
 
-      const dbg = pageA.getByTestId('rating-classification-debug');
-      await expectRatingSegregationOnFinishedPage(pageA);
-      await expect(dbg).toHaveAttribute('data-rating-bucket', 'free_correspondence');
-      await expect(dbg).toHaveAttribute('data-rating-pace', 'correspondence');
-      await expect(dbg).toHaveAttribute('data-rating-update-timing', 'immediate');
+      await expectFinishedRatingSummaryVisible(pageA);
+      await expect(pageA.getByTestId('finished-game-rating-mode-line')).toContainText('Rated');
     } finally {
       await dispose();
     }

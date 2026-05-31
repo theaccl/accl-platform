@@ -58,6 +58,7 @@ import {
   parseBadgeBlockFromRatingUpdate,
 } from '@/lib/badgeSettlementRead';
 import RatingBadgeTicker from '@/components/game/RatingBadgeTicker';
+import FinishedGameRatingSummary from '@/components/game/FinishedGameRatingSummary';
 import { START_FEN } from '@/lib/startFen';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { formatCreateSeatedGameGuardError } from '@/lib/formatCreateSeatedGameGuardError';
@@ -3214,51 +3215,75 @@ export default function GamePage() {
             </p>
           </div>
           {!isPublicViewer ? (
-          <p
-            data-testid="rating-classification-debug"
-            data-rating-bucket={finishedRatingClass?.bucket ?? ''}
-            data-rating-update-timing={finishedRatingClass?.updateTiming ?? ''}
-            data-rating-skip-reason={finishedRatingClass?.skipReason ?? ''}
-            data-rating-play-context={finishedRatingClass?.playContext ?? ''}
-            data-rating-pace={game.tempo ?? ''}
-            data-rating-white-eligible={finishedRatingClass ? String(finishedRatingClass.whiteEligible) : ''}
-            data-rating-black-eligible={finishedRatingClass ? String(finishedRatingClass.blackEligible) : ''}
-            style={{
-              marginBottom: 16,
-              maxWidth: 560,
-              fontSize: 12,
-              color: '#94a3b8',
-              lineHeight: 1.45,
-            }}
-          >
-            {finishedRatingClass ? ratingClassificationSummaryLine(finishedRatingClass) : null}
-          </p>
+            <FinishedGameRatingSummary
+              ratingLastUpdate={game.rating_last_update}
+              rated={game.rated}
+              tempo={game.tempo}
+              liveTimeControl={game.live_time_control}
+              ratingApplied={game.rating_applied}
+            />
           ) : null}
           {!isPublicViewer && finishedBadgeTicker ? (
             <RatingBadgeTicker ticker={finishedBadgeTicker} />
           ) : null}
-          {!isPublicViewer ? (
-          <pre
-            data-testid="rating-update-debug"
-            style={{
-              marginBottom: 16,
-              maxWidth: 560,
-              fontSize: 11,
-              lineHeight: 1.4,
-              color: '#cbd5e1',
-              background: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: 8,
-              padding: 12,
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {game.rating_last_update != null
-              ? JSON.stringify(game.rating_last_update, null, 2)
-              : 'No rating snapshot on this row yet (unrated free, tournament game, skipped result, or refetch after finish). Trigger runs when status → finished; reload if migration just applied.'}
-          </pre>
+          {IS_DEV_BUILD && !isPublicViewer ? (
+            <details
+              data-testid="rating-settlement-debug-disclosure"
+              style={{ marginBottom: 16, maxWidth: 560 }}
+            >
+              <summary
+                style={{
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#94a3b8',
+                  marginBottom: 8,
+                }}
+              >
+                Settlement debug (development only)
+              </summary>
+              <p
+                data-testid="rating-classification-debug"
+                data-rating-bucket={finishedRatingClass?.bucket ?? ''}
+                data-rating-update-timing={finishedRatingClass?.updateTiming ?? ''}
+                data-rating-skip-reason={finishedRatingClass?.skipReason ?? ''}
+                data-rating-play-context={finishedRatingClass?.playContext ?? ''}
+                data-rating-pace={game.tempo ?? ''}
+                data-rating-white-eligible={
+                  finishedRatingClass ? String(finishedRatingClass.whiteEligible) : ''
+                }
+                data-rating-black-eligible={
+                  finishedRatingClass ? String(finishedRatingClass.blackEligible) : ''
+                }
+                style={{
+                  marginBottom: 12,
+                  fontSize: 12,
+                  color: '#94a3b8',
+                  lineHeight: 1.45,
+                }}
+              >
+                {finishedRatingClass ? ratingClassificationSummaryLine(finishedRatingClass) : null}
+              </p>
+              <pre
+                data-testid="rating-update-debug"
+                style={{
+                  fontSize: 11,
+                  lineHeight: 1.4,
+                  color: '#cbd5e1',
+                  background: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: 8,
+                  padding: 12,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {game.rating_last_update != null
+                  ? JSON.stringify(game.rating_last_update, null, 2)
+                  : 'No rating snapshot on this row yet (unrated free, tournament game, skipped result, or refetch after finish). Trigger runs when status → finished; reload if migration just applied.'}
+              </pre>
+            </details>
           ) : null}
           {canLoadFinishedGameArtifacts ? (
             <div
