@@ -46,7 +46,9 @@ import {
   finishedGameResultBannerText,
   formatFinishedAtLocal,
   isGameRecordFinished,
+  isNeutralPreStartOpenSeatEndReason,
 } from '@/lib/finishedGame';
+import { NEUTRAL_OPEN_SEAT_CANCEL_FINISH } from '@/lib/gameContinuityPresentation';
 import {
   classifyGameForRating,
   ratingClassificationSummaryLine,
@@ -668,6 +670,7 @@ function terminationPgnTag(game: GameRow): string | null {
   if (game.status !== 'finished') return null;
   const er = game.end_reason;
   if (!er) return null;
+  if (isNeutralPreStartOpenSeatEndReason(er)) return null;
   const m: Record<string, string> = {
     resign: 'resignation',
     draw_agreement: 'draw agreement',
@@ -1861,7 +1864,7 @@ export default function GamePage() {
     }, 600);
   };
 
-  /** Open-seat creator exits before Black joins — same RPC as resign (white vacates). */
+  /** Open-seat creator cancels before Black joins — neutral pre-start void (not a resignation). */
   const handleAbandonOpenSeat = async () => {
     if (!game || !userId || resigning) return;
     if (game.white_player_id !== userId || bothPlayersSeated(game)) return;
@@ -1870,8 +1873,7 @@ export default function GamePage() {
     setMessage('');
     const { data, error } = await supabase.rpc('finish_game', {
       p_game_id: game.id,
-      p_result: 'black_win',
-      p_end_reason: 'resign',
+      ...NEUTRAL_OPEN_SEAT_CANCEL_FINISH,
     });
     setResigning(false);
     if (error) {

@@ -5,6 +5,7 @@ import {
   formatEndReasonLabel,
   formatFinishedAtLocal,
   isGameRecordFinished,
+  NEUTRAL_OPEN_SEAT_CANCELLED_BANNER,
   opponentUserIdForViewer,
   viewerOutcomeShortLabel,
 } from '../../lib/finishedGame';
@@ -35,6 +36,14 @@ test.describe('finishedGame helpers', () => {
     expect(
       finishedGameResultBannerText({ ...baseGame, result: 'draw', end_reason: 'fifty_move_rule' })
     ).toBe('Fifty-move rule - Draw');
+    expect(
+      finishedGameResultBannerText({
+        white_player_id: 'w1',
+        black_player_id: null,
+        result: 'draw',
+        end_reason: 'abandoned_before_move',
+      })
+    ).toBe(NEUTRAL_OPEN_SEAT_CANCELLED_BANNER);
   });
 
   test('viewerOutcomeShortLabel is relative to seat', () => {

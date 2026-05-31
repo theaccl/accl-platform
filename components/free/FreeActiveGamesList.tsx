@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { GameContinuityGameRows } from '@/components/free/GameContinuityGameRows';
 import {
@@ -11,7 +11,10 @@ import {
   GAME_CONTINUITY_LIVE_ANCHOR,
   LIVE_NOW_SECTION_HINT,
   LIVE_NOW_SECTION_TITLE,
+  OPEN_LIVE_SEATS_SECTION_HINT,
+  OPEN_LIVE_SEATS_SECTION_TITLE,
   partitionGamesByContinuity,
+  splitLiveContinuityRows,
   type GameContinuityRow,
 } from '@/lib/gameContinuityPresentation';
 import { isLobbyNonFinishedGame } from '@/lib/freePlayLobby';
@@ -28,12 +31,16 @@ function scrollToHashAnchor() {
 }
 
 /**
- * Full list at `/free/active` — live reconnect vs daily/async continuity in separate sections.
+ * Full list at `/free/active` — seated live boards, open live seats, and daily/async in sibling sections.
  */
 export default function FreeActiveGamesList() {
   const [rows, setRows] = useState<GameContinuityRow[] | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const handleOpenSeatCancelled = useCallback((gameId: string) => {
+    setRows((prev) => (prev ? prev.filter((r) => r.id !== gameId) : prev));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +55,7 @@ export default function FreeActiveGamesList() {
       const { data, error } = await supabase
         .from('games')
         .select(
-          'id,status,tempo,live_time_control,turn,white_player_id,black_player_id,created_at,updated_at',
+          'id,status,tempo,live_time_control,rated,turn,white_player_id,black_player_id,created_at,updated_at',
         )
         .eq('play_context', 'free')
         .is('tournament_id', null)
@@ -79,6 +86,7 @@ export default function FreeActiveGamesList() {
   }, [rows]);
 
   const { live, dailyAsync } = useMemo(() => partitionGamesByContinuity(rows ?? []), [rows]);
+  const { openLive, seatedLive } = useMemo(() => splitLiveContinuityRows(live), [live]);
 
   if (rows === null) {
     return <p className="text-sm text-gray-400">Loading…</p>;
@@ -99,11 +107,34 @@ export default function FreeActiveGamesList() {
       >
         <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-sky-300">{LIVE_NOW_SECTION_TITLE}</h2>
         <p className="mt-1 text-sm text-gray-500">{LIVE_NOW_SECTION_HINT}</p>
-        {live.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-400">No live boards right now.</p>
+        {seatedLive.length === 0 ? (
+          <p className="mt-4 text-sm text-gray-400">No seated live boards right now.</p>
         ) : (
           <div className="mt-4">
-            <GameContinuityGameRows rows={live} uid={uid} variant="live" testIdPrefix="free-active-live" />
+            <GameContinuityGameRows rows={seatedLive} uid={uid} variant="live" testIdPrefix="free-active-live" />
+          </div>
+        )}
+      </section>
+
+      <section
+        data-testid="free-active-open-live-seats"
+        className="scroll-mt-24 rounded-2xl border border-cyan-500/30 bg-[#161b22] p-5"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-cyan-300">
+          {OPEN_LIVE_SEATS_SECTION_TITLE}
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">{OPEN_LIVE_SEATS_SECTION_HINT}</p>
+        {openLive.length === 0 ? (
+          <p className="mt-4 text-sm text-gray-400">No open live seats posted.</p>
+        ) : (
+          <div className="mt-4">
+            <GameContinuityGameRows
+              rows={openLive}
+              uid={uid}
+              variant="live"
+              testIdPrefix="free-active-open"
+              onOpenSeatCancelled={handleOpenSeatCancelled}
+            />
           </div>
         )}
       </section>

@@ -46,8 +46,8 @@ test.describe('waiting-seat queue conflict UX (static)', () => {
   test('cancel reuses the authenticated finish_game RPC (not service-role)', () => {
     const s = src('components/FreePlayMatchPanel.tsx');
     expect(s).toContain("supabase.rpc('finish_game'");
-    expect(s).toContain("p_result: 'black_win'");
-    expect(s).toContain("p_end_reason: 'resign'");
+    expect(s).toContain('NEUTRAL_OPEN_SEAT_CANCEL_FINISH');
+    expect(s).not.toMatch(/cancelWaitingSeat[\s\S]{0,400}p_end_reason:\s*'resign'/);
     expect(s).not.toContain('finish_game_system');
     // After a successful cancel, conflict state clears so the next Create/Find re-checks.
     expect(s).toContain('setResumeGameId(null)');

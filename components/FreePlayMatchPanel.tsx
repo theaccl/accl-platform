@@ -17,6 +17,7 @@ import {
   runFreePlayFindMatchAutomatic,
 } from '@/lib/freePlayFindMatch';
 import type { QueueConflictKind } from '@/lib/classifyFreePlayQueueConflict';
+import { NEUTRAL_OPEN_SEAT_CANCEL_FINISH } from '@/lib/gameContinuityPresentation';
 import { registerHostLiveOpenSeatFollow } from '@/lib/hostLiveOpenSeatFollow';
 import {
   type PlatMode,
@@ -121,16 +122,15 @@ export function FreePlayMatchPanel({
 
   /**
    * Lobby-side cancel of the player's own unmatched waiting seat. Reuses the same
-   * authenticated `finish_game` semantics as the board's `handleAbandonOpenSeat`
-   * (white vacates → black_win / resign). Never auto-creates a replacement seat.
+   * neutral pre-start `finish_game` semantics as the board's `handleAbandonOpenSeat`.
+   * Never auto-creates a replacement seat.
    */
   const cancelWaitingSeat = useCallback(async () => {
     if (!resumeGameId || cancellingSeat) return;
     setCancellingSeat(true);
     const { error } = await supabase.rpc('finish_game', {
       p_game_id: resumeGameId,
-      p_result: 'black_win',
-      p_end_reason: 'resign',
+      ...NEUTRAL_OPEN_SEAT_CANCEL_FINISH,
     });
     setCancellingSeat(false);
     if (error) {

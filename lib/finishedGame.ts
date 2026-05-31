@@ -14,10 +14,22 @@ export function isGameRecordFinished(g: { status?: string | null }): boolean {
   return String(g.status ?? '').toLowerCase() === 'finished';
 }
 
+/** Pre-start open-seat void finishes — not a played game, not a resignation. */
+export function isNeutralPreStartOpenSeatEndReason(endReason: string | null | undefined): boolean {
+  const er = (endReason ?? '').trim();
+  return er === 'abandoned_before_move' || er === 'superseded';
+}
+
+export const NEUTRAL_OPEN_SEAT_CANCELLED_BANNER = 'Open seat cancelled — no game played';
+
 /** Human-readable finished-game line (game board banner + history cards). */
 export function finishedGameResultBannerText(game: FinishedGameDisplayFields): string {
   const r = game.result ?? '';
   const er = (game.end_reason ?? '').trim();
+
+  if (isNeutralPreStartOpenSeatEndReason(er)) {
+    return NEUTRAL_OPEN_SEAT_CANCELLED_BANNER;
+  }
 
   if (r === 'draw' || r === '1/2-1/2') {
     switch (er) {
@@ -91,6 +103,9 @@ export function viewerOutcomeShortLabel(
   game: FinishedGameDisplayFields,
   viewerUserId: string
 ): string {
+  if (isNeutralPreStartOpenSeatEndReason(game.end_reason)) {
+    return NEUTRAL_OPEN_SEAT_CANCELLED_BANNER;
+  }
   const r = game.result ?? '';
   if (r === 'draw' || r === '1/2-1/2') return 'Draw';
   const isWhite = game.white_player_id === viewerUserId;
