@@ -5,6 +5,10 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import { FreePlayLobbyGamesRealtimeContext } from '@/components/free/FreePlayLobbyGamesRealtimeProvider';
 import type { PlatMode } from '@/lib/freePlayModeTimeControl';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
+import {
+  filterPublicVisibleOpenSeats,
+  partitionLobbyRowsForPublicOpen,
+} from '@/lib/freeLobbyOpenSeatFilters';
 import { supabase } from '@/lib/supabaseClient';
 
 const empty: Record<PlatMode, boolean> = {
@@ -57,14 +61,26 @@ export function useFreeOpenSeatActivity(): {
     }
     const { data, error } = await supabase
       .from('games')
-      .select('tempo,live_time_control')
+      .select('id,white_player_id,black_player_id,tempo,live_time_control,rated,status')
       .eq('play_context', 'free')
       .is('tournament_id', null)
-      .eq('status', 'active')
-      .is('black_player_id', null);
+      .in('status', ['active', 'waiting'])
+      .limit(240);
     const next = { ...emptyCounts };
     if (!error && data?.length) {
-      for (const row of data as { tempo: string | null; live_time_control: string | null }[]) {
+      const { openCandidates, seatedForBusy } = partitionLobbyRowsForPublicOpen(
+        data as Array<{
+          id: string;
+          white_player_id: string;
+          black_player_id: string | null;
+          tempo: string | null;
+          live_time_control: string | null;
+          rated: boolean | null;
+          status: string | null;
+        }>,
+      );
+      const visible = filterPublicVisibleOpenSeats(openCandidates, seatedForBusy);
+      for (const row of visible) {
         const m = platBucketForOpenSeat(row.tempo, row.live_time_control);
         if (m) next[m] += 1;
       }

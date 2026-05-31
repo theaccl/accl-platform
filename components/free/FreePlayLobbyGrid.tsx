@@ -53,7 +53,12 @@ export function FreePlayLobbyGrid({ children }: { children?: ReactNode }) {
       </div>
       <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-1 items-start gap-5 px-4 py-5 sm:gap-6 sm:px-5 sm:py-6 lg:grid-cols-2 lg:gap-8 lg:py-6">
         <div className="min-w-0 w-full lg:max-h-[min(70vh,560px)] lg:overflow-y-auto">
-          <FreeLobbyOpenGamesList mode={mode} selectedClock={clock} selectedRated={rated} />
+          <FreeLobbyOpenGamesList
+            mode={mode}
+            selectedClock={clock}
+            selectedRated={rated}
+            onRatedChange={setRated}
+          />
         </div>
         <div className="min-w-0 w-full lg:max-h-[min(70vh,560px)] lg:overflow-y-auto">
           <NexusLobbyChatColumn

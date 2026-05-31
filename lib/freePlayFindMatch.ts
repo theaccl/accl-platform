@@ -17,6 +17,7 @@ import {
   coercePlatTimeForMode,
   isValidPlatTimeForMode,
 } from '@/lib/freePlayModeTimeControl';
+import { isBotHostedPublicOpenSeat } from '@/lib/freeLobbyOpenSeatFilters';
 import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOpenSeatsFilter';
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { freePlayTargetSlot, openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
@@ -162,6 +163,7 @@ export async function filterOpenSeatRowsExcludingBusyHosts<
 
   return {
     rows: rows.filter((r) => {
+      if (isBotHostedPublicOpenSeat(r)) return false;
       for (const g of fullGames) {
         if (openSeatRowHostSeatedConflictsInSameSlot(r, g)) {
           return false;
@@ -198,7 +200,7 @@ export async function fetchCompatibleOpenSeats(
     return { rows: [], error: qErr.message || 'Could not look up open seats.' };
   }
 
-  let rows = (candidates ?? []) as OpenSeatCandidate[];
+  let rows = ((candidates ?? []) as OpenSeatCandidate[]).filter((r) => !isBotHostedPublicOpenSeat(r));
 
   const { rows: afterBusy, error: busyErr } = await filterOpenSeatRowsExcludingBusyHosts(supabase, rows);
   if (busyErr) {

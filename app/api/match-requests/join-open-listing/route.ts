@@ -14,6 +14,7 @@ import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
 import { formatMatchRequestApiError } from '@/lib/userFacingQueueError';
+import { isKnownBotHostUserId, PUBLIC_BOT_HOSTED_OPEN_SEAT_JOIN_MESSAGE } from '@/lib/bot/botIdentity';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export const runtime = 'nodejs';
@@ -108,6 +109,10 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (String(r.from_user_id ?? '') === userId) {
     return jsonResponse({ error: 'You cannot join your own listing.' }, 400);
+  }
+
+  if (isKnownBotHostUserId(String(r.from_user_id ?? ''))) {
+    return jsonResponse({ error: PUBLIC_BOT_HOSTED_OPEN_SEAT_JOIN_MESSAGE }, 409);
   }
 
   if (rowIndicatesLiveFreePlayPacing(r)) {

@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useCallback, useState } from 'react';
 
 import { gameDisplayTempoLabel } from '@/lib/gameDisplayLabel';
+import { openSeatExactControlDisplayLabel } from '@/lib/freeLobbyOpenSeatFilters';
 import {
   continuityRowActionLabel,
   NEUTRAL_OPEN_SEAT_CANCEL_FINISH,
   type GameContinuityRow,
+  isLiveContinuityGame,
   isOpenSeatRow,
 } from '@/lib/gameContinuityPresentation';
 import { supabase } from '@/lib/supabaseClient';
@@ -22,7 +24,7 @@ function isYourMove(g: GameContinuityRow, uid: string): boolean {
 }
 
 function openSeatLaneLabel(g: GameContinuityRow): string {
-  return gameDisplayTempoLabel({ tempo: g.tempo, liveTimeControl: g.live_time_control ?? null });
+  return openSeatExactControlDisplayLabel(g);
 }
 
 type OpenLiveSeatInlineCardProps = {
@@ -137,7 +139,7 @@ export function GameContinuityGameRows({
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-semibold text-white">
-                        {gameDisplayTempoLabel({ tempo: g.tempo, liveTimeControl: g.live_time_control ?? null })}
+                        {isLiveContinuityGame(g) ? openSeatExactControlDisplayLabel(g) : gameDisplayTempoLabel({ tempo: g.tempo, liveTimeControl: g.live_time_control ?? null })}
                       </span>
                       <span className="block text-[11px] text-gray-500">{continuityRowActionLabel(g)}</span>
                     </span>

@@ -108,6 +108,7 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
             mode={mode}
             selectedClock={clock}
             selectedRated={rated}
+            onRatedChange={setRated}
             openByClock={openByClock}
             clockActivityLoading={clockActivityLoading}
             onSelectClock={onClockChange}

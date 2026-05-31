@@ -5,6 +5,7 @@ import {
   freePlayUserBlockedForTargetSlot,
   freePlayUserSeatedInAnyActiveLiveGame,
   freePlayUserSeatedInConflictingSlot,
+  openSeatRowHostSeatedConflictsInSameSlot,
 } from '../../lib/freePlayQueueSlotConflict';
 
 const seatedRapid10 = {
@@ -18,6 +19,12 @@ const seatedRapid10 = {
 } as const;
 
 test.describe('freePlayQueueSlotConflict', () => {
+  test('seated rapid 10m rated conflicts with rapid 10m rated target', () => {
+    expect(
+      freePlayUserSeatedInConflictingSlot('u1', seatedRapid10, freePlayTargetSlot('rapid', '10m', true)),
+    ).toBe(true);
+  });
+
   test('same live mode+clock+rated blocks, different mode does not', () => {
     const uid = 'u1';
     const blitz3 = freePlayUserBlockedForTargetSlot(
@@ -64,6 +71,16 @@ test.describe('freePlayQueueSlotConflict', () => {
       freePlayTargetSlot('rapid', '10m', true)
     );
     expect(rapidWhileBlitz).toBe(false);
+  });
+
+  test('openSeatRowHostSeatedConflictsInSameSlot hides open seat when host is seated in same slice', () => {
+    const open = {
+      white_player_id: 'u1',
+      tempo: 'live',
+      live_time_control: '10m',
+      rated: true,
+    };
+    expect(openSeatRowHostSeatedConflictsInSameSlot(open, seatedRapid10)).toBe(true);
   });
 
   test('seated daily/correspondence does not block a live target slot', () => {

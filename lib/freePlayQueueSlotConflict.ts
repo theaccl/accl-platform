@@ -172,13 +172,14 @@ export function openSeatRowHostSeatedConflictsInSameSlot(
     tempo: string | null;
     live_time_control: string | null;
     rated: boolean | null;
+    status?: string | null;
   }
 ): boolean {
   if (!openRow.white_player_id) return false;
   const w = String(openRow.white_player_id);
-  if (hostSeatedRow.white_player_id !== w && hostSeatedRow.black_player_id !== w) return false;
-  if (!isSeatedTwoPlayer(hostSeatedRow)) return false;
-  if (!isActiveOrWaiting(hostSeatedRow)) return false;
+  if (hostSeatedRow.white_player_id !== w && hostSeatedRow.black_player_id !== w) {
+    return false;
+  }
 
   // Do not map daily 30m/60m to the same PLAT “rapid” bucket as live 30m/60m for *host hidden* rules.
   // A host may have a live game and a daily open; those must not be treated as the same slot here.
@@ -194,7 +195,7 @@ export function openSeatRowHostSeatedConflictsInSameSlot(
     return false;
   }
 
-  return slotBlocksAgainstGameRow(
+  return freePlayUserSeatedInConflictingSlot(
     w,
     {
       id: (hostSeatedRow as { id?: string }).id,
@@ -203,12 +204,12 @@ export function openSeatRowHostSeatedConflictsInSameSlot(
       tempo: hostSeatedRow.tempo,
       live_time_control: hostSeatedRow.live_time_control,
       rated: hostSeatedRow.rated,
+      status: hostSeatedRow.status,
     },
     freePlayTargetSlot(
       m,
       coercePlatTimeForMode(m, String(openRow.live_time_control ?? '')),
-      openRow.rated === true
+      openRow.rated === true,
     ),
-    { requireSeated: true }
   );
 }

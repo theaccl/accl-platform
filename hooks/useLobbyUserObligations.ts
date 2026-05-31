@@ -8,7 +8,7 @@ import type { LobbyObligationRow } from '@/lib/lobbyObligationPresentation';
 import { supabase } from '@/lib/supabaseClient';
 
 const GAME_SELECT =
-  'id,status,tempo,live_time_control,turn,white_player_id,black_player_id,updated_at,tournament_id,white_clock_ms,black_clock_ms';
+  'id,status,tempo,live_time_control,rated,turn,white_player_id,black_player_id,updated_at,tournament_id,white_clock_ms,black_clock_ms';
 
 export function useLobbyUserObligations() {
   const [freeRows, setFreeRows] = useState<LobbyObligationRow[] | null>(null);

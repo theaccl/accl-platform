@@ -79,6 +79,7 @@ import {
   type GameRouteAccessKind,
   shouldUsePublicSpectateRpc,
 } from '@/lib/gameRouteVisibility';
+import { isKnownBotHostUserId, PUBLIC_BOT_HOSTED_OPEN_SEAT_JOIN_MESSAGE } from '@/lib/bot/botIdentity';
 import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 import { buildGameLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
@@ -1602,6 +1603,11 @@ export default function GamePage() {
       return;
     }
     if (game.white_player_id === userId) {
+      router.replace(`/game/${gameId}`);
+      return;
+    }
+    if (isKnownBotHostUserId(game.white_player_id)) {
+      setMessage(PUBLIC_BOT_HOSTED_OPEN_SEAT_JOIN_MESSAGE);
       router.replace(`/game/${gameId}`);
       return;
     }
