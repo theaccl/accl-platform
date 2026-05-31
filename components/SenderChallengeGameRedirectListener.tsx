@@ -5,7 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import { acclPerfMark } from "@/lib/acclPerfDebug";
-import { navigateAfterAcceptIfAllowed } from "@/lib/postAcceptGameNavigation";
+import { parseGameIdFromPath } from "@/lib/gameAcceptRedirectPriority";
+import {
+  navigateAfterAcceptIfAllowed,
+  type AcceptRedirectGameRef,
+} from "@/lib/postAcceptGameNavigation";
 
 /** Free-play games created from challenge / open listing / rematch request — not tournaments or bots. */
 const REDIRECT_SOURCE_TYPES = new Set(["challenge", "open_listing", "rematch_request"]);
@@ -50,6 +54,20 @@ export function SenderChallengeGameRedirectListener() {
     }
     const uid = sessionUserId;
 
+    const resolvePathBoardHint = async (path: string): Promise<AcceptRedirectGameRef | null> => {
+      const pathId = parseGameIdFromPath(path);
+      if (!pathId) return null;
+      const { data, error } = await supabase
+        .from("games")
+        .select("id,tempo,status")
+        .eq("id", pathId)
+        .maybeSingle();
+      if (error || !data) return null;
+      const row = data as { id?: string; tempo?: string | null; status?: string | null };
+      if (String(row.id ?? "").trim() !== pathId) return null;
+      return { id: pathId, tempo: row.tempo ?? null, status: row.status ?? null };
+    };
+
     const tryNavigateToGame = async (gameId: string, acceptedTempo: string | null | undefined) => {
       const g = gameId.trim();
       if (!g) {
@@ -64,6 +82,7 @@ export function SenderChallengeGameRedirectListener() {
       if (prev && prev.gameId === g && now - prev.at < 2500) {
         return;
       }
+      const boardHint = await resolvePathBoardHint(path);
       const didPush = await navigateAfterAcceptIfAllowed({
         flow: "sender-challenge-game-redirect-listener",
         pathname: path,
@@ -72,7 +91,7 @@ export function SenderChallengeGameRedirectListener() {
         authUserId: uid,
         acceptedGameId: g,
         acceptedTempoHint: acceptedTempo ?? null,
-        boardGameFromPage: null,
+        boardGameFromPage: boardHint,
       });
       if (didPush) {
         lastPushRef.current = { gameId: g, at: Date.now() };
@@ -121,10 +140,31 @@ export function SenderChallengeGameRedirectListener() {
         return;
       }
       const gid = String(row.resolution_game_id ?? "").trim();
-      if (!gid) {
+      if (gid) {
+        void tryNavigateToGame(gid, String(row.tempo ?? ""));
         return;
       }
-      void tryNavigateToGame(gid, String(row.tempo ?? ""));
+      /** Fallback when UPDATE arrives before resolution_game_id is visible in payload. */
+      const requestId = String(row.id ?? "").trim();
+      if (!requestId) return;
+      void (async () => {
+        const { data } = await supabase
+          .from("match_requests")
+          .select("resolution_game_id,tempo")
+          .eq("id", requestId)
+          .eq("from_user_id", uid)
+          .eq("status", "accepted")
+          .maybeSingle();
+        const refetchGid = String(
+          (data as { resolution_game_id?: string | null } | null)?.resolution_game_id ?? "",
+        ).trim();
+        if (refetchGid) {
+          await tryNavigateToGame(
+            refetchGid,
+            String((data as { tempo?: string | null } | null)?.tempo ?? ""),
+          );
+        }
+      })();
     };
 
     acclPerfMark("SenderChallengeGameRedirectListener.realtime.subscribe", { uid });

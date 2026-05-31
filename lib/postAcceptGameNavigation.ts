@@ -86,14 +86,18 @@ export async function resolveAcceptNavigationContext(
 
   if (pathId && pathId !== acc) {
     const [pathRes, offRes] = await Promise.all([
-      supabase.from('games').select('id,tempo').eq('id', pathId).maybeSingle(),
+      supabase.from('games').select('id,tempo,status').eq('id', pathId).maybeSingle(),
       getActiveFreePlayGameForUser(supabase, userId, acc),
     ]);
     const { data, error } = pathRes;
     if (!error && data) {
-      const row = data as { id?: string; tempo?: string | null };
+      const row = data as { id?: string; tempo?: string | null; status?: string | null };
       if (normId(row.id) === pathId) {
-        pathGameFromDb = { id: pathId, tempo: row.tempo ?? null };
+        pathGameFromDb = {
+          id: pathId,
+          tempo: row.tempo ?? null,
+          status: row.status ?? null,
+        };
       }
     }
     offPath = offRes;
@@ -160,7 +164,7 @@ export async function navigateAfterAcceptIfAllowed(args: PostAcceptNavigateArgs)
   }
 
   const [{ data: accRow, error: accErr }, { currentGame, pathBoardFromDb }] = await Promise.all([
-    args.supabase.from('games').select('id,tempo').eq('id', gid).maybeSingle(),
+    args.supabase.from('games').select('id,tempo,status').eq('id', gid).maybeSingle(),
     resolveAcceptNavigationContext(args.supabase, args.authUserId, {
       pathname: args.pathname,
       acceptedGameId: gid,

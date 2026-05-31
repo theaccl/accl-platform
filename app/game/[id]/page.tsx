@@ -1030,7 +1030,9 @@ export default function GamePage() {
                 authUserId: userId.trim() || null,
                 acceptedGameId: gid,
                 acceptedTempoHint: row.tempo ?? null,
-                boardGameFromPage: g ? { id: g.id, tempo: g.tempo ?? null } : null,
+                boardGameFromPage: g
+                  ? { id: g.id, tempo: g.tempo ?? null, status: g.status ?? null }
+                  : null,
               });
               setPendingRematchRequestId(null);
             })();

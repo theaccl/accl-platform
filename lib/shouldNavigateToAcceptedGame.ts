@@ -7,6 +7,8 @@ import {
 export type AcceptGameRef = {
   id: string;
   tempo?: string | null;
+  /** When `finished`, a same-tempo accept (e.g. rematch) may still outrank the path board. */
+  status?: string | null;
 };
 
 export type RedirectDecisionInput = {
@@ -45,10 +47,18 @@ export function pathBoardRefForHardRule(
   const pathId = parseGameIdFromPath(pathname);
   if (!pathId) return null;
   if (inMemoryBoardGame && normId(inMemoryBoardGame.id) === pathId) {
-    return { id: pathId, tempo: inMemoryBoardGame.tempo ?? null };
+    return {
+      id: pathId,
+      tempo: inMemoryBoardGame.tempo ?? null,
+      status: inMemoryBoardGame.status ?? null,
+    };
   }
   if (pathBoardFromDb && normId(pathBoardFromDb.id) === pathId) {
-    return { id: pathId, tempo: pathBoardFromDb.tempo ?? null };
+    return {
+      id: pathId,
+      tempo: pathBoardFromDb.tempo ?? null,
+      status: pathBoardFromDb.status ?? null,
+    };
   }
   return null;
 }
@@ -68,10 +78,18 @@ export function mergeCurrentGameForAcceptNavigation(params: {
 
   if (pathId && pathId !== acc) {
     if (params.inMemoryBoardGame && normId(params.inMemoryBoardGame.id) === pathId) {
-      return { id: pathId, tempo: params.inMemoryBoardGame.tempo ?? null };
+      return {
+        id: pathId,
+        tempo: params.inMemoryBoardGame.tempo ?? null,
+        status: params.inMemoryBoardGame.status ?? null,
+      };
     }
     if (params.pathGameFromDb && normId(params.pathGameFromDb.id) === pathId) {
-      return { id: pathId, tempo: params.pathGameFromDb.tempo ?? null };
+      return {
+        id: pathId,
+        tempo: params.pathGameFromDb.tempo ?? null,
+        status: params.pathGameFromDb.status ?? null,
+      };
     }
     return null;
   }
@@ -98,6 +116,15 @@ export function getAcceptRedirectDecision(input: RedirectDecisionInput): AcceptR
   const curId = currentGame ? normId(currentGame.id) : '';
   if (curId && curId === accId) {
     return { navigate: false, reason: 'same-accepted-as-current-game' };
+  }
+
+  if (currentPath.startsWith('/game/') && pathGameId && pathGameId !== accId) {
+    const pathBoard =
+      pathBoardRefForHardRule(currentPath, input.inMemoryBoardGame ?? null, input.pathBoardFromDb ?? null) ??
+      (currentGame && pathGameId === normId(currentGame.id) ? currentGame : null);
+    if (String(pathBoard?.status ?? '') === 'finished') {
+      return { navigate: true, reason: 'finished-path-board-follow-accept' };
+    }
   }
 
   const accType = getTempoType(acceptedGame);

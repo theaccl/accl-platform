@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { acclPerfMark, acclPerfTime } from '@/lib/acclPerfDebug';
+import { MATCH_REQUEST_INBOX_CHANGED_EVENT } from '@/lib/matchRequestInboxEvents';
 import { supabase } from '@/lib/supabaseClient';
 
 /**
@@ -92,9 +93,14 @@ export function PendingMatchRequestsBanner() {
       if (document.visibilityState === 'hidden') return;
       void refresh(userId);
     }, pollMs);
+    const onInboxChanged = () => {
+      void refresh(userId);
+    };
+    window.addEventListener(MATCH_REQUEST_INBOX_CHANGED_EVENT, onInboxChanged);
     return () => {
       void supabase.removeChannel(channel);
       window.clearInterval(poll);
+      window.removeEventListener(MATCH_REQUEST_INBOX_CHANGED_EVENT, onInboxChanged);
     };
   }, [userId, refresh, pathname]);
 

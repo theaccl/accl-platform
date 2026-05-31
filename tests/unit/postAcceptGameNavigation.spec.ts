@@ -125,6 +125,19 @@ test.describe('postAcceptGameNavigation', () => {
     ).toBe(false);
   });
 
+  test('on finished live board, accept new live rematch => navigate', () => {
+    const finishedId = '55555555-5555-5555-5555-555555555555';
+    const rematchId = '66666666-6666-6666-6666-666666666666';
+    const d = getAcceptRedirectDecision({
+      currentPath: `/game/${finishedId}`,
+      currentGame: { id: finishedId, tempo: 'live', status: 'finished' },
+      acceptedGame: { id: rematchId, tempo: 'live' },
+      inMemoryBoardGame: { id: finishedId, tempo: 'live', status: 'finished' },
+    });
+    expect(d.navigate).toBe(true);
+    expect(d.reason).toBe('finished-path-board-follow-accept');
+  });
+
   test('not on /game/ and no current => navigate', () => {
     expect(
       getAcceptRedirectDecision({
@@ -144,6 +157,6 @@ test.describe('postAcceptGameNavigation', () => {
       pathGameFromDb: { id: pathId, tempo: 'correspondence' },
       offPathActiveGameFromDb: null,
     });
-    expect(merged).toEqual({ id: pathId, tempo: 'live' });
+    expect(merged).toEqual({ id: pathId, tempo: 'live', status: null });
   });
 });

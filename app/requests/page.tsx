@@ -38,6 +38,7 @@ import {
   LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE,
 } from '@/lib/liveChallengeAcceptGuard';
 import { rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
+import { notifyMatchRequestInboxChanged } from '@/lib/matchRequestInboxEvents';
 import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
@@ -336,6 +337,7 @@ export default function RequestsPage() {
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
+        notifyMatchRequestInboxChanged();
         await navigateAfterAcceptIfHigherPriority(gid, r.tempo ?? null);
       } finally {
         actionInFlightRef.current = false;
@@ -393,6 +395,7 @@ export default function RequestsPage() {
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
+        notifyMatchRequestInboxChanged();
         await navigateAfterAcceptIfHigherPriority(gid, r.tempo ?? null);
       } finally {
         actionInFlightRef.current = false;
@@ -424,6 +427,7 @@ export default function RequestsPage() {
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
+        notifyMatchRequestInboxChanged();
       } finally {
         actionInFlightRef.current = false;
         setBusyReqId(null);
