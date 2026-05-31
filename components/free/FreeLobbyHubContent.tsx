@@ -16,11 +16,8 @@ import { useLobbyTournamentLiveByMode } from '@/hooks/useLobbyTournamentLiveByMo
 import { useLobbyUserObligations } from '@/hooks/useLobbyUserObligations';
 import { useFreeOpenSeatActivity } from '@/hooks/useFreeOpenSeatActivity';
 import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
-import {
-  countHubObligationByPlatMode,
-  shouldRenderLobbyExplorationSection,
-} from '@/lib/lobbyOperationalContinuity';
-import { isPlatMode, type LobbyHubModeFilter } from '@/lib/lobbyModeFilter';
+import { countOwnOpenLiveSeatsByPlatMode, shouldRenderLobbyExplorationSection } from '@/lib/lobbyOperationalContinuity';
+import { countYourMoveByPlatMode, isPlatMode, type LobbyHubModeFilter } from '@/lib/lobbyModeFilter';
 import {
   PLAT_MODE_LABELS,
   PLAT_MODE_ORDER,
@@ -83,13 +80,18 @@ export function FreeLobbyHubContent() {
   );
   const showOpenPairing = shouldRenderLobbyExplorationSection(modeFilter, hasOpenInFilter, openLoading);
 
-  const hubObligationByMode = useMemo(
+  const yourMoveByMode = useMemo(
     () =>
-      countHubObligationByPlatMode(
+      countYourMoveByPlatMode(
         [...(obligations.freeRows ?? []), ...(obligations.tournamentRows ?? [])],
         obligations.uid,
       ),
     [obligations.freeRows, obligations.tournamentRows, obligations.uid],
+  );
+
+  const openSeatObligationByMode = useMemo(
+    () => countOwnOpenLiveSeatsByPlatMode(obligations.freeRows ?? [], obligations.uid),
+    [obligations.freeRows, obligations.uid],
   );
 
   return (
@@ -118,7 +120,8 @@ export function FreeLobbyHubContent() {
             liveByMode,
             openByMode: openSeatCounts,
             tournamentByMode: tournamentLive.counts,
-            yourMoveByMode: hubObligationByMode,
+            yourMoveByMode,
+            openSeatObligationByMode,
           }}
         />
 

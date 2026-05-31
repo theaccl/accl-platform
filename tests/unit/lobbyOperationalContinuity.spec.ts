@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
 
 import {
+  countOwnOpenLiveSeatsByPlatMode,
   isLiveFreeRecoveryObligation,
+  isOwnUnmatchedOpenLiveSeat,
   shouldRenderLobbyExplorationSection,
   shouldRenderLobbyObligationSubsection,
 } from '../../lib/lobbyOperationalContinuity';
+import { countYourMoveByPlatMode } from '../../lib/lobbyModeFilter';
 import {
   firstMoveGraceFinishResult,
   firstMoveGraceRemainingMs,
@@ -51,6 +54,30 @@ test.describe('lobbyOperationalContinuity', () => {
         uid,
       ),
     ).toBe(true);
+  });
+
+  test('own open live seat is not counted as your-move for hub mode badges', () => {
+    const uid = 'u1';
+    const openSeat = {
+      tempo: 'live',
+      live_time_control: '10m',
+      turn: 'white',
+      white_player_id: uid,
+      black_player_id: null,
+    };
+    const seatedYourMove = {
+      tempo: 'live',
+      live_time_control: '10m',
+      turn: 'white',
+      white_player_id: uid,
+      black_player_id: 'u2',
+    };
+    expect(isOwnUnmatchedOpenLiveSeat(openSeat, uid)).toBe(true);
+    const rows = [openSeat, seatedYourMove];
+    expect(countYourMoveByPlatMode(rows, uid).rapid).toBe(1);
+    expect(countOwnOpenLiveSeatsByPlatMode(rows, uid).rapid).toBe(1);
+    expect(countYourMoveByPlatMode([openSeat], uid).rapid).toBe(0);
+    expect(countOwnOpenLiveSeatsByPlatMode([seatedYourMove], uid).rapid).toBe(0);
   });
 
   test('filtered mode hides empty obligation subsections', () => {

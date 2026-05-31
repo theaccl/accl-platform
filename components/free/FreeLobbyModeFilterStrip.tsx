@@ -12,7 +12,10 @@ export type ModeStripSignals = {
   liveByMode: Record<PlatMode, number>;
   openByMode: Record<PlatMode, number>;
   tournamentByMode: Record<PlatMode, number>;
+  /** Seated games where it is the viewer's turn. */
   yourMoveByMode: Record<PlatMode, number>;
+  /** Viewer-hosted unmatched live open seats (waiting for opponent). */
+  openSeatObligationByMode: Record<PlatMode, number>;
 };
 
 type Props = {
@@ -58,6 +61,18 @@ function sumModes(signals: ModeStripSignals, key: keyof ModeStripSignals): numbe
 
 function hasAnyYourMove(signals: ModeStripSignals): boolean {
   return PLAT_MODE_ORDER.some((m) => (signals.yourMoveByMode[m] ?? 0) > 0);
+}
+
+function hasAnyOpenSeatObligation(signals: ModeStripSignals): boolean {
+  return PLAT_MODE_ORDER.some((m) => (signals.openSeatObligationByMode[m] ?? 0) > 0);
+}
+
+function modeHasYourMove(signals: ModeStripSignals, mode: PlatMode): boolean {
+  return (signals.yourMoveByMode[mode] ?? 0) > 0;
+}
+
+function modeHasOpenSeatObligation(signals: ModeStripSignals, mode: PlatMode): boolean {
+  return (signals.openSeatObligationByMode[mode] ?? 0) > 0;
 }
 
 /**
@@ -111,6 +126,7 @@ export function FreeLobbyModeFilterStrip({ selected, onSelect, signals, loading 
             open: allOpen,
             tournament: allTournament,
             yourMove: hasAnyYourMove(signals),
+            openSeatObligation: hasAnyOpenSeatObligation(signals),
           }}
         />
         {PLAT_MODE_ORDER.map((mode) => (
@@ -126,7 +142,8 @@ export function FreeLobbyModeFilterStrip({ selected, onSelect, signals, loading 
               live: signals.liveByMode[mode] ?? 0,
               open: signals.openByMode[mode] ?? 0,
               tournament: signals.tournamentByMode[mode] ?? 0,
-              yourMove: (signals.yourMoveByMode[mode] ?? 0) > 0,
+              yourMove: modeHasYourMove(signals, mode),
+              openSeatObligation: modeHasOpenSeatObligation(signals, mode),
             }}
             roomHref={`/free/lobby/${mode}`}
           />
@@ -154,7 +171,13 @@ function ModeFilterCard({
   testId: string;
   zoneStyle: ZoneStyle;
   loading?: boolean;
-  metrics: { live: number; open: number; tournament: number; yourMove: boolean };
+  metrics: {
+    live: number;
+    open: number;
+    tournament: number;
+    yourMove: boolean;
+    openSeatObligation: boolean;
+  };
   roomHref?: string;
 }) {
   const surface = selected ? zoneStyle.active : zoneStyle.idle;
@@ -200,6 +223,13 @@ function ModeFilterCard({
             data-testid={`${testId}-your-move-pulse`}
           >
             Your move
+          </span>
+        ) : metrics.openSeatObligation ? (
+          <span
+            className="mt-2 inline-flex w-fit items-center rounded-full border border-cyan-500/40 bg-cyan-950/45 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-200/95"
+            data-testid={`${testId}-open-seats-pulse`}
+          >
+            Open seats
           </span>
         ) : null}
       </button>

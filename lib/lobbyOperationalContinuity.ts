@@ -45,6 +45,29 @@ export function isHubOperationalObligation(row: LobbyObligationRow, uid: string 
   return isLobbyYourMove(row, uid);
 }
 
+/** User-hosted unmatched live open seat (waiting for opponent) — hub badge only, not "your move". */
+export function isOwnUnmatchedOpenLiveSeat(
+  row: Pick<GameContinuityRow, 'tempo' | 'live_time_control' | 'white_player_id' | 'black_player_id'>,
+  uid: string | null,
+): boolean {
+  if (!uid) return false;
+  return isLiveContinuityGame(row) && isOpenSeatRow(row) && row.white_player_id === uid;
+}
+
+export function countOwnOpenLiveSeatsByPlatMode(
+  rows: LobbyObligationRow[],
+  uid: string | null,
+): Record<PlatMode, number> {
+  const out = emptyPlatModeCounts();
+  if (!uid) return out;
+  for (const row of rows) {
+    if (!isOwnUnmatchedOpenLiveSeat(row, uid)) continue;
+    const m = platModeForLobbyRow(row);
+    if (m) out[m] += 1;
+  }
+  return out;
+}
+
 export function countHubObligationByPlatMode(
   rows: LobbyObligationRow[],
   uid: string | null,

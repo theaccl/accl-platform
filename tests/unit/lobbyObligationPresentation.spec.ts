@@ -48,6 +48,10 @@ test.describe('lobby obligation presentation (unit)', () => {
     const strip = readFileSync(join(process.cwd(), 'components', 'free', 'FreeLobbyModeFilterStrip.tsx'), 'utf8');
     expect(strip).toContain('ModeFilterCard');
     expect(strip).toContain('data-mode-filter-selected');
+    expect(strip).toContain('open-seats-pulse');
+    expect(strip).toContain('openSeatObligationByMode');
+    expect(hub).toContain('countYourMoveByPlatMode');
+    expect(hub).toContain('countOwnOpenLiveSeatsByPlatMode');
     const spectator = readFileSync(join(process.cwd(), 'components', 'free', 'FreeLobbySpectatorFeed.tsx'), 'utf8');
     expect(spectator).toContain('free-watch-link-');
     expect(spectator).toContain('grid-cols-2');
