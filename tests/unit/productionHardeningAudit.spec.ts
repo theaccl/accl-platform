@@ -57,8 +57,8 @@ test.describe('production hardening audit (static)', () => {
     expect(page).toContain('data-testid="game-active-hud"');
     // Player identity renders beside the clocks (white name with white clock,
     // black name with black clock) without wrapping or jumping the board.
-    expect(page).toContain('data-testid="clock-white-name"');
-    expect(page).toContain('data-testid="clock-black-name"');
+    expect(page).toContain("'clock-white-name'");
+    expect(page).toContain("'clock-black-name'");
     expect(page).toContain('whiteName={whiteActiveLabel}');
     expect(page).toContain('blackName={blackActiveLabel}');
     expect(page).toContain("whiteSpace: 'nowrap'");

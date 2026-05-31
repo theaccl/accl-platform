@@ -646,6 +646,141 @@ html.accl-game-route .accl-nav-pending-banner {
   font-feature-settings: 'tnum' 1;
 }
 
+.accl-game-clock-digit-slot {
+  display: inline-block;
+  min-width: 6.5ch;
+  text-align: center;
+}
+
+.accl-game-clock-low-time-sound {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.35;
+  min-height: 1.35rem;
+}
+
+.accl-game-clock-low-time-sound label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.accl-game-clock-face--active {
+  background: #1e293b;
+}
+
+.accl-game-clock-face--inactive {
+  background: transparent;
+}
+
+.accl-game-clock-face--urgency-stage-1 {
+  color: #fecdd3;
+  border: 1px solid rgba(244, 63, 94, 0.45);
+  animation: accl-clock-heartbeat-stage-1 2.2s ease-in-out infinite;
+}
+
+.accl-game-clock-face--urgency-stage-2 {
+  color: #ffe4e6;
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  animation: accl-clock-heartbeat-stage-2 1.35s ease-in-out infinite;
+}
+
+.accl-game-clock-face--urgency-stage-3 {
+  color: #fff1f2;
+  border: 1px solid rgba(220, 38, 38, 0.72);
+  animation: accl-clock-heartbeat-stage-3 0.55s ease-in-out infinite;
+}
+
+/* Layer 2 — stronger pulse when the viewer's own clock is actively draining. */
+.accl-game-clock-face--urgency-stage-1.accl-game-clock-face--running-accent {
+  animation-duration: 1.65s;
+}
+
+.accl-game-clock-face--urgency-stage-2.accl-game-clock-face--running-accent {
+  animation-duration: 1s;
+}
+
+.accl-game-clock-face--urgency-stage-3.accl-game-clock-face--running-accent {
+  animation-duration: 0.45s;
+}
+
+.accl-game-clock-led--running-accent {
+  box-shadow: 0 0 12px #f43f5e !important;
+}
+
+.accl-game-clock-face--urgency-stage-1 .accl-game-clock-digit-slot {
+  color: #fff1f2;
+}
+
+.accl-game-clock-face--urgency-stage-2 .accl-game-clock-digit-slot,
+.accl-game-clock-face--urgency-stage-3 .accl-game-clock-digit-slot {
+  color: #ffffff;
+}
+
+@keyframes accl-clock-heartbeat-stage-1 {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.18), 0 0 10px 1px rgba(244, 63, 94, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 16px 3px rgba(244, 63, 94, 0.38), 0 0 22px 4px rgba(244, 63, 94, 0.28);
+  }
+}
+
+@keyframes accl-clock-heartbeat-stage-2 {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.28), 0 0 14px 2px rgba(239, 68, 68, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 22px 5px rgba(239, 68, 68, 0.52), 0 0 28px 7px rgba(220, 38, 38, 0.38);
+  }
+}
+
+@keyframes accl-clock-heartbeat-stage-3 {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.38), 0 0 18px 3px rgba(220, 38, 38, 0.42);
+  }
+  50% {
+    box-shadow: 0 0 28px 8px rgba(220, 38, 38, 0.72), 0 0 34px 10px rgba(185, 28, 28, 0.55);
+  }
+}
+
+@media (max-width: 768px) {
+  .accl-game-active-hud .accl-game-clock-face--urgency-stage-1,
+  .accl-game-active-hud .accl-game-clock-face--urgency-stage-2,
+  .accl-game-active-hud .accl-game-clock-face--urgency-stage-3 {
+    /* Slightly tighter radiance on narrow viewports — same thresholds and cadence. */
+    filter: saturate(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accl-game-clock-face--urgency-stage-1,
+  .accl-game-clock-face--urgency-stage-2,
+  .accl-game-clock-face--urgency-stage-3 {
+    animation: none !important;
+  }
+
+  .accl-game-clock-face--urgency-stage-1 {
+    box-shadow: 0 0 14px 3px rgba(244, 63, 94, 0.34), inset 0 0 0 1px rgba(244, 63, 94, 0.42);
+  }
+
+  .accl-game-clock-face--urgency-stage-2 {
+    box-shadow: 0 0 18px 4px rgba(239, 68, 68, 0.48), inset 0 0 0 1px rgba(251, 113, 133, 0.55);
+  }
+
+  .accl-game-clock-face--urgency-stage-3 {
+    box-shadow: 0 0 22px 6px rgba(220, 38, 38, 0.62), inset 0 0 0 1px rgba(254, 202, 202, 0.72);
+  }
+}
+
 .accl-game-turn-line {
   margin: 4px 0 8px 0;
   text-align: center;

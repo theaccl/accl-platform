@@ -23,6 +23,21 @@ import {
   isCorrespondenceDeadlineActive,
   isLiveDailyClockTicking,
 } from '@/lib/gameTiming';
+import {
+  formatLiveClock,
+  LIVE_CLOCK_DIGIT_MIN_CH,
+  liveClockPresentationTickMs,
+  shouldShowViewerImmersivePressure,
+  viewerImmersivePressureBand,
+  viewerPressureRunningAccent,
+} from '@/lib/liveClockDisplay';
+import {
+  LOW_TIME_SOUND_DEFAULT_ENABLED,
+  lowTimeSoundAppliesForViewer,
+  readLowTimeSoundEnabled,
+  writeLowTimeSoundEnabled,
+} from '@/lib/liveClockLowTimeSound';
+import { useLiveClockLowTimeSound } from '@/hooks/useLiveClockLowTimeSound';
 import { acclPerfTime } from '@/lib/acclPerfDebug';
 import { navigateAfterAcceptIfAllowed } from '@/lib/postAcceptGameNavigation';
 import { normalizeGameTempo } from '@/lib/gameTempo';
@@ -342,14 +357,6 @@ function formatMoveDeadlineLocal(iso: string): string {
   });
 }
 
-function formatClockMs(ms: number): string {
-  const safe = Math.max(0, Math.floor(ms));
-  const totalSec = Math.floor(safe / 1000);
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
-
 function formatClockHms(ms: number): string {
   const safe = Math.max(0, Math.floor(ms));
   const totalSec = Math.floor(safe / 1000);
@@ -372,10 +379,47 @@ function displayClockTurn(raw: string | undefined | null): 'white' | 'black' {
   return 'white';
 }
 
+/** Presentation-only: viewer's own remaining ms (ticks when draining; frozen stored value when waiting). */
+function liveViewerSideRemainingMsForPresentation(
+  g: GameRow,
+  nowMs: number,
+  viewerColor: 'white' | 'black',
+): number {
+  const base = clockBudgetMsForGame(g.tempo, g.live_time_control);
+  const whiteStored = Number.isFinite(g.white_clock_ms) ? Number(g.white_clock_ms) : base;
+  const blackStored = Number.isFinite(g.black_clock_ms) ? Number(g.black_clock_ms) : base;
+  const elapsed = g.last_move_at
+    ? Math.max(0, nowMs - new Date(g.last_move_at).getTime())
+    : 0;
+  const turn = displayClockTurn(g.turn);
+  if (viewerColor === 'white') {
+    return turn === 'white' ? Math.max(0, whiteStored - elapsed) : whiteStored;
+  }
+  return turn === 'black' ? Math.max(0, blackStored - elapsed) : blackStored;
+}
+
+/** Presentation-only: active side remaining ms for live/daily tick cadence (not clock authority). */
+function liveActiveSideRemainingMsForTick(g: GameRow, nowMs: number): number | null {
+  const tempoNorm = normalizeGameTempo(g.tempo);
+  if (tempoNorm !== 'live' && tempoNorm !== 'daily') return null;
+  if (!bothPlayersSeated(g) || g.status === 'finished') return null;
+  if (!isLiveDailyClockTicking(g)) return null;
+  const base = clockBudgetMsForGame(g.tempo, g.live_time_control);
+  const whiteStored = Number.isFinite(g.white_clock_ms) ? Number(g.white_clock_ms) : base;
+  const blackStored = Number.isFinite(g.black_clock_ms) ? Number(g.black_clock_ms) : base;
+  const elapsed = g.last_move_at
+    ? Math.max(0, nowMs - new Date(g.last_move_at).getTime())
+    : 0;
+  const turn = displayClockTurn(g.turn);
+  if (turn === 'white') return Math.max(0, whiteStored - elapsed);
+  return Math.max(0, blackStored - elapsed);
+}
+
 function DigitalChessClock({
   whiteMs,
   blackMs,
   activeTurn,
+  viewerColor,
   isCorrespondence,
   paceLabel,
   className,
@@ -385,6 +429,8 @@ function DigitalChessClock({
   whiteMs: number;
   blackMs: number;
   activeTurn: 'white' | 'black' | null;
+  /** Seated player color on this device; null for spectators / anonymous public. */
+  viewerColor?: 'white' | 'black' | null;
   isCorrespondence?: boolean;
   paceLabel?: string;
   className?: string;
@@ -395,8 +441,9 @@ function DigitalChessClock({
   const blackActive = activeTurn === 'black';
 
   const LED_SLOT_PX = 14;
-  const runningLed = (active: boolean) => (
+  const runningLed = (active: boolean, emphasize = false) => (
     <div
+      className={emphasize ? 'accl-game-clock-led--running-accent' : undefined}
       style={{
         width: 8,
         height: 8,
@@ -408,8 +455,119 @@ function DigitalChessClock({
     />
   );
 
-  const formatClock = isCorrespondence ? formatClockHms : formatClockMs;
+  const formatClock = isCorrespondence ? formatClockHms : formatLiveClock;
   const digitSize = isCorrespondence ? 'clamp(20px, 4.5vw, 32px)' : 'clamp(28px, 6vw, 48px)';
+
+  const renderSide = (
+    side: 'white' | 'black',
+    remainingMs: number,
+    sideActive: boolean,
+    sideName: string | null | undefined,
+    sideLabel: 'WHITE' | 'BLACK',
+  ) => {
+    const isLive = !isCorrespondence;
+    const showImmersivePressure = shouldShowViewerImmersivePressure(
+      viewerColor ?? null,
+      side,
+      remainingMs,
+      isLive,
+    );
+    const immersiveBand = viewerImmersivePressureBand(
+      viewerColor ?? null,
+      side,
+      remainingMs,
+      isLive,
+    );
+    const runningAccent = viewerPressureRunningAccent(
+      viewerColor ?? null,
+      side,
+      activeTurn,
+    );
+    const faceClass = [
+      'accl-game-clock-face',
+      sideActive ? 'accl-game-clock-face--active' : 'accl-game-clock-face--inactive',
+      immersiveBand ? `accl-game-clock-face--urgency-${immersiveBand}` : '',
+      runningAccent ? 'accl-game-clock-face--running-accent' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const clockTestId = side === 'white' ? 'clock-white' : 'clock-black';
+    const clockNameTestId = side === 'white' ? 'clock-white-name' : 'clock-black-name';
+    const clockDigitTestId = side === 'white' ? 'clock-white-digit' : 'clock-black-digit';
+
+    return (
+      <div data-testid={clockTestId} style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+        <div
+          data-testid={clockNameTestId}
+          title={sideName ?? ''}
+          style={{
+            height: 18,
+            lineHeight: '18px',
+            maxWidth: '100%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#e2e8f0',
+            marginBottom: 2,
+          }}
+        >
+          {sideName || '\u00A0'}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+          {sideLabel} {isCorrespondence && paceLabel ? `(${paceLabel})` : ''}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <div
+            className={faceClass}
+            data-clock-urgency={immersiveBand ?? 'none'}
+            data-clock-immersive-pressure={showImmersivePressure ? 'true' : 'false'}
+            data-clock-running-accent={runningAccent ? 'true' : 'false'}
+            data-clock-viewer-owned={viewerColor === side ? 'true' : 'false'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              padding: '8px 16px',
+              borderRadius: 8,
+              width: '100%',
+              minHeight: LED_SLOT_PX,
+            }}
+          >
+            <span style={{ width: LED_SLOT_PX, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+              {runningLed(sideActive, runningAccent)}
+            </span>
+            <div
+              className="accl-game-clock-digit-slot"
+              data-testid={clockDigitTestId}
+              style={{
+                fontSize: digitSize,
+                fontWeight: 800,
+                color: '#f8fafc',
+                letterSpacing: '0.07em',
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight: 1.1,
+                minWidth: isLive ? LIVE_CLOCK_DIGIT_MIN_CH : undefined,
+                textAlign: 'center',
+              }}
+            >
+              {formatClock(remainingMs)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -427,136 +585,14 @@ function DigitalChessClock({
         boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
       }}
     >
-      <div data-testid="clock-white" style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-        <div
-          data-testid="clock-white-name"
-          title={whiteName ?? ''}
-          style={{
-            height: 18,
-            lineHeight: '18px',
-            maxWidth: '100%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: 13,
-            fontWeight: 700,
-            color: '#e2e8f0',
-            marginBottom: 2,
-          }}
-        >
-          {whiteName || '\u00A0'}
-        </div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-          WHITE {isCorrespondence && paceLabel ? `(${paceLabel})` : ''}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              padding: '8px 16px',
-              background: whiteActive ? '#1e293b' : 'transparent',
-              borderRadius: 8,
-              width: '100%',
-              minHeight: LED_SLOT_PX,
-            }}
-          >
-            <span style={{ width: LED_SLOT_PX, display: 'flex', justifyContent: 'center' }}>
-              {runningLed(whiteActive)}
-            </span>
-            <div
-              style={{
-                fontSize: digitSize,
-                fontWeight: 800,
-                color: '#f8fafc',
-                letterSpacing: '0.07em',
-                fontVariantNumeric: 'tabular-nums',
-                lineHeight: 1.1,
-              }}
-            >
-              {formatClock(whiteMs)}
-            </div>
-          </div>
-        </div>
-      </div>
-
+      {renderSide('white', whiteMs, whiteActive, whiteName, 'WHITE')}
       <div
         style={{
           width: 1,
           background: 'linear-gradient(180deg, transparent, #1e293b, transparent)',
         }}
       />
-
-      <div data-testid="clock-black" style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-        <div
-          data-testid="clock-black-name"
-          title={blackName ?? ''}
-          style={{
-            height: 18,
-            lineHeight: '18px',
-            maxWidth: '100%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: 13,
-            fontWeight: 700,
-            color: '#e2e8f0',
-            marginBottom: 2,
-          }}
-        >
-          {blackName || '\u00A0'}
-        </div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-          BLACK {isCorrespondence && paceLabel ? `(${paceLabel})` : ''}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              padding: '8px 16px',
-              background: blackActive ? '#1e293b' : 'transparent',
-              borderRadius: 8,
-              width: '100%',
-              minHeight: LED_SLOT_PX,
-            }}
-          >
-            <span style={{ width: LED_SLOT_PX, display: 'flex', justifyContent: 'center' }}>
-              {runningLed(blackActive)}
-            </span>
-            <div
-              style={{
-                fontSize: digitSize,
-                fontWeight: 800,
-                color: '#f8fafc',
-                letterSpacing: '0.07em',
-                fontVariantNumeric: 'tabular-nums',
-                lineHeight: 1.1,
-              }}
-            >
-              {formatClock(blackMs)}
-            </div>
-          </div>
-        </div>
-      </div>
+      {renderSide('black', blackMs, blackActive, blackName, 'BLACK')}
     </div>
   );
 }
@@ -1795,12 +1831,52 @@ export default function GamePage() {
     loadGameSnapshot,
   ]);
 
+  const liveViewerOwnRemainingForPresentation = useMemo(() => {
+    if (!game || !myColor) return null;
+    const tempoNorm = normalizeGameTempo(game.tempo);
+    if (tempoNorm !== 'live' && tempoNorm !== 'daily') return null;
+    if (!bothPlayersSeated(game) || game.status === 'finished') return null;
+    if (!isLiveDailyClockTicking(game)) return null;
+    return liveViewerSideRemainingMsForPresentation(game, clockNowMs, myColor);
+  }, [game, clockNowMs, myColor]);
+
   useEffect(() => {
-    const interval = setInterval(() => {
+    const intervalMs = liveClockPresentationTickMs(liveViewerOwnRemainingForPresentation);
+    const interval = window.setInterval(() => {
       setClockNowMs(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
+    }, intervalMs);
+    return () => window.clearInterval(interval);
+  }, [liveViewerOwnRemainingForPresentation]);
+
+  const [lowTimeSoundOn, setLowTimeSoundOn] = useState(LOW_TIME_SOUND_DEFAULT_ENABLED);
+
+  useEffect(() => {
+    setLowTimeSoundOn(readLowTimeSoundEnabled());
   }, []);
+
+  const lowTimeSoundApplies = useMemo(() => {
+    if (!game || !myColor) return false;
+    const tempoNorm = normalizeGameTempo(game.tempo);
+    if (tempoNorm !== 'live' && tempoNorm !== 'daily') return false;
+    if (!bothPlayersSeated(game) || game.status === 'finished') return false;
+    if (!isLiveDailyClockTicking(game)) return false;
+    const ownMs = liveViewerSideRemainingMsForPresentation(game, clockNowMs, myColor);
+    return lowTimeSoundAppliesForViewer(ownMs, true);
+  }, [game, myColor, clockNowMs]);
+
+  useLiveClockLowTimeSound({
+    enabled: lowTimeSoundOn,
+    applies: lowTimeSoundApplies,
+    getViewerOwnRemainingMs: () =>
+      game && myColor
+        ? liveViewerSideRemainingMsForPresentation(game, Date.now(), myColor)
+        : null,
+    isViewerClockRunning: () =>
+      !!game &&
+      !!myColor &&
+      isLiveDailyClockTicking(game) &&
+      displayClockTurn(game.turn) === myColor,
+  });
 
   const scheduleLiveTimeoutFinish = useCallback(
     async (g: GameRow, flaggedLoser: 'white' | 'black') => {
@@ -3681,11 +3757,29 @@ export default function GamePage() {
               activeTurn={
                 showCorrespondenceClocks ? clockTurn : liveDailyTicking ? clockTurn : null
               }
+              viewerColor={isPublicViewer ? null : myColor}
               isCorrespondence={showCorrespondenceClocks}
               paceLabel={correspondencePaceLabel}
               whiteName={whiteActiveLabel}
               blackName={blackActiveLabel}
             />
+          ) : null}
+          {showLiveClocks && myColor ? (
+            <div className="accl-game-clock-low-time-sound" data-testid="clock-low-time-sound">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={lowTimeSoundOn}
+                  data-testid="clock-low-time-sound-toggle"
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setLowTimeSoundOn(on);
+                    writeLowTimeSoundEnabled(on);
+                  }}
+                />
+                Heartbeat sound
+              </label>
+            </div>
           ) : null}
           {!showAnyClocks ? (
           <p
