@@ -149,6 +149,7 @@ export function openSeatRowHostSeatedConflictsInSameSlot(
     tempo: string | null;
     live_time_control: string | null;
     rated: boolean | null;
+    status?: string | null;
   }
 ): boolean {
   if (!openRow.white_player_id) return false;
@@ -180,6 +181,7 @@ export function openSeatRowHostSeatedConflictsInSameSlot(
       tempo: hostSeatedRow.tempo,
       live_time_control: hostSeatedRow.live_time_control,
       rated: hostSeatedRow.rated,
+      status: hostSeatedRow.status,
     },
     freePlayTargetSlot(
       m,

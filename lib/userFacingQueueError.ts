@@ -2,6 +2,10 @@ import {
   DAILY_QUEUE_BUSY_HINT,
   LIVE_QUEUE_BUSY_HINT,
 } from '@/lib/gameContinuityPresentation';
+import {
+  RATED_DAILY_CAP_MESSAGE,
+  UNRATED_DAILY_QUEUE_CAP_MESSAGE,
+} from '@/lib/freePlayDailyConcurrency';
 import { FREE_PLAY_QUEUE_BUSY_MESSAGE } from '@/lib/freePlayFindMatch';
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 
@@ -56,6 +60,12 @@ export function formatUserFacingQueueError(raw: string | null | undefined): stri
   }
   if (/free_play_host_busy/i.test(m)) {
     return 'That host is already in another game. Pick a different open seat or try Find match.';
+  }
+  if (/free_play_daily_rated_cap/i.test(m)) {
+    return RATED_DAILY_CAP_MESSAGE;
+  }
+  if (/free_play_daily_unrated_waiting_cap/i.test(m)) {
+    return UNRATED_DAILY_QUEUE_CAP_MESSAGE;
   }
   if (/seat already taken|join failed \(race\)/i.test(m)) {
     return 'That seat was just taken. Refresh the list and try another game.';

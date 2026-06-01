@@ -17,10 +17,15 @@ import {
   coercePlatTimeForMode,
   isValidPlatTimeForMode,
 } from '@/lib/freePlayModeTimeControl';
+import { isBotHostedPublicOpenSeat } from '@/lib/freeLobbyOpenSeatFilters';
 import { openSeatMatchesPlatClock, openSeatMatchesRated } from '@/lib/freePlayOpenSeatsFilter';
 import { canonicalLiveTimeControlForInsert } from '@/lib/gameTimeControl';
 import { freePlayTargetSlot, openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
 import { userHasConflictingPlatQueueSlot } from '@/lib/hasActiveWaitingLiveFreeGame';
+import {
+  assertUserDailyConcurrencyAllowed,
+  type DailyConcurrencyAction,
+} from '@/lib/freePlayDailyConcurrency';
 import { normalizeGameTempo } from '@/lib/gameTempo';
 
 export type { PlatMode } from '@/lib/freePlayModeTimeControl';
@@ -68,12 +73,30 @@ function buildOpenSeatRow(
 export async function checkUserFreePlayQueueEligible(
   supabase: SupabaseClient,
   userId: string,
-  target: { mode: PlatMode; clock: string; rated: boolean; tempo?: string | null }
+  target: {
+    mode: PlatMode;
+    clock: string;
+    rated: boolean;
+    tempo?: string | null;
+    /** Daily caps: post_queue = create/find post; join_or_accept = public accept / find join. */
+    dailyAction?: DailyConcurrencyAction;
+  }
 ): Promise<{ ok: true } | { error: string; resumeGameId?: string }> {
   const normalizedTempo =
     target.tempo == null
       ? (target.mode === 'daily' ? 'daily' : 'live')
       : normalizeGameTempo(target.tempo);
+  if (normalizedTempo === 'daily') {
+    const dailyAction: DailyConcurrencyAction = target.dailyAction ?? 'post_queue';
+    const dailyGate = await assertUserDailyConcurrencyAllowed(supabase, userId, {
+      rated: target.rated === true,
+      action: dailyAction,
+    });
+    if ('error' in dailyGate) {
+      return { error: dailyGate.error };
+    }
+    return { ok: true };
+  }
   if (normalizedTempo !== 'live') {
     return { ok: true };
   }
@@ -152,6 +175,7 @@ export async function filterOpenSeatRowsExcludingBusyHosts<
 
   return {
     rows: rows.filter((r) => {
+      if (isBotHostedPublicOpenSeat(r)) return false;
       for (const g of fullGames) {
         if (openSeatRowHostSeatedConflictsInSameSlot(r, g)) {
           return false;
@@ -188,7 +212,7 @@ export async function fetchCompatibleOpenSeats(
     return { rows: [], error: qErr.message || 'Could not look up open seats.' };
   }
 
-  let rows = (candidates ?? []) as OpenSeatCandidate[];
+  let rows = ((candidates ?? []) as OpenSeatCandidate[]).filter((r) => !isBotHostedPublicOpenSeat(r));
 
   const { rows: afterBusy, error: busyErr } = await filterOpenSeatRowsExcludingBusyHosts(supabase, rows);
   if (busyErr) {
@@ -255,13 +279,16 @@ export async function runFreePlayFindMatchAutomatic(
     return { error: 'Invalid time control for the selected mode.' };
   }
 
-  const gate = await checkUserFreePlayQueueEligible(supabase, userId, {
-    mode,
-    clock: normalizedClock,
-    rated,
-  });
-  if (!('ok' in gate)) {
-    return { error: gate.error, resumeGameId: gate.resumeGameId };
+  if (rated) {
+    const gate = await checkUserFreePlayQueueEligible(supabase, userId, {
+      mode,
+      clock: normalizedClock,
+      rated: true,
+      dailyAction: 'join_or_accept',
+    });
+    if (!('ok' in gate)) {
+      return { error: gate.error, resumeGameId: gate.resumeGameId };
+    }
   }
 
   const { rows, error: fetchErr } = await fetchCompatibleOpenSeats(supabase, {
@@ -276,6 +303,17 @@ export async function runFreePlayFindMatchAutomatic(
   }
 
   if (rows.length === 0) {
+    if (!rated) {
+      const postGate = await checkUserFreePlayQueueEligible(supabase, userId, {
+        mode,
+        clock: normalizedClock,
+        rated: false,
+        dailyAction: 'post_queue',
+      });
+      if (!('ok' in postGate)) {
+        return { error: postGate.error, resumeGameId: postGate.resumeGameId };
+      }
+    }
     return runFreePlayCreateGame(supabase, args);
   }
 

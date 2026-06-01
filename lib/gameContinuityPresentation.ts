@@ -24,6 +24,7 @@ export type GameContinuityRow = {
   status: string;
   tempo: string | null;
   live_time_control?: string | null;
+  rated?: boolean | null;
   turn?: string | null;
   white_player_id: string;
   black_player_id: string | null;

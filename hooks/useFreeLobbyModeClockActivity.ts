@@ -5,11 +5,15 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import { FreePlayLobbyGamesRealtimeContext } from '@/components/free/FreePlayLobbyGamesRealtimeProvider';
 import { useFreePlayWatchList } from '@/hooks/useFreePlayWatchList';
 import {
-  countOpenSeatsByClock,
+  countOpenSeatsByClockAndLane,
   countWatchRowsByClock,
-  emptyClockCountsForMode,
+  emptyClockLaneCountsForMode,
+  type OpenSeatClockLaneCounts,
 } from '@/lib/lobbyModeClockActivity';
-import { openSeatMatchesPlatMode } from '@/lib/freePlayOpenSeatsFilter';
+import {
+  filterPublicVisibleOpenSeats,
+  partitionLobbyRowsForPublicOpen,
+} from '@/lib/freeLobbyOpenSeatFilters';
 import type { PlatMode } from '@/lib/freePlayModeTimeControl';
 import type { FreePlayWatchListRow } from '@/lib/server/freePlayWatchList';
 import { supabase } from '@/lib/supabaseClient';
@@ -19,7 +23,7 @@ export function useFreeLobbyModeClockActivity(
   mode: PlatMode,
   viewerEcosystem: 'adult' | 'k12' = 'adult',
 ): {
-  openByClock: Record<string, number>;
+  openByClock: Record<string, OpenSeatClockLaneCounts>;
   watchByClock: Record<string, number>;
   watchRows: FreePlayWatchListRow[];
   watchLoading: boolean;
@@ -29,8 +33,8 @@ export function useFreeLobbyModeClockActivity(
   const { data: watchData, loading: watchLoading, error: watchError } =
     useFreePlayWatchList(viewerEcosystem);
   const watchRows = watchData?.byMode[mode] ?? [];
-  const [openByClock, setOpenByClock] = useState<Record<string, number>>(() =>
-    emptyClockCountsForMode(mode),
+  const [openByClock, setOpenByClock] = useState<Record<string, OpenSeatClockLaneCounts>>(() =>
+    emptyClockLaneCountsForMode(mode),
   );
   const [openLoading, setOpenLoading] = useState(true);
   const lobbyRt = useContext(FreePlayLobbyGamesRealtimeContext);
@@ -52,18 +56,25 @@ export function useFreeLobbyModeClockActivity(
     }
     const { data, error } = await supabase
       .from('games')
-      .select('tempo,live_time_control')
+      .select('id,white_player_id,black_player_id,tempo,live_time_control,rated,status')
       .eq('play_context', 'free')
       .is('tournament_id', null)
-      .eq('status', 'active')
-      .is('black_player_id', null);
-    const modeRows =
-      !error && data?.length
-        ? (data as { tempo: string | null; live_time_control: string | null }[]).filter((r) =>
-            openSeatMatchesPlatMode(r, mode),
-          )
-        : [];
-    setOpenByClock(countOpenSeatsByClock(mode, modeRows));
+      .in('status', ['active', 'waiting'])
+      .limit(240);
+    const allRows = !error && data?.length ? data : [];
+    const { openCandidates, seatedForBusy } = partitionLobbyRowsForPublicOpen(
+      allRows as Array<{
+        id: string;
+        white_player_id: string;
+        black_player_id: string | null;
+        tempo: string | null;
+        live_time_control: string | null;
+        rated: boolean | null;
+        status: string | null;
+      }>,
+    );
+    const visible = filterPublicVisibleOpenSeats(openCandidates, seatedForBusy, mode);
+    setOpenByClock(countOpenSeatsByClockAndLane(mode, visible));
     setOpenLoading(false);
     inFlightRef.current = false;
     if (pendingRef.current) {
@@ -76,7 +87,7 @@ export function useFreeLobbyModeClockActivity(
   refetchOpenRef.current = refetchOpen;
 
   useEffect(() => {
-    setOpenByClock(emptyClockCountsForMode(mode));
+    setOpenByClock(emptyClockLaneCountsForMode(mode));
     setOpenLoading(true);
     void refetchOpenRef.current();
   }, [mode]);

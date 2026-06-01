@@ -3,6 +3,7 @@
 import {
   formatModeRoomOpenClockTile,
   formatModeRoomWatchClockTile,
+  type OpenSeatClockLaneCounts,
 } from '@/lib/lobbyModeClockActivity';
 import { platTimeOptionsForMode, type PlatMode } from '@/lib/freePlayModeTimeControl';
 
@@ -18,7 +19,7 @@ type Props = {
   mode: PlatMode;
   selectedClock: string;
   onSelectClock: (clockId: string) => void;
-  countsByClock: Record<string, number>;
+  countsByClock: Record<string, number> | Record<string, OpenSeatClockLaneCounts>;
   loading?: boolean;
 };
 
@@ -36,7 +37,15 @@ export function ModeRoomClockActivityRow({
   const options = platTimeOptionsForMode(mode);
   const isOpen = variant === 'open';
   const focusRing = isOpen ? emeraldFocus : violetFocus;
-  const anyActive = options.some((o) => (countsByClock[o.id] ?? 0) > 0);
+  const laneCount = (id: string): OpenSeatClockLaneCounts | null => {
+    const raw = countsByClock[id];
+    if (raw == null) return null;
+    if (typeof raw === 'number') {
+      return { rated: raw, unrated: 0, total: raw };
+    }
+    return raw;
+  };
+  const anyActive = options.some((o) => (laneCount(o.id)?.total ?? 0) > 0);
   const sectionLabel = isOpen ? 'Open seats by clock' : 'Live boards by clock';
   const hintActive = isOpen ? 'Green' : 'Violet';
   const hintNoun = isOpen ? 'open seat' : 'live board';
@@ -56,14 +65,16 @@ export function ModeRoomClockActivityRow({
         }`}
       >
         {options.map((opt) => {
-          const count = countsByClock[opt.id] ?? 0;
+          const lanes = isOpen ? laneCount(opt.id) : null;
+          const count = isOpen ? (lanes?.total ?? 0) : (countsByClock[opt.id] as number) ?? 0;
           const lit = count > 0;
           const selected = selectedClock === opt.id;
+          const openTile = isOpen && lanes ? formatModeRoomOpenClockTile(opt.label, lanes) : null;
           const detail = isOpen
-            ? formatModeRoomOpenClockTile(opt.label, count)
+            ? (openTile?.compactDetail ?? `${opt.label} · no open seats`)
             : formatModeRoomWatchClockTile(opt.label, count);
           const inactiveDetail = isOpen
-            ? `${opt.label} · no open`
+            ? `${opt.label} · no open seats`
             : `${opt.label} · no live`;
 
           const activeClasses = isOpen
@@ -102,9 +113,23 @@ export function ModeRoomClockActivityRow({
                   />
                   <span className="min-w-0 truncate text-[12px] font-semibold text-gray-100">{opt.label}</span>
                 </div>
-                <span className={`text-[10px] font-semibold leading-tight ${lit ? textLit : 'text-gray-500'}`}>
-                  {lit ? detail : inactiveDetail}
-                </span>
+                {isOpen && openTile && lit ? (
+                  <span className={`flex flex-col gap-0.5 text-[10px] font-semibold leading-tight ${textLit}`}>
+                    {openTile.sublines.length > 1 ? (
+                      openTile.sublines.map((line) => (
+                        <span key={line} className="block">
+                          {line}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="block">{openTile.compactDetail}</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] font-semibold leading-tight ${lit ? textLit : 'text-gray-500'}`}>
+                    {lit ? detail : inactiveDetail}
+                  </span>
+                )}
               </button>
             </li>
           );

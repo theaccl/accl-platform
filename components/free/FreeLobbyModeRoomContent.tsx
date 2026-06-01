@@ -19,6 +19,7 @@ import {
   type PlatMode,
 } from '@/lib/freePlayModeTimeControl';
 import { FREE_PLAY_LOBBY_ROOM_BY_MODE, lobbyModeLabel } from '@/lib/lobbyChatRooms';
+import { dailyRoomUsesDualDiscoverySections } from '@/lib/freeLobbyDailyDiscoveryLayout';
 
 type Props = {
   mode: PlatMode;
@@ -34,6 +35,10 @@ const noopMode = (_m: PlatMode) => {
 export function FreeLobbyModeRoomContent({ mode }: Props) {
   const [clock, setClock] = useState<string>(() => defaultPlatTimeControl(mode));
   const [rated, setRated] = useState(true);
+  /** Daily Create/Find lane only — does not filter public discovery sections above. */
+  const [postRated, setPostRated] = useState(true);
+  const dualDailyDiscovery = dailyRoomUsesDualDiscoverySections(mode);
+  const createFindRated = dualDailyDiscovery ? postRated : rated;
   const {
     openByClock,
     watchByClock,
@@ -103,15 +108,41 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
         ) : null}
 
         {/* Primary: Open Games should be the first visible priority panel. */}
-        <div data-accl-layout="mode-room-open-games-primary" className="min-w-0">
-          <FreeLobbyOpenGamesList
-            mode={mode}
-            selectedClock={clock}
-            selectedRated={rated}
-            openByClock={openByClock}
-            clockActivityLoading={clockActivityLoading}
-            onSelectClock={onClockChange}
-          />
+        <div data-accl-layout="mode-room-open-games-primary" className="min-w-0 flex flex-col gap-4">
+          {dualDailyDiscovery ? (
+            <>
+              <FreeLobbyOpenGamesList
+                mode={mode}
+                selectedClock={clock}
+                selectedRated
+                discoveryLaneLocked
+                discoverySectionTitle="Rated Daily Open Games"
+                openByClock={openByClock}
+                clockActivityLoading={clockActivityLoading}
+                onSelectClock={onClockChange}
+              />
+              <FreeLobbyOpenGamesList
+                mode={mode}
+                selectedClock={clock}
+                selectedRated={false}
+                discoveryLaneLocked
+                discoverySectionTitle="Unrated Daily Open Games"
+                openByClock={openByClock}
+                clockActivityLoading={clockActivityLoading}
+                onSelectClock={onClockChange}
+              />
+            </>
+          ) : (
+            <FreeLobbyOpenGamesList
+              mode={mode}
+              selectedClock={clock}
+              selectedRated={rated}
+              onRatedChange={setRated}
+              openByClock={openByClock}
+              clockActivityLoading={clockActivityLoading}
+              onSelectClock={onClockChange}
+            />
+          )}
         </div>
 
         {/* Secondary but still top-of-page: live spectate discovery for this mode. */}
@@ -139,18 +170,30 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
             Create or find a game
           </h2>
           <p className="mt-1 max-w-2xl text-[11px] leading-snug text-gray-500">
-            Actions below use the same time control and rated setting as <span className="text-gray-400">Open Games</span>{' '}
-            and <span className="text-gray-400">Watch live</span>. <span className="text-gray-400">Create game</span> posts
-            your seat; <span className="text-gray-400">Find match</span> pairs you automatically when possible.
+            {dualDailyDiscovery ? (
+              <>
+                <span className="text-gray-400">Rated</span> and <span className="text-gray-400">Unrated</span> open
+                games stay visible above. Controls here set your lane for{' '}
+                <span className="text-gray-400">Create game</span> and <span className="text-gray-400">Find match</span>{' '}
+                only.
+              </>
+            ) : (
+              <>
+                Actions below use the same time control and rated setting as{' '}
+                <span className="text-gray-400">Open Games</span> and <span className="text-gray-400">Watch live</span>.{' '}
+                <span className="text-gray-400">Create game</span> posts your seat;{' '}
+                <span className="text-gray-400">Find match</span> pairs you automatically when possible.
+              </>
+            )}
           </p>
-          <div className="mt-3 max-w-2xl">
+          <div className="mt-3 max-w-2xl" data-testid="free-lobby-create-find-panel">
             <FreePlayMatchPanel
               mode={mode}
               onModeChange={onModeChange}
               clock={clock}
               onClockChange={onClockChange}
-              rated={rated}
-              onRatedChange={setRated}
+              rated={createFindRated}
+              onRatedChange={dualDailyDiscovery ? setPostRated : setRated}
               modeLocked
               compact
               embedded
@@ -159,7 +202,7 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
           <p className="mt-3 text-xs leading-relaxed text-gray-500 sm:text-sm">
             <strong className="text-gray-400">Direct challenge</strong> —{' '}
             <Link
-              href={`/free/create?mode=${encodeURIComponent(mode)}&rated=${rated ? 'true' : 'false'}`}
+              href={`/free/create?mode=${encodeURIComponent(mode)}&rated=${createFindRated ? 'true' : 'false'}`}
               className="text-sky-400 underline hover:text-sky-300"
               data-testid="free-lobby-direct-challenge-link"
             >

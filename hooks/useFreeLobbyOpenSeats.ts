@@ -13,9 +13,15 @@ import {
   openSeatMatchesRated,
   type FreeOpenSeatRow,
 } from '@/lib/freePlayOpenSeatsFilter';
+import {
+  filterPublicVisibleOpenSeats,
+  isBotHostedPublicOpenSeat,
+  isPublicUnmatchedOpenSeatRow,
+  partitionLobbyRowsForPublicOpen,
+  type PublicOpenSeatSeatedRow,
+} from '@/lib/freeLobbyOpenSeatFilters';
 import type { PlatMode } from '@/lib/freePlayModeTimeControl';
 import { supabase } from '@/lib/supabaseClient';
-import { openSeatRowHostSeatedConflictsInSameSlot } from '@/lib/freePlayQueueSlotConflict';
 
 function lobbyGamesRtDebugEnabled(): boolean {
   if (process.env.NEXT_PUBLIC_ACCL_LOBBY_GAMES_RT_DEBUG === '1') return true;
@@ -90,30 +96,24 @@ export function useFreeLobbyOpenSeats(
   const pendingNotifyRef = useRef(false);
   const lastNotifyRunAtRef = useRef(0);
   const profileNameCacheRef = useRef(new Map<string, string | null>());
-  const seatedRowsRef = useRef<Array<{
-    id: string;
-    white_player_id: string;
-    black_player_id: string | null;
-    tempo: string | null;
-    live_time_control: string | null;
-    rated: boolean | null;
-  }>>([]);
+  const seatedRowsRef = useRef<PublicOpenSeatSeatedRow[]>([]);
   const lastFullSyncAtRef = useRef(0);
 
   const isOpenSeatLike = useCallback((r: FreeLobbyGameRtRow): r is FreeLobbyOpenSeatRow => {
-    return (
-      String(r.play_context ?? 'free') === 'free' &&
-      !r.tournament_id &&
-      String(r.status ?? 'active') === 'active' &&
-      !r.black_player_id &&
-      typeof r.id === 'string' &&
-      typeof r.white_player_id === 'string'
-    );
+    if (typeof r.id !== 'string' || typeof r.white_player_id !== 'string') return false;
+    return isPublicUnmatchedOpenSeatRow({
+      play_context: r.play_context,
+      tournament_id: r.tournament_id,
+      status: r.status,
+      black_player_id: r.black_player_id,
+      tempo: r.tempo ?? null,
+      live_time_control: r.live_time_control ?? null,
+    });
   }, []);
 
-  const applyBusyFilter = useCallback((rows: FreeLobbyOpenSeatRow[]) => {
-    return rows.filter((r) => !seatedRowsRef.current.some((g) => openSeatRowHostSeatedConflictsInSameSlot(r, g)));
-  }, []);
+  const applyPublicOpenFilters = useCallback((rows: FreeLobbyOpenSeatRow[]) => {
+    return filterPublicVisibleOpenSeats(rows, seatedRowsRef.current, mode);
+  }, [mode]);
 
   const tryRun = useCallback(async () => {
     if (inFlightRef.current) return;
@@ -162,17 +162,9 @@ export function useFreeLobbyOpenSeats(
         rated: boolean | null;
         status: string | null;
       }>;
-      const base = allRows.filter((r) => !r.black_player_id && r.status === 'active');
-      const seatedRows = allRows.filter((r) => Boolean(r.black_player_id));
-      seatedRowsRef.current = seatedRows.map((r) => ({
-        id: r.id,
-        white_player_id: r.white_player_id,
-        black_player_id: r.black_player_id,
-        tempo: r.tempo,
-        live_time_control: r.live_time_control,
-        rated: r.rated,
-      }));
-      const afterBusy = base.filter((r) => !seatedRows.some((g) => openSeatRowHostSeatedConflictsInSameSlot(r, g)));
+      const { openCandidates, seatedForBusy } = partitionLobbyRowsForPublicOpen(allRows);
+      seatedRowsRef.current = seatedForBusy;
+      const afterBusy = filterPublicVisibleOpenSeats(openCandidates, seatedForBusy, mode);
 
       const ids = [...new Set(afterBusy.map((r) => r.white_player_id).filter(Boolean))];
       let nameById = new Map<string, string | null>();
@@ -281,13 +273,14 @@ export function useFreeLobbyOpenSeats(
               tempo: row.tempo ?? null,
               live_time_control: row.live_time_control ?? null,
               rated: row.rated ?? null,
+              status: row.status ?? null,
             },
           ];
-          setRaw((prev) => applyBusyFilter(prev.filter((r) => r.id !== id)));
+          setRaw((prev) => applyPublicOpenFilters(prev.filter((r) => r.id !== id)));
           return;
         }
 
-        if (!isOpenSeatLike(row)) return;
+        if (!isOpenSeatLike(row) || isBotHostedPublicOpenSeat({ white_player_id: String(row.white_player_id) })) return;
         const nextSeat: FreeLobbyOpenSeatRow = {
           id,
           white_player_id: String(row.white_player_id),
@@ -301,7 +294,7 @@ export function useFreeLobbyOpenSeats(
           const merged = [...prev.filter((r) => r.id !== id), nextSeat].sort((a, b) =>
             String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')),
           );
-          return applyBusyFilter(merged);
+          return applyPublicOpenFilters(merged);
         });
         // If host username isn't cached, fetch once in background.
         const hostId = String(row.white_player_id ?? '').trim();

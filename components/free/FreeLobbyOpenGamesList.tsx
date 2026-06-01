@@ -16,25 +16,27 @@ import {
   type PlatMode,
   platTimeOptionsForMode,
 } from '@/lib/freePlayModeTimeControl';
-import { formatGameTimeControlLabel } from '@/lib/gameTimeControl';
-import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
+import { PUBLIC_BOT_HOSTED_OPEN_SEAT_JOIN_MESSAGE } from '@/lib/bot/botIdentity';
+import { isBotHostedPublicOpenSeat, openSeatExactControlDisplayLabel } from '@/lib/freeLobbyOpenSeatFilters';
+import type { OpenSeatClockLaneCounts } from '@/lib/lobbyModeClockActivity';
+import { openByClockForDiscoveryLane } from '@/lib/freeLobbyDailyDiscoveryLayout';
 
 type Props = {
   mode: PlatMode;
   selectedClock: string;
-  /** Must match FreePlayMatchPanel rated toggle — list filters to same queue slice. */
+  /** Lane slice for this list (rated or unrated rows only). */
   selectedRated: boolean;
-  /** Per-clock open-seat counts for the mode (all rated slices). */
-  openByClock?: Record<string, number>;
+  /** When set, bottom Create/Find lane toggles do not apply (Daily dual discovery). */
+  onRatedChange?: (rated: boolean) => void;
+  /** Hide lane selector; show fixed discovery lane only. */
+  discoveryLaneLocked?: boolean;
+  /** Override section heading (e.g. Rated Daily Open Games). */
+  discoverySectionTitle?: string;
+  /** Per-clock lane open-seat counts for the mode (public inventory). */
+  openByClock?: Record<string, OpenSeatClockLaneCounts>;
   clockActivityLoading?: boolean;
   onSelectClock?: (clockId: string) => void;
 };
-
-function rowModeLabel(row: FreeLobbyOpenSeatRow): string {
-  const m = platBucketForOpenSeat(row.tempo, row.live_time_control);
-  if (m) return PLAT_MODE_LABELS[m];
-  return String(row.tempo ?? '—');
-}
 
 /**
  * Open Games: open seats waiting for an opponent — select row → Accept (manual pick-up).
@@ -43,6 +45,9 @@ export function FreeLobbyOpenGamesList({
   mode,
   selectedClock,
   selectedRated,
+  onRatedChange,
+  discoveryLaneLocked = false,
+  discoverySectionTitle,
   openByClock,
   clockActivityLoading = false,
   onSelectClock,
@@ -56,6 +61,10 @@ export function FreeLobbyOpenGamesList({
   const tcLabel =
     platTimeOptionsForMode(mode).find((o) => o.id === selectedClock)?.label ?? selectedClock;
   const ratedLabel = selectedRated ? 'Rated' : 'Unrated';
+  const laneOpenByClock = discoveryLaneLocked
+    ? openByClockForDiscoveryLane(openByClock, selectedRated)
+    : openByClock;
+  const sectionHeading = discoverySectionTitle ?? 'Open Games';
 
   useEffect(() => {
     if (selectedId && !rows.some((r) => r.id === selectedId)) {
@@ -75,6 +84,10 @@ export function FreeLobbyOpenGamesList({
     if (!selected) return;
     setPreJoinError(null);
     setPreJoinResumeId(null);
+    if (isBotHostedPublicOpenSeat(selected)) {
+      setPreJoinError(PUBLIC_BOT_HOSTED_OPEN_SEAT_JOIN_MESSAGE);
+      return;
+    }
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth.user) {
       setPreJoinError('Sign in to accept a game.');
@@ -85,6 +98,7 @@ export function FreeLobbyOpenGamesList({
       clock: selectedClock,
       rated: selectedRated,
       tempo: selected.tempo,
+      dailyAction: 'join_or_accept',
     });
     if ('error' in gate) {
       setPreJoinError(gate.error);
@@ -98,18 +112,89 @@ export function FreeLobbyOpenGamesList({
     <section
       id="free-lobby-open-games-anchor"
       className={`${nexusPrestigeCard} scroll-mt-24 flex flex-col border border-sky-500/35 bg-[#0a1018]/90 p-4 shadow-lg shadow-sky-950/20 sm:scroll-mt-28 sm:p-5`}
-      data-testid="free-lobby-open-games"
+      data-testid={
+        discoveryLaneLocked
+          ? selectedRated
+            ? 'free-lobby-daily-discovery-rated'
+            : 'free-lobby-daily-discovery-unrated'
+          : 'free-lobby-open-games'
+      }
       aria-label={`Players waiting for opponent — ${PLAT_MODE_LABELS[mode]} ${tcLabel} ${ratedLabel}`}
     >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className={nexusModuleHeadingClass}>Open seats</p>
-          <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Open Games</h2>
+          <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{sectionHeading}</h2>
         </div>
         <span className="shrink-0 rounded-md border border-sky-500/30 bg-sky-950/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-sky-200/90">
           Waiting for opponents
         </span>
       </div>
+      {!discoveryLaneLocked && onRatedChange ? (
+        <div
+          className="mt-3 flex flex-col gap-2 rounded-lg border border-sky-500/25 bg-sky-950/20 px-3 py-2.5"
+          data-testid="free-lobby-open-games-lane-selector"
+          role="group"
+          aria-label="Open Games queue lane"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-200/80">Queue lane</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="free-lobby-open-games-rated"
+              aria-pressed={selectedRated === true}
+              onClick={() => onRatedChange(true)}
+              className={`inline-flex min-h-[40px] touch-manipulation items-center justify-center rounded-lg border px-4 text-sm font-semibold transition ${
+                selectedRated
+                  ? 'border-amber-500/55 bg-amber-950/45 text-amber-100'
+                  : 'border-white/15 bg-[#0c0e12] text-gray-400 hover:border-white/25 hover:text-gray-200'
+              }`}
+            >
+              Rated
+            </button>
+            <button
+              type="button"
+              data-testid="free-lobby-open-games-unrated"
+              aria-pressed={selectedRated === false}
+              onClick={() => onRatedChange(false)}
+              className={`inline-flex min-h-[40px] touch-manipulation items-center justify-center rounded-lg border px-4 text-sm font-semibold transition ${
+                !selectedRated
+                  ? 'border-gray-400/45 bg-[#1a1f28] text-gray-100'
+                  : 'border-white/15 bg-[#0c0e12] text-gray-400 hover:border-white/25 hover:text-gray-200'
+              }`}
+            >
+              Unrated
+            </button>
+          </div>
+          {openByClock?.[selectedClock] ? (
+            <p className="text-[10px] leading-snug text-gray-500">
+              {openByClock[selectedClock]!.rated > 0 && openByClock[selectedClock]!.unrated > 0 ? (
+                <>
+                  Also waiting:{' '}
+                  {selectedRated ? (
+                    <button
+                      type="button"
+                      className="font-semibold text-gray-300 underline"
+                      onClick={() => onRatedChange(false)}
+                    >
+                      Unrated — {openByClock[selectedClock]!.unrated} open
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="font-semibold text-amber-200/90 underline"
+                      onClick={() => onRatedChange(true)}
+                    >
+                      Rated — {openByClock[selectedClock]!.rated} open
+                    </button>
+                  )}{' '}
+                  at {tcLabel}.
+                </>
+              ) : null}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <p className="mt-2 text-xs leading-snug text-gray-500">
         <strong className="text-gray-300">Manual pick-up:</strong> seats here match{' '}
         <strong className="text-gray-400">{PLAT_MODE_LABELS[mode]}</strong>,{' '}
@@ -119,13 +204,13 @@ export function FreeLobbyOpenGamesList({
       <p className="mt-1 text-[10px] text-gray-600" role="status">
         This list updates live when new seats are posted or joined.
       </p>
-      {openByClock && onSelectClock ? (
+      {laneOpenByClock && onSelectClock ? (
         <ModeRoomClockActivityRow
           variant="open"
           mode={mode}
           selectedClock={selectedClock}
           onSelectClock={onSelectClock}
-          countsByClock={openByClock}
+          countsByClock={laneOpenByClock}
           loading={clockActivityLoading}
         />
       ) : null}
@@ -160,16 +245,11 @@ export function FreeLobbyOpenGamesList({
                   }`}
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-semibold text-white">{host}</span>
-                    {waiting ? <span className="text-[11px] text-gray-500">{waiting}</span> : null}
+                    <span className="min-w-0 font-semibold text-white">{openSeatExactControlDisplayLabel(r)}</span>
+                    {waiting ? <span className="shrink-0 text-[11px] text-gray-500">{waiting}</span> : null}
                   </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-gray-400">
-                    <span>{rowModeLabel(r)}</span>
-                    <span>{formatGameTimeControlLabel(r.tempo, r.live_time_control)}</span>
-                    <span className={r.rated === true ? 'text-amber-200/85' : 'text-gray-500'}>
-                      {r.rated === true ? 'Rated' : 'Unrated'}
-                    </span>
-                  </div>
+                  <p className="text-[11px] text-gray-500">Waiting for opponent</p>
+                  <p className="text-[11px] text-gray-600">Host: {host}</p>
                 </button>
               </li>
             );
@@ -186,8 +266,7 @@ export function FreeLobbyOpenGamesList({
           <p className="mt-1 text-xs text-gray-500">
             You will take Black against{' '}
             <strong className="text-gray-300">{selected.hostUsername?.trim() || 'this player'}</strong> (
-            {rowModeLabel(selected)}, {formatGameTimeControlLabel(selected.tempo, selected.live_time_control)},{' '}
-            {selected.rated === true ? 'rated' : 'unrated'}).
+            {openSeatExactControlDisplayLabel(selected)}).
           </p>
           {preJoinError ? (
             <div

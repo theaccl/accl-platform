@@ -29,3 +29,11 @@ export function rowIndicatesLiveFreePlayPacing(row: {
 }): boolean {
   return normalizeGameTempo(row.tempo) === 'live';
 }
+
+/** True when a free-play row uses daily/async pacing (not live clock). */
+export function rowIndicatesDailyFreePlayPacing(row: {
+  tempo?: string | null;
+  live_time_control?: string | null;
+}): boolean {
+  return normalizeGameTempo(row.tempo) === 'daily';
+}
