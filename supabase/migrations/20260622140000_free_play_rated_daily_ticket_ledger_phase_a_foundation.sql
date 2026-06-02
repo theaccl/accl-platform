@@ -273,8 +273,6 @@ declare
   v_queue_slots jsonb := '[]'::jsonb;
   v_i integer;
   v_state text;
-  v_committed_assigned integer := 0;
-  v_waiting_assigned integer := 0;
   v_ledger_committed integer := 0;
   v_ledger_waiting integer := 0;
 begin
@@ -353,32 +351,37 @@ begin
     end if;
     v_today_available := greatest(0, 5 - v_today_waiting - v_today_committed);
 
-    for v_i in 1..5 loop
-      select l.state
-      into v_state
-      from public.free_play_rated_daily_position_ledger l
-      where l.user_id = v_uid
-        and l.utc_day = v_utc_day
-        and l.position_no = v_i
-        and l.state in ('waiting', 'committed')
-      limit 1;
+    if v_ledger_waiting > 0 or v_ledger_committed > 0 then
+      for v_i in 1..5 loop
+        v_state := null;
 
-      if v_state is null then
-        if v_committed_assigned < v_today_committed then
-          v_state := 'committed';
-          v_committed_assigned := v_committed_assigned + 1;
-        elsif v_waiting_assigned < v_today_waiting then
-          v_state := 'waiting';
-          v_waiting_assigned := v_waiting_assigned + 1;
-        else
-          v_state := 'empty';
-        end if;
-      end if;
+        select l.state
+        into v_state
+        from public.free_play_rated_daily_position_ledger l
+        where l.user_id = v_uid
+          and l.utc_day = v_utc_day
+          and l.position_no = v_i
+          and l.state in ('waiting', 'committed')
+        limit 1;
 
-      v_positions := v_positions || jsonb_build_array(
-        jsonb_build_object('position_no', v_i, 'state', v_state)
-      );
-    end loop;
+        v_state := coalesce(v_state, 'empty');
+
+        v_positions := v_positions || jsonb_build_array(
+          jsonb_build_object('position_no', v_i, 'state', v_state)
+        );
+      end loop;
+    else
+      for v_i in 1..5 loop
+        v_state := case
+          when v_i <= v_today_waiting then 'waiting'
+          else 'empty'
+        end;
+
+        v_positions := v_positions || jsonb_build_array(
+          jsonb_build_object('position_no', v_i, 'state', v_state)
+        );
+      end loop;
+    end if;
   else
     v_today_queue_available := greatest(0, v_today_queue_allowance - v_today_waiting);
     for v_i in 1..v_today_queue_allowance loop

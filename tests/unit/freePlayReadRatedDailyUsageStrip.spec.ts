@@ -72,4 +72,28 @@ test.describe('freePlayReadRatedDailyUsageStrip (static)', () => {
     expect(block).toContain("'service_role'");
     expect(block).toContain("raise exception 'forbidden'");
   });
+
+  test('free position dots use explicit ledger mode when active ledger rows exist', () => {
+    const block = rpcBlock(readMigration());
+    expect(block).toContain('if v_ledger_waiting > 0 or v_ledger_committed > 0 then');
+    expect(block).toContain('v_state := null;');
+    expect(block).toContain('and l.position_no = v_i');
+    expect(block).toContain("v_state := coalesce(v_state, 'empty');");
+    expect(block).not.toContain('v_committed_assigned');
+    expect(block).not.toContain('v_waiting_assigned');
+  });
+
+  test('free position dots use metadata-only fallback only when ledger counts are zero', () => {
+    const block = rpcBlock(readMigration());
+    const elseIdx = block.indexOf('else');
+    const endIfIdx = block.indexOf('end if;', elseIdx);
+    expect(elseIdx).toBeGreaterThan(-1);
+    expect(endIfIdx).toBeGreaterThan(elseIdx);
+    const fallbackBlock = block.slice(elseIdx, endIfIdx);
+    expect(fallbackBlock).toContain("when v_i <= v_today_waiting then 'waiting'");
+    expect(fallbackBlock).toContain("else 'empty'");
+    expect(fallbackBlock).not.toContain("'committed'");
+    expect(fallbackBlock).not.toContain('v_committed_assigned');
+    expect(fallbackBlock).not.toContain('v_waiting_assigned');
+  });
 });
