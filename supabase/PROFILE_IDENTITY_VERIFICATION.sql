@@ -1,14 +1,7 @@
 -- ACCL profile identity verification pack
--- Purpose: validate editable profile identity foundation (bio + avatar).
+-- Purpose: validate hardened profile identity RPC (void return) + storage posture.
 -- Scope: DB columns, RPC access controls, storage bucket/policies, and quick data sanity.
-
--- ============================================================================
--- 0) Migration presence check (optional; if table exists in your project)
--- ============================================================================
--- select version, name, inserted_at
--- from supabase_migrations.schema_migrations
--- where version in ('20260425120000')
--- order by version;
+-- Not an executable migration.
 
 -- ============================================================================
 -- 1) Confirm profile identity columns exist
@@ -22,38 +15,61 @@ select
 from information_schema.columns c
 where c.table_schema = 'public'
   and c.table_name = 'profiles'
-  and c.column_name in ('bio', 'avatar_path')
+  and c.column_name in ('bio', 'avatar_path', 'flag')
 order by c.column_name;
 
 -- ============================================================================
--- 2) Confirm RPC exists with expected security/access posture
+-- 2) Confirm hardened RPC overloads exist
 -- ============================================================================
 select
   n.nspname as schema_name,
   p.proname as function_name,
-  p.prosecdef as is_security_definer,
-  oidvectortypes(p.proargtypes) as arg_types
+  pg_get_function_identity_arguments(p.oid) as args,
+  pg_get_function_result(p.oid) as result_type,
+  p.prosecdef as is_security_definer
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
-  and p.proname = 'update_own_profile_identity';
+  and p.proname = 'update_own_profile_identity'
+order by pg_get_function_identity_arguments(p.oid);
 
--- Function grants (expect execute for authenticated, none for anon/public)
-select
-  r.routine_schema,
-  r.routine_name,
-  r.grantee,
-  r.privilege_type
-from information_schema.routine_privileges r
-where r.routine_schema = 'public'
-  and r.routine_name = 'update_own_profile_identity'
-order by r.grantee, r.privilege_type;
-
--- Optional: inspect exact function body
-select pg_get_functiondef('public.update_own_profile_identity(text, text)'::regprocedure) as function_sql;
+-- Expect:
+--   update_own_profile_identity(text, text) -> void
+--   update_own_profile_identity(text, text, text) -> void
 
 -- ============================================================================
--- 3) Confirm profile avatar bucket configuration
+-- 3) Function execute privileges (expect authenticated only)
+-- ============================================================================
+select
+  p.proname,
+  pg_get_function_identity_arguments(p.oid) as args,
+  r.rolname,
+  has_function_privilege(r.rolname, p.oid, 'EXECUTE') as can_execute
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+cross join (values ('public'::name), ('anon'), ('authenticated'), ('service_role')) as roles(rolname)
+join pg_roles r on r.rolname = roles.rolname
+where n.nspname = 'public'
+  and p.proname = 'update_own_profile_identity'
+order by p.proname, args, r.rolname;
+
+-- ============================================================================
+-- 4) search_path hardening evidence
+-- ============================================================================
+select
+  pg_get_function_identity_arguments(p.oid) as args,
+  (
+    pg_get_functiondef(p.oid) ilike '%set search_path = pg_catalog, public, pg_temp%'
+    or pg_get_functiondef(p.oid) ilike '%set search_path=pg_catalog, public, pg_temp%'
+  ) as has_fixed_search_path
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'update_own_profile_identity'
+order by 1;
+
+-- ============================================================================
+-- 5) Profile avatar bucket configuration
 -- ============================================================================
 select
   b.id,
@@ -65,7 +81,7 @@ from storage.buckets b
 where b.id = 'profile-avatars';
 
 -- ============================================================================
--- 4) Confirm storage policies for profile avatar bucket
+-- 6) Storage policies for profile avatar bucket
 -- ============================================================================
 select
   p.schemaname,
@@ -86,15 +102,11 @@ where p.schemaname = 'storage'
 order by p.policyname;
 
 -- ============================================================================
--- 5) Folder-prefix enforcement evidence (policy text should include this)
---    Expected expression fragment:
---      (storage.foldername(name))[1] = auth.uid()::text
+-- 7) Folder-prefix enforcement evidence
 -- ============================================================================
 select
   p.policyname,
   p.cmd,
-  p.qual,
-  p.with_check,
   (
     coalesce(p.qual, '') like '%(storage.foldername(name))[1] = auth.uid()::text%'
     or coalesce(p.with_check, '') like '%(storage.foldername(name))[1] = auth.uid()::text%'
@@ -110,22 +122,7 @@ where p.schemaname = 'storage'
 order by p.policyname;
 
 -- ============================================================================
--- 6) Public profile read-model exposure sanity
---    Expect profile payload keys include "bio" and "avatar_path" only for public identity,
---    and no private account fields like email.
--- ============================================================================
--- Replace with a real profile id before running.
-with input as (
-  select '00000000-0000-0000-0000-000000000000'::uuid as profile_id
-)
-select
-  jsonb_object_keys(public.get_public_profile_snapshot(i.profile_id)->'profile') as profile_payload_key
-from input i
-order by 1;
-
--- ============================================================================
--- 7) Optional data spot-check for one user
---    Replace USER_ID before running.
+-- 8) Optional data spot-check for one user
 -- ============================================================================
 with input as (
   select '00000000-0000-0000-0000-000000000000'::uuid as user_id
@@ -135,6 +132,7 @@ select
   p.username,
   p.bio,
   p.avatar_path,
+  p.flag,
   p.created_at
 from public.profiles p
 join input i on p.id = i.user_id;
