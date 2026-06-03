@@ -55,16 +55,23 @@ export function countWords(value: string | null | undefined): number {
   return text.split(/\s+/).length;
 }
 
-/** Canonical user-facing copy (matches RPC `raise exception 'Bio must be 150–250 words'` mapping in UI). */
-export const PROFILE_BIO_WORD_ERROR_MESSAGE = 'Bio must be 150–250 words.';
+/** Maximum words for an optional public profile bio (server-authoritative). */
+export const PROFILE_BIO_MAX_WORDS = 250;
 
-export function assertBioWordCount(value: string | null | undefined, min = 150, max = 250): void {
+/** Show remaining-word guidance when count reaches this threshold. */
+export const PROFILE_BIO_NEAR_LIMIT_THRESHOLD = 238;
+
+/** Canonical user-facing copy (matches RPC `Bio must be 250 words or fewer`). */
+export const PROFILE_BIO_WORD_ERROR_MESSAGE = 'Bio must be 250 words or fewer.';
+
+/** Rejects only when word count exceeds the maximum; empty bio is allowed. */
+export function assertBioWordCount(
+  value: string | null | undefined,
+  max = PROFILE_BIO_MAX_WORDS,
+): void {
   const words = countWords(value);
 
-  if (words < min || words > max) {
-    if (min === 150 && max === 250) {
-      throw new Error(PROFILE_BIO_WORD_ERROR_MESSAGE);
-    }
-    throw new Error(`Bio must be ${min}–${max} words.`);
+  if (words > max) {
+    throw new Error(PROFILE_BIO_WORD_ERROR_MESSAGE);
   }
 }

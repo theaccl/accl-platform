@@ -36,6 +36,7 @@ order by pg_get_function_identity_arguments(p.oid);
 -- Expect:
 --   update_own_profile_identity(text, text) -> void
 --   update_own_profile_identity(text, text, text) -> void
+--   optional bio: empty allowed; non-empty bio max 250 words (no minimum)
 
 -- ============================================================================
 -- 3) Function execute privileges (expect authenticated only)
@@ -136,3 +137,17 @@ select
   p.created_at
 from public.profiles p
 join input i on p.id = i.user_id;
+
+-- ============================================================================
+-- 9) Public snapshot exposes profile.flag for country/flag pill
+-- ============================================================================
+select
+  pg_get_functiondef(p.oid) ilike '%''flag'', nullif(trim(coalesce(p.flag, '')), '')%'
+    as snapshot_includes_flag
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'get_public_profile_snapshot';
+
+-- Spot-check snapshot payload keys (replace uuid):
+-- select jsonb_object_keys(public.get_public_profile_snapshot('<profile_id>'::uuid)->'profile');

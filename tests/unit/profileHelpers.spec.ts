@@ -44,11 +44,15 @@ test.describe('lib/profile helpers', () => {
     expect(isUserOnline(null)).toBe(false);
   });
 
-  test('assertBioWordCount enforces bounds', () => {
-    const words150 = Array.from({ length: 150 }, () => 'word').join(' ');
+  test('assertBioWordCount allows optional bio up to 250 words', () => {
+    const words1 = 'hello';
+    const words250 = Array.from({ length: 250 }, () => 'word').join(' ');
     const words251 = Array.from({ length: 251 }, () => 'word').join(' ');
-    expect(() => assertBioWordCount(words150)).not.toThrow();
+    expect(() => assertBioWordCount(null)).not.toThrow();
+    expect(() => assertBioWordCount('')).not.toThrow();
+    expect(() => assertBioWordCount(words1)).not.toThrow();
+    expect(() => assertBioWordCount(words250)).not.toThrow();
     expect(() => assertBioWordCount(words251)).toThrow(PROFILE_BIO_WORD_ERROR_MESSAGE);
-    expect(countWords(words150)).toBe(150);
+    expect(countWords(words250)).toBe(250);
   });
 });

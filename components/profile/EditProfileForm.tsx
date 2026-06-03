@@ -5,7 +5,13 @@ import Cropper, { type Area, type Point } from 'react-easy-crop';
 import { useRouter } from 'next/navigation';
 
 import CountryFlagCombobox from '@/components/profile/CountryFlagCombobox';
-import { assertBioWordCount, countWords, PROFILE_BIO_WORD_ERROR_MESSAGE } from '@/lib/profile';
+import {
+  assertBioWordCount,
+  countWords,
+  PROFILE_BIO_MAX_WORDS,
+  PROFILE_BIO_NEAR_LIMIT_THRESHOLD,
+  PROFILE_BIO_WORD_ERROR_MESSAGE,
+} from '@/lib/profile';
 import { getCroppedPngBlob } from '@/lib/profileImageCrop';
 import { supabase } from '@/lib/supabaseClient';
 import { profileRowNeedsUsername, validateAcclUsername } from '@/lib/usernameRules';
@@ -59,6 +65,11 @@ export default function EditProfileForm({
   const [saveSuccess, setSaveSuccess] = useState<string>('');
 
   const bioWordCount = useMemo(() => countWords(bio), [bio]);
+  const bioOverLimit = bioWordCount > PROFILE_BIO_MAX_WORDS;
+  const bioNearLimit =
+    bioWordCount >= PROFILE_BIO_NEAR_LIMIT_THRESHOLD && !bioOverLimit;
+  const bioWordsRemaining = PROFILE_BIO_MAX_WORDS - bioWordCount;
+  const bioWordsOver = bioWordCount - PROFILE_BIO_MAX_WORDS;
 
   const needsUsernameClaim = profileRowNeedsUsername(initialUsername);
   const usernameLocked = !needsUsernameClaim;
@@ -70,7 +81,10 @@ export default function EditProfileForm({
       return { form: 'Unable to save profile right now.' };
     }
 
-    if (raw.includes('Bio must be 150–250 words')) {
+    if (
+      raw.includes('Bio must be 150–250 words') ||
+      raw.includes('Bio must be 250 words or fewer')
+    ) {
       return { bio: PROFILE_BIO_WORD_ERROR_MESSAGE };
     }
 
@@ -93,16 +107,18 @@ export default function EditProfileForm({
       }
     }
 
-    if (bio.trim()) {
+    if (bioOverLimit) {
+      nextErrors.bio = PROFILE_BIO_WORD_ERROR_MESSAGE;
+    } else {
       try {
-        assertBioWordCount(bio, 150, 250);
+        assertBioWordCount(bio);
       } catch {
         nextErrors.bio = PROFILE_BIO_WORD_ERROR_MESSAGE;
       }
     }
 
     return nextErrors;
-  }, [bio, needsUsernameClaim, username]);
+  }, [bio, bioOverLimit, needsUsernameClaim, username]);
 
   const onCropConfirm = useCallback(async () => {
     if (!imageSrc || !croppedAreaPixels) {
@@ -361,10 +377,26 @@ export default function EditProfileForm({
           />
           <div
             id="bio-help"
-            className="flex items-center justify-between text-xs text-slate-400"
+            className={`flex flex-col gap-0.5 text-xs ${bioOverLimit ? 'text-red-300' : 'text-slate-400'}`}
           >
-            <span>Bio must be 150–250 words when provided.</span>
-            <span data-testid="edit-profile-bio-word-count">{bioWordCount} words</span>
+            <span data-testid="edit-profile-bio-counter">
+              Optional bio · {bioWordCount} / {PROFILE_BIO_MAX_WORDS} words
+            </span>
+            {!bioOverLimit && !bioNearLimit ? (
+              <span className="text-slate-500" data-testid="edit-profile-bio-suggestion">
+                Suggested length: 25–100 words
+              </span>
+            ) : null}
+            {bioNearLimit ? (
+              <span data-testid="edit-profile-bio-remaining">
+                {bioWordsRemaining} words remaining
+              </span>
+            ) : null}
+            {bioOverLimit ? (
+              <span data-testid="edit-profile-bio-over-limit">
+                Remove {bioWordsOver} words to save
+              </span>
+            ) : null}
           </div>
           {errors.bio ? (
             <p
@@ -401,7 +433,7 @@ export default function EditProfileForm({
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || bioOverLimit}
             className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-100 disabled:opacity-60"
             data-testid="edit-profile-save"
           >
