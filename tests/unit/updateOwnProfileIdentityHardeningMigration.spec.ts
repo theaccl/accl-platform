@@ -16,11 +16,36 @@ test.describe('updateOwnProfileIdentityHardeningMigration (static)', () => {
     expect(sql.trimEnd().toLowerCase()).toMatch(/commit;\s*$/);
   });
 
+  test('drops profiles-returning overloads before recreation inside transaction', () => {
+    const sql = readMigration();
+    const beginIdx = sql.search(/\nbegin;\s*\n/i);
+    const commitIdx = sql.search(/\ncommit;\s*$/i);
+    const dropTwoArgIdx = sql.indexOf(
+      'drop function if exists public.update_own_profile_identity(text, text);',
+    );
+    const dropThreeArgIdx = sql.indexOf(
+      'drop function if exists public.update_own_profile_identity(text, text, text);',
+    );
+    const createThreeArgIdx = sql.search(
+      /create function public\.update_own_profile_identity\(\s*p_bio text,/,
+    );
+
+    expect(sql).toContain('RETURNS public.profiles');
+    expect(sql).toContain(
+      'cannot change an existing function return type via CREATE OR REPLACE',
+    );
+    expect(sql).toContain('No CASCADE: if an unexpected database dependency exists');
+    expect(dropTwoArgIdx).toBeGreaterThan(beginIdx);
+    expect(dropThreeArgIdx).toBeGreaterThan(beginIdx);
+    expect(createThreeArgIdx).toBeGreaterThan(dropThreeArgIdx);
+    expect(commitIdx).toBeGreaterThan(createThreeArgIdx);
+    expect(sql).not.toMatch(/drop function.*cascade/i);
+  });
+
   test('preserves three-argument void signature and hardens body', () => {
     const sql = readMigration();
-    expect(sql).toContain('create or replace function public.update_own_profile_identity');
     expect(sql).toMatch(
-      /create or replace function public\.update_own_profile_identity\(\s*p_bio text,\s*p_avatar_path text,\s*p_flag text\s*\)/,
+      /create function public\.update_own_profile_identity\(\s*p_bio text,\s*p_avatar_path text,\s*p_flag text\s*\)/,
     );
     expect(sql).toContain('overload stays unambiguous');
     expect(sql).toContain('returns void');
@@ -41,7 +66,7 @@ test.describe('updateOwnProfileIdentityHardeningMigration (static)', () => {
     expect(sql).toContain('perform public.update_own_profile_identity(p_bio, p_avatar_path, v_existing_flag)');
     expect(sql).toContain('select p.flag');
     expect(sql).toMatch(
-      /create or replace function public\.update_own_profile_identity\(\s*p_bio text default null,\s*p_avatar_path text default null\s*\)/,
+      /create function public\.update_own_profile_identity\(\s*p_bio text default null,\s*p_avatar_path text default null\s*\)/,
     );
   });
 

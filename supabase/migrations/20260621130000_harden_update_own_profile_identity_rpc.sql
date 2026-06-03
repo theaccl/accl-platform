@@ -7,9 +7,20 @@
 
 begin;
 
+-- Repository history defines these overloads as RETURNS public.profiles,
+-- while the manually drifted production RPC currently exposes the 3-arg
+-- overload as RETURNS void. DROP + recreate is required because PostgreSQL
+-- cannot change an existing function return type via CREATE OR REPLACE.
+--
+-- No CASCADE: if an unexpected database dependency exists, fail safely and
+-- inspect it rather than deleting dependent objects.
+
+drop function if exists public.update_own_profile_identity(text, text);
+drop function if exists public.update_own_profile_identity(text, text, text);
+
 -- Three-argument signature has no parameter DEFAULTs so the two-argument compatibility
 -- overload stays unambiguous (PostgreSQL rejects defaults before a non-default param).
-create or replace function public.update_own_profile_identity(
+create function public.update_own_profile_identity(
   p_bio text,
   p_avatar_path text,
   p_flag text
@@ -83,7 +94,7 @@ revoke all on function public.update_own_profile_identity(text, text, text) from
 grant execute on function public.update_own_profile_identity(text, text, text) to authenticated;
 
 -- Two-argument compatibility wrapper: preserve existing flag when only bio/avatar change.
-create or replace function public.update_own_profile_identity(
+create function public.update_own_profile_identity(
   p_bio text default null,
   p_avatar_path text default null
 )
