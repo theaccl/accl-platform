@@ -15,7 +15,16 @@ select
 from information_schema.columns c
 where c.table_schema = 'public'
   and c.table_name = 'profiles'
-  and c.column_name in ('bio', 'avatar_path', 'flag')
+  and c.column_name in (
+    'bio',
+    'avatar_path',
+    'flag',
+    'last_active_at',
+    'username_change_count',
+    'games_played',
+    'current_streak',
+    'highest_streak'
+  )
 order by c.column_name;
 
 -- ============================================================================
@@ -151,3 +160,45 @@ where n.nspname = 'public'
 
 -- Spot-check snapshot payload keys (replace uuid):
 -- select jsonb_object_keys(public.get_public_profile_snapshot('<profile_id>'::uuid)->'profile');
+
+-- ============================================================================
+-- 10) touch_profile_activity() prerequisite reconciliation
+-- ============================================================================
+select
+  p.proname as function_name,
+  pg_get_function_result(p.oid) as result_type,
+  p.prosecdef as is_security_definer,
+  (
+    pg_get_functiondef(p.oid) ilike '%set search_path = pg_catalog, public, pg_temp%'
+    or pg_get_functiondef(p.oid) ilike '%set search_path=pg_catalog, public, pg_temp%'
+  ) as has_fixed_search_path
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'touch_profile_activity';
+
+select
+  p.proname,
+  r.rolname,
+  has_function_privilege(r.rolname, p.oid, 'EXECUTE') as can_execute
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+cross join (values ('public'::name), ('anon'), ('authenticated'), ('service_role')) as roles(rolname)
+join pg_roles r on r.rolname = roles.rolname
+where n.nspname = 'public'
+  and p.proname = 'touch_profile_activity'
+order by r.rolname;
+
+-- ============================================================================
+-- 11) Migration ledger inspection (read-only; not an apply step)
+-- ============================================================================
+-- select version, name
+-- from supabase_migrations.schema_migrations
+-- where version in (
+--   '20260621135000',
+--   '20260621140000',
+--   '20260622140000'
+-- )
+-- order by version;
+
+-- Rated Daily Phase A objects (20260622140000) remain independently inspectable when present.
