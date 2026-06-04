@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { countryLabelFromIso2, flagEmojiFromIso2, flagIconUrlFromIso2 } from '@/lib/flagDisplay';
+import {
+  countryLabelFromIso2,
+  FLAG_PREFER_NOT_TO_SAY_LABEL,
+  flagEmojiFromIso2,
+  flagIconUrlFromIso2,
+} from '@/lib/flagDisplay';
 import countries from 'i18n-iso-countries';
 
 export type CountryFlagComboboxProps = {
@@ -22,9 +27,9 @@ function buildOptions() {
   }));
   rows.sort((a, b) => a.name.localeCompare(b.name));
   return [
-    { code: '', name: '— None —', emoji: null as string | null, iconUrl: null as string | null },
+    { code: '', name: FLAG_PREFER_NOT_TO_SAY_LABEL, emoji: null as string | null, iconUrl: null as string | null },
     ...rows,
-    { code: 'OTHER', name: 'Other / prefer not to say', emoji: null, iconUrl: null },
+    { code: 'OTHER', name: FLAG_PREFER_NOT_TO_SAY_LABEL, emoji: null, iconUrl: null },
   ];
 }
 
@@ -49,11 +54,12 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
   /** Trigger: flag icon + label (emoji only as fallback when icon fails). */
   const triggerDisplay = useMemo(() => {
     const v = value.trim();
-    if (!v) {
-      return { iconUrl: null as string | null, emoji: null as string | null, text: 'Select country…' as string };
-    }
-    if (v === 'OTHER') {
-      return { iconUrl: null, emoji: null, text: 'Other / prefer not to say' };
+    if (!v || v === 'OTHER') {
+      return {
+        iconUrl: null as string | null,
+        emoji: null as string | null,
+        text: FLAG_PREFER_NOT_TO_SAY_LABEL,
+      };
     }
     return {
       iconUrl: flagIconUrlFromIso2(v),

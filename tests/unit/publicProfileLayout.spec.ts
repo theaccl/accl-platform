@@ -27,4 +27,11 @@ test.describe('public profile [id] layout (static)', () => {
     expect(src).not.toContain('flagDisplay:');
     expect(src).not.toContain('flagDisplay={');
   });
+
+  test('country flag combobox uses prefer-not-to-say empty label', () => {
+    const src = readFileSync(join(process.cwd(), 'components', 'profile', 'CountryFlagCombobox.tsx'), 'utf8');
+    expect(src).toContain('FLAG_PREFER_NOT_TO_SAY_LABEL');
+    expect(src).not.toContain('— None —');
+    expect(src).not.toContain('Select country…');
+  });
 });

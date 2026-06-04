@@ -3,6 +3,9 @@ import en from 'i18n-iso-countries/langs/en.json';
 
 countries.registerLocale(en);
 
+/** Visible label for null/empty profile flag and explicit OTHER. */
+export const FLAG_PREFER_NOT_TO_SAY_LABEL = 'Other / prefer not to say';
+
 export function flagEmojiFromIso2(code: string | null | undefined): string | null {
   const c = code?.trim().toUpperCase();
   if (!c || c === 'OTHER' || c.length !== 2) {
@@ -26,7 +29,7 @@ export function countryLabelFromIso2(code: string | null | undefined): string | 
     return null;
   }
   if (c === 'OTHER') {
-    return 'Other / prefer not to say';
+    return FLAG_PREFER_NOT_TO_SAY_LABEL;
   }
   return countries.getName(c, 'en') ?? null;
 }
@@ -61,18 +64,22 @@ export function flagIconUrlFromIso2(code: string | null | undefined): string | n
   return `https://flagcdn.com/w40/${c.toLowerCase()}.png`;
 }
 
-export function resolveFlagIdentity(code: string | null | undefined): FlagIdentityPresentation | null {
+function preferNotToSayIdentity(storedCode: '' | 'OTHER'): FlagIdentityPresentation {
+  return {
+    code: storedCode,
+    label: FLAG_PREFER_NOT_TO_SAY_LABEL,
+    iconUrl: null,
+    emoji: null,
+  };
+}
+
+export function resolveFlagIdentity(code: string | null | undefined): FlagIdentityPresentation {
   const c = code?.trim().toUpperCase();
   if (!c) {
-    return null;
+    return preferNotToSayIdentity('');
   }
   if (c === 'OTHER') {
-    return {
-      code: 'OTHER',
-      label: 'Other / prefer not to say',
-      iconUrl: null,
-      emoji: null,
-    };
+    return preferNotToSayIdentity('OTHER');
   }
   const label = countryLabelFromIso2(c) ?? c;
   return {
@@ -90,7 +97,7 @@ export function formatFlagDisplay(code: string | null | undefined): string | nul
     return null;
   }
   if (c === 'OTHER') {
-    return 'Other / prefer not to say';
+    return FLAG_PREFER_NOT_TO_SAY_LABEL;
   }
   const label = countryLabelFromIso2(c);
   const emoji = flagEmojiFromIso2(c);

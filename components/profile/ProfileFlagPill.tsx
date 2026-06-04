@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import type { FlagIdentityPresentation } from '@/lib/flagDisplay';
+import { FLAG_PREFER_NOT_TO_SAY_LABEL, type FlagIdentityPresentation } from '@/lib/flagDisplay';
 
 export type ProfileFlagPillProps = {
   identity: FlagIdentityPresentation | null;
@@ -15,12 +15,13 @@ export type ProfileFlagPillProps = {
 export default function ProfileFlagPill({ identity }: ProfileFlagPillProps) {
   const [iconFailed, setIconFailed] = useState(false);
 
-  if (!identity) {
-    return <>—</>;
-  }
+  const showIcon = Boolean(identity?.iconUrl) && !iconFailed;
+  const showCodePrefix =
+    Boolean(identity?.code) && identity.code !== 'OTHER' && identity.code.length === 2;
 
-  const showIcon = Boolean(identity.iconUrl) && !iconFailed;
-  const showCodePrefix = identity.code !== 'OTHER' && identity.code.length === 2;
+  if (!identity) {
+    return <span data-testid="profile-flag-label">{FLAG_PREFER_NOT_TO_SAY_LABEL}</span>;
+  }
 
   return (
     <span className="inline-flex max-w-full items-center gap-2">
