@@ -15,13 +15,12 @@ export type ProfileFlagPillProps = {
 export default function ProfileFlagPill({ identity }: ProfileFlagPillProps) {
   const [iconFailed, setIconFailed] = useState(false);
 
-  const showIcon = Boolean(identity?.iconUrl) && !iconFailed;
-  const showCodePrefix =
-    Boolean(identity?.code) && identity.code !== 'OTHER' && identity.code.length === 2;
-
   if (!identity) {
     return <span data-testid="profile-flag-label">{FLAG_PREFER_NOT_TO_SAY_LABEL}</span>;
   }
+
+  const showIcon = Boolean(identity.iconUrl) && !iconFailed;
+  const showCodePrefix = identity.code !== 'OTHER' && identity.code.length === 2;
 
   return (
     <span className="inline-flex max-w-full items-center gap-2">
