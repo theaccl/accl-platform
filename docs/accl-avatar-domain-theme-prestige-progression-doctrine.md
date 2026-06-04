@@ -706,3 +706,994 @@ Trainer uses a cleaner version: solid dominant color or material with restrained
 Players may buy stylistic worlds.
 
 Players may **never** buy competitive rank, fake prestige, or advantage.
+
+---
+
+# ACCL Paid Cosmetic Add-On, Theme Package, and Progression Carry-Over Doctrine
+
+This part extends the identity doctrine above. It covers paid cosmetic add-ons, theme-color packages, style packages, combined bundles, seasonal packages, package activation, progression carry-over, upgrade and downgrade rendering, Trainer translation, and competitive-integrity boundaries.
+
+**Rating-block-to-material mapping remains open.** Do not treat exact rating thresholds or final material pecking order as locked in this document.
+
+---
+
+## 1. Core Principle
+
+ACCL may offer optional paid cosmetic add-ons that allow players to personalize their avatar transformation, profile domain, Trainer appearance, banners, motifs, and decorative atmosphere.
+
+Paid add-ons are visual identity products.
+
+They are not competitive products.
+
+A player may purchase a world, style, color palette, seasonal presentation, or curated visual bundle.
+
+A player may never purchase rating, rank, prestige status, tournament standing, gameplay advantage, or the appearance of an earned prestige material that they have not actually earned.
+
+**Core rule:** Players may buy cosmetic worlds. Players may not buy competitive proof.
+
+---
+
+## 2. Separate the Identity Layers
+
+ACCL visual identity must remain layered.
+
+### Layer 1 — Foundational Base Color
+
+Every player begins by choosing one locked foundational ACCL color:
+
+- Red
+- Blue
+- Black
+- White
+
+This is the player’s original identity lineage.
+
+It should remain meaningful and traceable through later progression.
+
+### Layer 2 — Optional Cosmetic Color Add-On
+
+A purchased color add-on may expand the player’s available visual palette.
+
+Possible examples:
+
+- Purple
+- Green
+- Teal
+- Orange
+- Crimson
+- Ice Blue
+- Rose
+- Bronze
+- seasonal palettes
+- event-limited palettes
+- future curated color families
+
+These are cosmetic identity colors.
+
+They must not imitate earned prestige materials.
+
+### Layer 3 — Style Package
+
+A style package defines the player’s visual world.
+
+Examples:
+
+- Gothic Court
+- Angelic Cathedral
+- Carnival Jester
+- Cyber Command
+- Royal Fortress
+- Enchanted Forest
+- Samurai Hall
+- Cosmic Chamber
+- Cute Mascot Academy
+- Dragon School
+- Chess Robot Lab
+- Haunted Castle
+- Celestial Temple
+- Noir Chess Lounge
+
+### Layer 4 — Earned Prestige Material
+
+Earned progression controls competitive visual materials.
+
+Examples under consideration:
+
+- Silver
+- Gold
+- Platinum
+- Diamond
+- Platinum-Diamond
+- Lava
+- Mercury or liquid-metal sovereign treatment
+
+These materials are earned only.
+
+### Layer 5 — Surface Translation
+
+The same identity configuration may render differently across ACCL surfaces:
+
+- generated avatar
+- profile domain scene
+- profile banner
+- player card
+- Trainer shell and accents
+- Vault showcase
+- result page
+- tournament presentation
+- future achievement surfaces
+
+---
+
+## 3. Cosmetic Product Categories
+
+ACCL may support several categories of optional cosmetic products.
+
+### A. Standalone Color Add-Ons
+
+These expand the player’s available palette.
+
+Examples:
+
+- Arcane Purple
+- Forest Green
+- Teal Circuit
+- Ember Orange
+- Crimson Night
+- Ice Blue
+- Rose Royal
+- Bronze Veteran
+
+A standalone color add-on can be applied to eligible profile, avatar, and Trainer surfaces.
+
+It does not grant competitive prestige.
+
+### B. Standalone Style Packages
+
+These provide a visual-world identity without necessarily changing the foundational color.
+
+Examples:
+
+- Gothic Court
+- Angelic Cathedral
+- Cute Mascot Academy
+- Cyber Command
+- Carnival Jester
+- Enchanted Forest
+- Knight Fortress
+- Cosmic Arena
+- Samurai Hall
+
+A player may apply their eligible active color and earned prestige state inside that purchased style.
+
+Example:
+
+```text
+Purchased package: Gothic Court
+Active identity color: Blue
+Current progression state: Blue with Gold accents
+
+Rendered result:
+Blue Gothic Court with Gold accents
+```
+
+### C. Combined Style-and-Theme Bundles
+
+These provide a curated style world and matching color palette.
+
+Examples:
+
+- Crimson Gothic Carnival
+- Ice Blue Angelic Cathedral
+- Teal Cyber Command
+- Purple Mystic Court
+- Green Enchanted Forest
+- White-and-Gold Royal Ceremony
+- Cute Dragon Academy
+- Black Shadow Fortress
+- Rose Garden Court
+
+Players who prefer a complete pre-designed presentation may choose a combined bundle rather than assembling a style and palette separately.
+
+### D. Holiday and Seasonal Packages
+
+ACCL may offer recurring or limited seasonal presentations.
+
+**Halloween examples:**
+
+- Haunted Chess Castle
+- Shadow Carnival
+- Pumpkin Knight Court
+- Black-and-Orange Gothic Jester
+- haunted Trainer accents
+
+**Winter examples:**
+
+- Frost Citadel
+- Snow Knight Academy
+- Ice Blue Cathedral
+- White-and-Silver Trainer shell
+- crystal chess-piece motifs
+
+**Holiday season examples:**
+
+- Red-and-Gold Royal Hall
+- Winter Toy Chess Kingdom
+- Nutcracker Court
+- festive banners
+- ceremonial lights
+- K-12 mascot variants
+
+**New Year examples:**
+
+- Gold Midnight Court
+- fireworks accents
+- formal black-gold-white presentation
+- celebratory profile effects
+
+**Spring examples:**
+
+- Enchanted Garden
+- floral chess court
+- green, rose, and white palette options
+- nature-themed Trainer accents
+
+**Summer examples:**
+
+- Solar Arena
+- tropical mascot worlds
+- bright carnival themes
+- warm decorative accents
+
+Seasonal packages remain cosmetic.
+
+They do not grant seasonal competitive advantage or fake prestige.
+
+### E. Event Packages
+
+ACCL may support event-related cosmetic packages.
+
+Examples:
+
+- championship-season package
+- ACCL anniversary package
+- league-club package
+- school-year K-12 package
+- founder package
+- invitational package
+- regional-event package
+- tournament-participation package
+- veteran-themed package
+- promotional collaboration package
+
+An event package may be:
+
+- purchased
+- earned
+- gifted
+- promotional
+- limited-time
+- permanently owned after acquisition
+- temporarily selectable during an event period
+
+Exact rules remain open for product lock.
+
+---
+
+## 4. Permanent Ownership Rule
+
+A paid add-on should remain owned permanently after purchase unless a specific limited-license product is clearly disclosed before purchase.
+
+**Default rule:** Purchased cosmetic packages remain permanently owned.
+
+A player may:
+
+- select a purchased package
+- unselect it
+- return to Standard ACCL presentation
+- reactivate the purchased package later
+- carry it forward into higher progression blocks
+- see it render at a lower visual block after downgrade
+- retain ownership after downgrade
+- retain ownership while inactive
+
+Ownership and active presentation are separate concepts.
+
+---
+
+## 5. Select and Unselect Rule
+
+Players should be able to choose whether an owned package is actively displayed.
+
+Possible Profile settings structure:
+
+```text
+Active Domain Presentation
+- Standard ACCL
+- Gothic Court
+- Angelic Cathedral
+- Cute Mascot Academy
+- Cyber Command
+- Seasonal package
+- Other owned packages
+```
+
+The player may turn a paid add-on on or off without losing ownership.
+
+The player should not be forced to use a purchased package simply because it exists in their inventory.
+
+---
+
+## 6. Current-Block Rendering Rule
+
+A paid package should represent the player’s **current progression block**.
+
+It should not remain frozen at the visual state in which it was purchased.
+
+Example:
+
+```text
+Purchased package: Gothic Court
+Origin color: Blue
+```
+
+Possible package-aware renders:
+
+```text
+Blue Gothic Court
+Blue Gothic Court with Silver accents
+Silver Gothic Court with Blue accents
+Silver Gothic Court with Gold accents
+Gold Gothic Court with Blue accents
+Gold Gothic Court with Platinum accents
+Platinum Gothic Court with Gold accents
+Platinum Gothic Court with Diamond accents
+Platinum-Diamond Gothic Court
+Platinum-Diamond Gothic Court with Lava accents
+Lava Gothic Court with Diamond accents
+Lava Gothic Court with Mercury accents
+Mercury Sovereign Gothic Court
+```
+
+The purchased package controls the world.
+
+The competitive progression block controls the earned material state.
+
+---
+
+## 7. Upgrade Rendering Rule
+
+When a player advances within or beyond a progression block, the active package should visually upgrade to the eligible package-aware variant.
+
+General pattern:
+
+```text
+current dominant material
+→ next material appears as accents
+→ next material becomes dominant after formal promotion
+```
+
+Example for a Blue-origin player:
+
+```text
+Blue
+→ Blue with Gold accents
+→ Gold with Blue accents
+→ Gold with Platinum accents
+→ Platinum with Gold accents
+```
+
+Inside a purchased package:
+
+```text
+Blue Gothic Court
+→ Blue Gothic Court with Gold accents
+→ Gold Gothic Court with Blue accents
+→ Gold Gothic Court with Platinum accents
+→ Platinum Gothic Court with Gold accents
+```
+
+A package should support visual growth rather than functioning as a static wallpaper.
+
+---
+
+## 8. Downgrade Rendering Rule
+
+When a player’s current competitive block downgrades, the active package should visually downgrade with it.
+
+Example:
+
+```text
+Gold Gothic Court with Platinum accents
+↓
+Gold Gothic Court with Blue accents
+↓
+Silver Gothic Court with Gold accents
+```
+
+The player still owns Gothic Court.
+
+The player simply no longer displays a higher current-block treatment that they are not presently entitled to show.
+
+This preserves competitive meaning.
+
+---
+
+## 9. Historical Peak versus Current Active Rendering
+
+The system must distinguish historical achievement from current presentation.
+
+### Historical achievement record
+
+The player may retain:
+
+- permanent package ownership
+- highest confirmed progression milestone
+- historical peak record
+- prior visual unlock record
+- Vault snapshots
+- earned theme-switch history
+- historical trophies or relics
+
+### Current active rendering
+
+The active profile and Trainer presentation should represent:
+
+- current progression block
+- current eligible dominant material
+- current eligible accent state
+- selected active package
+- current active palette
+- current downgrade or recovery status where applicable
+
+A player may preserve proof of past achievement in Vault or history.
+
+The active competitive presentation should communicate present standing.
+
+---
+
+## 10. Carry-Forward Rule
+
+A paid package should support carry-over into future levels.
+
+A player who buys Gothic Court at an early level may want to see:
+
+- Gold Gothic Court
+- Platinum Gothic Court
+- Lava Gothic Court
+- Mercury Gothic Court
+
+The package should not become obsolete when the player climbs.
+
+Possible setting:
+
+```text
+Carry Active Package Forward
+- On
+- Off
+```
+
+**Carry-forward on:** The package remains active as the player advances or downgrades. The renderer automatically selects the eligible package-aware version for the player’s current block.
+
+**Carry-forward off:** The package remains owned but may revert to Standard ACCL presentation after a major progression transition until the player manually reapplies it.
+
+Default behavior remains open for product lock.
+
+**Recommended default:** Carry Active Package Forward: On — best respects the player’s paid visual preference.
+
+---
+
+## 11. Package-Aware Variant Requirement
+
+A paid package should be designed as a progression-capable visual family.
+
+It should not be treated as one flat static image.
+
+The package system should support variant logic for:
+
+- foundational base colors
+- optional purchased color palettes
+- dominant earned materials
+- within-level accent states
+- promotion inversion states
+- downgrade states
+- recovery states
+- Trainer translation
+- profile-domain translation
+- future Vault representation
+
+Example package family:
+
+```text
+Package: Angelic Cathedral
+
+Possible variants:
+- Blue Angelic Cathedral
+- Red Angelic Cathedral
+- Black Angelic Cathedral
+- White Angelic Cathedral
+- Purple Angelic Cathedral
+- Blue Angelic Cathedral with Gold accents
+- Gold Angelic Cathedral with Blue accents
+- Gold Angelic Cathedral with Platinum accents
+- Platinum Angelic Cathedral with Gold accents
+- Platinum Angelic Cathedral with Diamond accents
+- Lava Angelic Cathedral with Diamond accents
+- Mercury Sovereign Angelic Cathedral
+```
+
+Exact asset-generation strategy remains open.
+
+---
+
+## 12. Earned Prestige Materials Must Not Be Sold
+
+Paid add-ons may provide:
+
+- style
+- world
+- genre
+- palette
+- decorations
+- banners
+- costume direction
+- lighting
+- environmental motifs
+- seasonal atmosphere
+- Trainer accents
+- profile-domain variation
+
+Paid add-ons may **not** provide or imitate unearned:
+
+- Silver prestige
+- Gold prestige
+- Platinum prestige
+- Diamond prestige
+- Platinum-Diamond prestige
+- Lava prestige
+- Mercury sovereign prestige
+- tournament standing
+- badge tier
+- rating authority
+- title authority
+
+Example:
+
+A lower-level player may buy:
+
+```text
+Purple Mystic Court
+```
+
+They may **not** buy:
+
+```text
+Platinum-Diamond Purple Mystic Court
+```
+
+unless the account is currently eligible to display Platinum-Diamond treatment.
+
+---
+
+## 13. Style Package and Earned Prestige Composition
+
+The final presentation should be composed from separate sources of truth.
+
+Example:
+
+```text
+Origin color lineage: Black
+Purchased style package: Angelic Cathedral
+Purchased optional palette: Ice Blue
+Current earned progression state: Gold with Platinum accents
+```
+
+Possible rendered result:
+
+```text
+Gold Angelic Cathedral
+with Platinum progression accents
+and restrained Black-origin lineage details
+using eligible Ice Blue atmospheric styling
+```
+
+The package is the world.
+
+The optional palette is the personality.
+
+The earned progression state is the proof.
+
+---
+
+## 14. Trainer Translation Rule
+
+Trainer should support purchased add-ons in a restrained and functional format.
+
+Trainer must preserve:
+
+- board readability
+- move-list clarity
+- lesson clarity
+- puzzle clarity
+- analysis clarity
+- control visibility
+- stable layout
+- low distraction
+
+Trainer should not reproduce the full cinematic profile domain.
+
+Instead, it should translate the active package through:
+
+- solid dominant shell color
+- restrained trim
+- panel borders
+- header framing
+- icon style
+- crest treatment
+- subtle motifs
+- lighting details
+- completion effects
+- reward-card styling
+- optional ambient decorations
+
+Example:
+
+```text
+Active package: Gothic Court
+Current progression: Gold with Platinum accents
+Origin lineage: Blue
+```
+
+Trainer render:
+
+```text
+Gold Trainer shell
+with Platinum trim
+restrained Blue identity details
+subtle Gothic Court motifs
+```
+
+---
+
+## 15. K-12 Catalog Doctrine
+
+K-12 packages should feel playful, safe, imaginative, and aspirational.
+
+Possible examples:
+
+- Cute Mascot Academy
+- Friendly Dragon School
+- Chess Robot Lab
+- Toy Kingdom
+- Space Explorer Court
+- Magical Castle
+- Puzzle Adventure Hall
+- Animal Champion Academy
+- Winter Toy Chess Kingdom
+- Spring Garden Academy
+
+K-12 packages should still support earned progression variants.
+
+Example:
+
+```text
+Blue Cute Dragon Academy
+→ Blue Cute Dragon Academy with Gold accents
+→ Gold Cute Dragon Academy with Blue accents
+→ Platinum Cute Dragon Academy with Gold accents
+```
+
+The visual world may be playful.
+
+The prestige logic remains consistent.
+
+---
+
+## 16. 18+ Catalog Doctrine
+
+Adult-oriented packages may use stronger atmosphere while remaining tasteful, non-graphic, and appropriate.
+
+Possible examples:
+
+- Gothic Court
+- Angelic Cathedral
+- Fallen-Angel Hall
+- Shadow Assassin Domain
+- Haunted Castle
+- Noir Chess Lounge
+- Warlord Throne Room
+- Infernal Fire Court
+- Celestial Judgment Hall
+- Eerie Carnival Court
+- Cyber Command Arena
+
+The system should support darker or more dramatic aesthetics without becoming graphic, sexualized, or excessively disturbing.
+
+---
+
+## 17. Seasonal Activation Options
+
+A seasonal package may support one of several models.
+
+**Possible models:**
+
+- **Permanent ownership** — purchase once; reactivate in future seasons
+- **Seasonal storefront availability** — purchase only during the season; owned permanently afterward
+- **Temporary active window** — usable only during a disclosed seasonal window
+- **Annual recurring access** — reactivates automatically each year during its designated season
+
+Exact monetization rules remain open.
+
+**Recommended baseline:** Seasonal storefront availability with permanent ownership after purchase — preserves player trust and increases long-term collection value.
+
+---
+
+## 18. Profile Settings Concept
+
+Future Profile settings may include:
+
+```text
+ACCL Identity Settings
+
+Origin Color
+- Locked origin identity
+
+Active Color Theme
+- Standard origin color
+- Owned optional color add-ons
+- Eligible selected palette
+
+Active Style Package
+- Standard ACCL
+- Owned packages
+- Seasonal packages
+- Event packages
+
+Carry Active Package Forward
+- On
+- Off
+
+Current Progression Rendering
+- Current eligible material state
+
+Current Preview
+- Avatar preview
+- Profile-domain preview
+- Trainer preview
+
+Available Actions
+- Apply
+- Unselect package
+- Return to Standard ACCL
+- Preview next progression state
+```
+
+Do not implement this UI in the docs-only pass.
+
+---
+
+## 19. Storefront Concept
+
+Future storefront organization may include:
+
+```text
+ACCL Cosmetic Store
+
+- Color Add-Ons
+- Style Packages
+- Style-and-Theme Bundles
+- K-12 Collection
+- 18+ Collection
+- Holiday Collection
+- Seasonal Collection
+- Event Collection
+- Owned Packages
+- Active Package
+```
+
+Each product page should clearly distinguish:
+
+- purchased style content
+- earned prestige preview
+- current eligible rendering
+- locked future rendering
+- ownership terms
+- seasonal availability
+- whether the product is permanently owned
+- whether carry-forward is supported
+
+Do not implement storefront logic in the docs-only pass.
+
+---
+
+## 20. Preview Doctrine
+
+Players should be able to preview how an owned or purchasable package looks at:
+
+- current progression block
+- current active color
+- eligible purchased palettes
+- next progression state
+- downgrade state
+- selected Trainer translation
+
+Locked higher prestige previews may be shown as aspirational previews, but the system must clearly mark them as locked and unearned.
+
+The storefront must never mislead players into believing a purchase grants the locked prestige material.
+
+---
+
+## 21. Generated Image Doctrine
+
+A package-aware generator should eventually accept structured visual inputs such as:
+
+```text
+source image
+origin color lineage
+active optional palette
+active style package
+current progression block
+current dominant material
+current accent material
+surface type
+age-catalog eligibility
+package ownership
+current entitlement
+```
+
+Possible surface types:
+
+```text
+profile avatar
+profile domain
+Trainer shell
+player card
+Vault snapshot
+result-page presentation
+```
+
+The generator should render only eligible combinations.
+
+Do not implement generator architecture in the docs-only pass.
+
+---
+
+## 22. Future Data Concepts
+
+Future implementation may require records for:
+
+- origin color
+- active color theme
+- owned color add-ons
+- owned style packages
+- active style package
+- package ownership timestamp
+- package source
+- package season
+- package entitlement status
+- carry-forward preference
+- current progression rendering state
+- historical peak progression state
+- current eligible prestige overlay
+- Vault snapshots
+- current Trainer translation
+- age-catalog eligibility
+- seasonal availability
+- product version
+- generation history
+- moderation state
+
+Exact schema design remains open for engineering audit.
+
+---
+
+## 23. Competitive Integrity
+
+Paid cosmetics must never affect:
+
+- rating
+- clocks
+- matchmaking
+- tournament seeding
+- tournament eligibility
+- scholarship eligibility
+- payout logic
+- move legality
+- board state
+- analysis strength
+- live assistance
+- queue priority
+- profile authority
+- badge authority
+- competitive title authority
+
+Themes are visual only.
+
+Trainer styling must remain isolated from live competitive assistance.
+
+---
+
+## 24. Relationship to Current Progression Doctrine
+
+The package system must inherit the ACCL progression rhythm:
+
+```text
+current dominant material
+→ next material appears as accents within the current level
+→ next material becomes dominant after formal promotion
+```
+
+Possible example (material order and thresholds **not locked**):
+
+```text
+Blue
+→ Blue with Gold accents
+→ Gold with Blue accents
+→ Gold with Platinum accents
+→ Platinum with Gold accents
+→ Platinum with Diamond accents
+→ Platinum-Diamond
+→ Platinum-Diamond with Lava accents
+→ Lava with Diamond accents
+→ Lava with Mercury accents
+→ Mercury Sovereign
+```
+
+The exact pecking order, block count, material order, title mapping, and rating thresholds remain open for separate product lock.
+
+Do not finalize them in this docs-only package expansion.
+
+---
+
+## 25. Open Decisions
+
+The following are **unresolved**:
+
+1. Which color add-ons are available at launch?
+2. Which styles are available at launch?
+3. Which packages are free, paid, earned, gifted, promotional, or event-limited?
+4. Whether purchased color add-ons may replace the active foundational color immediately or only during earned theme-switch opportunities.
+5. Whether origin color lineage must always remain visible after a purchased palette is activated.
+6. Whether carry-forward defaults to On.
+7. Whether seasonal packages remain permanently owned after purchase.
+8. Whether seasonal packages may remain active outside their original season.
+9. Whether some event packages are permanently limited.
+10. Whether K-12 accounts may view only the K-12 catalog or a broader safe catalog.
+11. Whether 18+ packages require an age-gated catalog.
+12. Which surfaces ship in MVP: avatar only; avatar and profile domain; or avatar, profile domain, and Trainer.
+13. Whether package-aware variants are generated dynamically, pre-generated, or hybrid.
+14. Whether locked future-progression previews are available before purchase.
+15. Whether Vault preserves prior package-aware historical snapshots.
+16. Whether paid packages may include animation later.
+17. Whether package carry-forward is automatic, optional, or prompted at each major level.
+18. Whether downgrade rendering updates immediately or after badge-state confirmation.
+19. Whether recovery-state visuals should have package-specific styling.
+20. Whether tournament-specific cosmetic packages need separate tournament-ecosystem rendering.
+
+---
+
+## 26. Summary Doctrine (Paid Add-Ons)
+
+ACCL paid add-ons are permanently owned cosmetic worlds.
+
+Players may select or unselect owned packages.
+
+An active package should render the player’s current progression block instead of remaining frozen at the visual state in which it was purchased.
+
+Purchased packages may carry forward into future levels and should visually upgrade or downgrade with the player’s current competitive state.
+
+The package defines the world.
+
+The optional palette defines personality.
+
+The earned progression material defines proof.
+
+Players may buy style.
+
+Players may buy atmosphere.
+
+Players may buy color options.
+
+Players may buy seasonal worlds.
+
+Players may **never** buy rank.
