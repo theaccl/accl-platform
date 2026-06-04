@@ -713,7 +713,7 @@ Players may **never** buy competitive rank, fake prestige, or advantage.
 
 This part extends the identity doctrine above. It covers paid cosmetic add-ons, theme-color packages, style packages, combined bundles, seasonal packages, package activation, progression carry-over, upgrade and downgrade rendering, Trainer translation, and competitive-integrity boundaries.
 
-**Rating-block-to-material mapping remains open.** Do not treat exact rating thresholds or final material pecking order as locked in this document.
+Rating-zone thresholds are locked in Part III. Material pecking order is locked in **ACCL Stricter Prestige-Material Ladder** (below).
 
 ---
 
@@ -1702,7 +1702,7 @@ Players may **never** buy rank.
 
 # ACCL Overall Rating Three-Zone Theme Ladder
 
-This part locks the **rating-zone architecture** for ACCL Overall Rating blocks. The exact prestige-material mapping per block remains open for a separate product pass.
+This part locks the **rating-zone architecture** for ACCL Overall Rating blocks. Material pecking order is locked in **ACCL Stricter Prestige-Material Ladder** (below).
 
 ---
 
@@ -2010,23 +2010,11 @@ Do not use full cinematic domain effects around the board.
 
 ## 7. Material Mapping Status
 
-The rating-zone architecture is **locked**.
+The rating-zone architecture is **locked** (this part).
 
-The exact material mapping per block remains **open**.
+The material pecking order per block is **locked** in **ACCL Stricter Prestige-Material Ladder** (below).
 
-Do not finalize:
-
-- which block receives Silver
-- which block receives Gold
-- which block receives Platinum
-- which block receives Diamond
-- which block receives Platinum-Diamond
-- which block receives Lava
-- which block receives Mercury
-- which lower zones use prior-material accents
-- which upper zones introduce next-material accents
-
-That mapping will be locked in a separate product pass.
+Artistic rendering inside each material family may still be refined through image-generation testing.
 
 ---
 
@@ -2078,4 +2066,536 @@ Trainer applies the same logic in a readable, restrained form.
 
 Rating-zone ranges and ACCL-owned upper titles are locked.
 
-Prestige-material mapping per block remains open for a separate pass.
+Prestige-material mapping per block is locked in **ACCL Stricter Prestige-Material Ladder** (below); Part III §7 defers to that section.
+
+---
+
+# ACCL Stricter Prestige-Material Ladder
+
+This part locks the **material pecking order** across the already-locked ACCL Overall Rating three-zone ladder (Part III). Exact artistic rendering inside each material family may still be refined through image-generation testing.
+
+---
+
+## 1. Core Principle
+
+ACCL prestige materials should remain rare, earned, and visibly meaningful.
+
+Gold, Platinum, Diamond, Lava, and Mercury must not appear too early.
+
+The player begins with one foundational base-color identity:
+
+- Red
+- Blue
+- Black
+- White
+
+The base color is the player’s identity lineage.
+
+As the player climbs, the active skin evolves through increasingly prestigious materials.
+
+Every finite ACCL Overall Rating block continues to use the already-locked three-zone structure:
+
+```text
+Lower zone
+→ prior-lineage / pressure / recovery accents
+
+Middle zone
+→ normal active skin for the current block
+
+Upper zone
+→ next-level ascent accents
+
+Promotion
+→ next dominant skin or material becomes active
+```
+
+Paid skins and packages inherit the same logic.
+
+---
+
+## 2. Locked Material Pecking Order
+
+Use this locked stricter progression map:
+
+| ACCL Overall Rating block | Middle-zone normal skin | Upper-zone ascent accents |
+| ------------------------- | ----------------------- | ------------------------- |
+| F — 600–999 | Foundational base color identity: Red, Blue, Black, or White | Forged-steel accents |
+| E — 1000–1199 | Forged steel dominant with base-color lineage | Bronze accents |
+| D — 1200–1399 | Bronze dominant with base-color lineage | Silver accents |
+| C — 1400–1599 | Silver dominant with base-color lineage | Early Gold / Silver-Gold ascent accents |
+| B — 1600–1799 | Silver-Gold dominant transitional prestige | Fuller Gold accents |
+| A — 1800–1999 | Gold dominant with base-color lineage | Platinum accents |
+| ACCL Expert — 2000–2199 | Gold-Platinum dominant transitional prestige | Fuller Platinum accents |
+| ACCL Battle Master — 2200–2399 | Platinum dominant with Gold lineage | Diamond accents |
+| ACCL High Master — 2400–2499 | Platinum-Diamond dominant | Lava accents |
+| ACCL Grandmaster Class — 2500–2699 | Lava-Diamond dominant | Mercury accents |
+| ACCL Elite Grandmaster Class — 2700–2799 | Lava-Mercury dominant transitional prestige | Fuller Mercury accents |
+| ACCL Apex Master — 2800–2999 | Mercury dominant | Elevated sovereign refinements |
+| ACCL Sovereign Master — 3000–3199 | Sovereign Mercury dominant | Summit refinements |
+| ACCL Mercury Sovereign — 3200+ | Summit Mercury-dominant state with restrained lineage accents | Reserved for future ceiling extension |
+
+**This pecking order is now locked.**
+
+Exact artistic rendering inside each material family may still be refined through image-generation testing.
+
+---
+
+## 3. Foundational Base-Color Identity
+
+The four starting colors remain:
+
+- Red
+- Blue
+- Black
+- White
+
+The player’s original base color should remain traceable throughout progression.
+
+Example for a Blue-origin player:
+
+```text
+Blue
+→ Blue with Forged-Steel accents
+→ Forged Steel with Blue lineage
+→ Bronze with Blue lineage
+→ Silver with Blue lineage
+→ Silver-Gold transitional presentation
+→ Gold with Blue lineage
+→ Gold-Platinum transitional presentation
+→ Platinum with Gold lineage
+→ Platinum-Diamond
+→ Lava-Diamond
+→ Lava-Mercury
+→ Mercury
+→ Sovereign Mercury
+→ ACCL Mercury Sovereign
+```
+
+The original Blue identity should not disappear completely.
+
+At higher tiers it may remain visible through restrained details such as:
+
+- crest fields
+- banners
+- lighting traces
+- selected trim
+- small costume details
+- signature icon accents
+- profile-card lineage markers
+- Trainer highlight details
+
+---
+
+## 4. Lower-Zone Interpretation
+
+The lower zone of each block should reflect:
+
+- prior-level lineage
+- pressure
+- recovery
+- recent entry into the block
+- danger-zone energy
+- visible memory of the level below
+
+Examples:
+
+### A — 1800–1999
+
+```text
+1800–1860
+Gold skin with stronger Silver-Gold prior-lineage / recovery accents
+
+1861–1960
+Normal Gold skin
+
+1961–1999
+Gold skin with Platinum ascent accents
+
+2000
+Gold-Platinum Expert skin becomes dominant
+```
+
+### ACCL Battle Master — 2200–2399
+
+```text
+2200–2260
+Platinum skin with Gold prior-lineage / recovery accents
+
+2261–2360
+Normal Platinum skin
+
+2361–2399
+Platinum skin with Diamond ascent accents
+
+2400
+Platinum-Diamond High Master skin becomes dominant
+```
+
+---
+
+## 5. Middle-Zone Interpretation
+
+The middle section is the clean normal skin for the current block.
+
+This is the stable presentation.
+
+Examples:
+
+```text
+A middle zone
+Normal Gold skin
+
+ACCL Battle Master middle zone
+Normal Platinum skin
+
+ACCL Grandmaster Class middle zone
+Normal Lava-Diamond skin
+
+ACCL Apex Master middle zone
+Normal Mercury-dominant skin
+```
+
+The middle zone should not be visually overloaded by prior-level or next-level effects.
+
+---
+
+## 6. Upper-Zone Interpretation
+
+The upper section introduces the next level’s visual language before promotion.
+
+Examples:
+
+```text
+C upper zone
+Silver with early Gold ascent accents
+
+A upper zone
+Gold with Platinum accents
+
+ACCL Battle Master upper zone
+Platinum with Diamond accents
+
+ACCL High Master upper zone
+Platinum-Diamond with Lava accents
+
+ACCL Grandmaster Class upper zone
+Lava-Diamond with Mercury accents
+
+ACCL Sovereign Master upper zone
+Sovereign Mercury with summit refinements
+```
+
+The next material must remain an accent until formal promotion.
+
+---
+
+## 7. Promotion Inversion Rule
+
+When the player crosses into the next block, the next visual material becomes dominant.
+
+Examples:
+
+```text
+Silver with Gold accents
+→ Gold with Silver / base-color lineage
+
+Gold with Platinum accents
+→ Gold-Platinum transitional dominance
+
+Platinum with Diamond accents
+→ Platinum-Diamond dominance
+
+Platinum-Diamond with Lava accents
+→ Lava-Diamond dominance
+
+Lava-Diamond with Mercury accents
+→ Lava-Mercury transitional dominance
+
+Lava-Mercury with fuller Mercury accents
+→ Mercury dominance
+```
+
+This inversion should make the promotion visually obvious.
+
+---
+
+## 8. Paid Skin and Package Inheritance
+
+Paid skins, style packages, seasonal packages, holiday packages, and theme bundles inherit the same block and zone logic.
+
+Paid packages are not static wallpapers.
+
+They must upgrade or downgrade visually with the player’s current ACCL Overall Rating block and zone.
+
+Example package:
+
+```text
+Gothic Court
+```
+
+Example progression:
+
+```text
+Blue Gothic Court
+→ Blue Gothic Court with Forged-Steel accents
+→ Forged-Steel Gothic Court with Blue lineage
+→ Silver Gothic Court with early Gold accents
+→ Gold Gothic Court with Platinum accents
+→ Platinum Gothic Court with Diamond accents
+→ Lava-Diamond Gothic Court
+→ Mercury Sovereign Gothic Court
+```
+
+The player owns the package permanently.
+
+The player’s current rating block and zone determine the active rendering.
+
+---
+
+## 9. Paid Add-On Select and Unselect Rule
+
+Players may:
+
+- select an owned package
+- unselect an owned package
+- return to Standard ACCL presentation
+- reactivate an owned package later
+- carry a package forward into future levels
+- see the package visually downgrade when rating drops
+- see the package visually upgrade when rating rises
+
+Ownership remains permanent.
+
+Active prestige rendering remains earned.
+
+---
+
+## 10. Trainer Translation
+
+Trainer inherits the same ladder in a restrained form.
+
+Trainer should preserve:
+
+- board readability
+- move-list clarity
+- lesson clarity
+- puzzle clarity
+- analysis clarity
+- stable controls
+- low distraction
+
+Use:
+
+- dominant shell material
+- restrained trim
+- panel borders
+- crest treatment
+- selected-state highlights
+- subtle lighting
+- small lineage accents
+- package motifs
+- limited completion effects
+
+Examples:
+
+```text
+Gold Trainer shell with Blue lineage details
+
+Gold Trainer shell with Platinum ascent trim
+
+Platinum Trainer shell with Gold lineage details
+
+Platinum-Diamond Trainer shell with restrained Lava accents
+
+Mercury Trainer shell with restrained Lava-Diamond lineage
+```
+
+Do not use full cinematic effects around the analysis board.
+
+---
+
+# Future ACCL Badge and Theme Dual-Tracker Doctrine
+
+This part records a **future** badge-design principle. Do not implement badge logic, badge assets, or badge generation in the current pass.
+
+---
+
+## 11. Core Principle
+
+Future badge design should map to the same ACCL Overall Rating blocks and three-zone structure as the avatar/domain theme system.
+
+The badge and the transformed-upload/domain presentation should work together.
+
+They should not be identical.
+
+They should be coordinated.
+
+Together, they should make it easy to see:
+
+- the player’s current level
+- where the player stands inside the level
+- whether the player is in a lower pressure/recovery zone
+- whether the player is in the normal middle zone
+- whether the player is ascending toward promotion
+- whether the player has crossed into the next block
+
+---
+
+## 12. Badge Role
+
+The badge should communicate:
+
+- current ACCL Overall Rating block
+- current zone inside the block
+- current competitive standing
+- pressure / recovery state
+- ascent toward the next block
+- promotion into the next block
+- downgrade movement where applicable
+
+The badge should remain readable at small size.
+
+The badge should not rely on full domain-scene detail.
+
+---
+
+## 13. Avatar / Domain Role
+
+The avatar transformation and profile-domain presentation should communicate:
+
+- personal identity
+- selected base color
+- selected style package
+- selected paid package
+- current dominant prestige material
+- current ascent accents
+- broader visual world
+- player personality
+
+The avatar/domain presentation may be more cinematic and expressive than the badge.
+
+---
+
+## 14. Combined Surface Rule
+
+On Profile and game surfaces, show both:
+
+```text
+Badge
++
+Avatar / transformed-upload identity
+```
+
+This creates a strong visual tracker.
+
+The badge provides compact competitive authority.
+
+The avatar/domain presentation provides personal identity and progression atmosphere.
+
+Example:
+
+```text
+Badge:
+ACCL Battle Master
+Platinum middle-zone crest
+
+Avatar / domain:
+Platinum Gothic Court
+with restrained Gold lineage details
+```
+
+Upper-zone example:
+
+```text
+Badge:
+ACCL Battle Master
+Platinum crest with Diamond ascent accents
+
+Avatar / domain:
+Platinum Gothic Court
+with Diamond ascent accents
+```
+
+---
+
+## 15. Future Badge Zone Mapping
+
+Future badge design should support:
+
+```text
+Lower zone badge
+→ prior-lineage / pressure / recovery accents
+
+Middle zone badge
+→ normal block badge
+
+Upper zone badge
+→ next-level ascent accents
+
+Promotion badge
+→ next block badge becomes dominant
+```
+
+This should apply across:
+
+- F
+- E
+- D
+- C
+- B
+- A
+- ACCL Expert
+- ACCL Battle Master
+- ACCL High Master
+- ACCL Grandmaster Class
+- ACCL Elite Grandmaster Class
+- ACCL Apex Master
+- ACCL Sovereign Master
+- ACCL Mercury Sovereign
+
+Do not create badge assets in this docs-only pass.
+
+---
+
+## 16. Badge Design Phase Status
+
+Badge-to-level visual mapping is approved as a future design direction.
+
+Badge silhouette families, exact materials, upgraded badge states, downgraded badge states, recovery variants, animation rules, and small-size asset requirements remain for a separate badge-design pass.
+
+Do not implement badge logic in this task.
+
+---
+
+## 17. Competitive Integrity
+
+Themes, packages, badge visuals, avatar transformations, and domain scenes remain visual only.
+
+They must not alter:
+
+- rating math
+- legal move validation
+- matchmaking
+- clocks
+- tournament authority
+- tournament seeding
+- payout logic
+- scholarship eligibility
+- queue priority
+- analysis strength
+- live assistance
+- hidden information
+- board state
+- competitive advantage
+
+---
+
+## 18. Summary Doctrine (Stricter Materials and Future Badge Tracker)
+
+The stricter prestige-material ladder from F through ACCL Mercury Sovereign is **locked** and aligns with the three-zone ladder.
+
+Gold dominance begins at **A — 1800–1999**; Platinum at **ACCL Battle Master — 2200–2399**; Platinum-Diamond at **ACCL High Master — 2400–2499**; Lava-Diamond at **ACCL Grandmaster Class — 2500–2699**; Mercury at **ACCL Apex Master — 2800–2999**.
+
+Paid packages and Trainer inherit block, zone, and material state.
+
+Badge and avatar/domain dual-tracker coordination is **approved for future design**; badge implementation and assets remain **deferred**.
