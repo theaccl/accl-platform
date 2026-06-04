@@ -1697,3 +1697,385 @@ Players may buy color options.
 Players may buy seasonal worlds.
 
 Players may **never** buy rank.
+
+---
+
+# ACCL Overall Rating Three-Zone Theme Ladder
+
+This part locks the **rating-zone architecture** for ACCL Overall Rating blocks. The exact prestige-material mapping per block remains open for a separate product pass.
+
+---
+
+## 1. Core Rule
+
+Every finite ACCL Overall Rating block uses the same three-zone presentation structure:
+
+```text
+Lower zone
+→ prior-lineage / pressure / recovery accents
+
+Middle zone
+→ normal active skin
+
+Upper zone
+→ next-level ascent accents
+
+Promotion
+→ next skin or prestige material becomes dominant
+```
+
+This applies to:
+
+- standard ACCL themes
+- paid skins
+- paid style packages
+- paid style-and-theme bundles
+- seasonal packages
+- holiday packages
+- future event packages
+- Trainer translations
+- profile-domain scenes
+- avatar transformations
+- future player-card surfaces
+
+Paid skins are not static.
+
+They must upgrade or downgrade visually according to the player’s current ACCL Overall Rating block and current zone.
+
+---
+
+## 2. Zone Meaning
+
+### Lower Zone
+
+The lower zone represents:
+
+- recent entry into the block
+- prior-level lineage
+- pressure state
+- recovery state
+- danger-zone energy
+- visual memory of the level below
+
+The active skin remains the current block skin, but prior-level or recovery accents remain visible.
+
+### Middle Zone
+
+The middle zone is the clean normal version of the current block skin.
+
+This is the stable presentation state.
+
+No next-level ascent treatment should dominate here.
+
+### Upper Zone
+
+The upper zone represents ascent toward the next block.
+
+The active skin remains the current block skin, but next-level accents begin appearing.
+
+These accents should visibly communicate that the player is approaching promotion.
+
+### Promotion
+
+When the player crosses into the next block, the visual hierarchy flips.
+
+The next skin or prestige material becomes dominant.
+
+Prior lineage remains visible as restrained accents.
+
+---
+
+## 3. Locked Rating Ladder
+
+### F — 600–999
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 600–720 |
+| Middle normal zone | 721–920 |
+| Upper ascent zone | 921–999 |
+| Promotion | E at 1000 |
+
+### E — 1000–1199
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 1000–1060 |
+| Middle normal zone | 1061–1160 |
+| Upper ascent zone | 1161–1199 |
+| Promotion | D at 1200 |
+
+### D — 1200–1399
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 1200–1260 |
+| Middle normal zone | 1261–1360 |
+| Upper ascent zone | 1361–1399 |
+| Promotion | C at 1400 |
+
+### C — 1400–1599
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 1400–1460 |
+| Middle normal zone | 1461–1560 |
+| Upper ascent zone | 1561–1599 |
+| Promotion | B at 1600 |
+
+### B — 1600–1799
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 1600–1660 |
+| Middle normal zone | 1661–1760 |
+| Upper ascent zone | 1761–1799 |
+| Promotion | A at 1800 |
+
+### A — 1800–1999
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 1800–1860 |
+| Middle normal zone | 1861–1960 |
+| Upper ascent zone | 1961–1999 |
+| Promotion | ACCL Expert at 2000 |
+
+### ACCL Expert — 2000–2199
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 2000–2060 |
+| Middle normal zone | 2061–2160 |
+| Upper ascent zone | 2161–2199 |
+| Promotion | ACCL Battle Master at 2200 |
+
+### ACCL Battle Master — 2200–2399
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 2200–2260 |
+| Middle normal zone | 2261–2360 |
+| Upper ascent zone | 2361–2399 |
+| Promotion | ACCL High Master at 2400 |
+
+### ACCL High Master — 2400–2499
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 2400–2430 |
+| Middle normal zone | 2431–2480 |
+| Upper ascent zone | 2481–2499 |
+| Promotion | ACCL Grandmaster Class at 2500 |
+
+### ACCL Grandmaster Class — 2500–2699
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 2500–2560 |
+| Middle normal zone | 2561–2660 |
+| Upper ascent zone | 2661–2699 |
+| Promotion | ACCL Elite Grandmaster Class at 2700 |
+
+### ACCL Elite Grandmaster Class — 2700–2799
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 2700–2730 |
+| Middle normal zone | 2731–2780 |
+| Upper ascent zone | 2781–2799 |
+| Promotion | ACCL Apex Master at 2800 |
+
+### ACCL Apex Master — 2800–2999
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 2800–2860 |
+| Middle normal zone | 2861–2960 |
+| Upper ascent zone | 2961–2999 |
+| Promotion | ACCL Sovereign Master at 3000 |
+
+### ACCL Sovereign Master — 3000–3199
+
+| Zone | Rating range |
+|------|-------------:|
+| Lower zone | 3000–3060 |
+| Middle normal zone | 3061–3160 |
+| Upper ascent zone | 3161–3199 |
+| Promotion | ACCL Mercury Sovereign at 3200 |
+
+### ACCL Mercury Sovereign — 3200+
+
+This is the current summit state.
+
+Use:
+
+```text
+ACCL Mercury Sovereign
+```
+
+as the top ACCL-owned identity block.
+
+Current rule:
+
+- Mercury-dominant summit presentation
+- restrained lineage accents
+- no forced upper-zone subdivision yet
+- future subdivisions may be added later if ACCL extends the ceiling
+
+---
+
+## 4. Paid Skin Inheritance Rule
+
+Paid skins and paid packages inherit the active block and zone.
+
+Example package:
+
+```text
+Gothic Court
+```
+
+Example progression inside ACCL Expert:
+
+```text
+2000–2060
+Gothic Court Expert skin with lower-zone lineage / pressure accents
+
+2061–2160
+Normal Gothic Court Expert skin
+
+2161–2199
+Gothic Court Expert skin with ACCL Battle Master ascent accents
+
+2200+
+Gothic Court Battle Master skin becomes dominant
+```
+
+The same package remains owned throughout.
+
+Only the active rendering changes.
+
+---
+
+## 5. Downgrade Rule
+
+When a player drops into a lower zone or lower block, the selected package must visually downgrade with the player’s current ACCL Overall Rating state.
+
+Example:
+
+```text
+Upper-zone Gold Gothic Court with Platinum ascent accents
+↓
+Middle-zone normal Gold Gothic Court
+↓
+Lower-zone Gold Gothic Court with prior-lineage / recovery accents
+↓
+Lower block presentation if rating crosses the block boundary
+```
+
+Ownership remains permanent.
+
+Current active rendering remains earned.
+
+---
+
+## 6. Trainer Translation Rule
+
+Trainer must use the same rating-block and zone logic in a restrained form.
+
+Trainer should prioritize:
+
+- board readability
+- move-list clarity
+- lesson clarity
+- puzzle clarity
+- analysis clarity
+- stable controls
+- low distraction
+
+Use:
+
+- dominant shell color or material
+- restrained trim
+- crest treatment
+- panel borders
+- selected-state highlights
+- subtle lighting
+- package motifs
+- limited completion effects
+
+Do not use full cinematic domain effects around the board.
+
+---
+
+## 7. Material Mapping Status
+
+The rating-zone architecture is **locked**.
+
+The exact material mapping per block remains **open**.
+
+Do not finalize:
+
+- which block receives Silver
+- which block receives Gold
+- which block receives Platinum
+- which block receives Diamond
+- which block receives Platinum-Diamond
+- which block receives Lava
+- which block receives Mercury
+- which lower zones use prior-material accents
+- which upper zones introduce next-material accents
+
+That mapping will be locked in a separate product pass.
+
+---
+
+## 8. ACCL-Owned Upper Ladder
+
+Preserve the locked ACCL-owned upper titles:
+
+| ACCL Overall Rating | ACCL-owned title |
+|--------------------:|------------------|
+| 2000–2199 | ACCL Expert |
+| 2200–2399 | ACCL Battle Master |
+| 2400–2499 | ACCL High Master |
+| 2500–2699 | ACCL Grandmaster Class |
+| 2700–2799 | ACCL Elite Grandmaster Class |
+| 2800–2999 | ACCL Apex Master |
+| 3000–3199 | ACCL Sovereign Master |
+| 3200+ | ACCL Mercury Sovereign |
+
+These are ACCL-owned internal competitive identity states.
+
+They are not claims of FIDE, US Chess, or other federation titles.
+
+Preferred display at 2500–2699:
+
+```text
+ACCL Grandmaster Class
+```
+
+Do not shorten to:
+
+```text
+Grandmaster
+GM
+Official Grandmaster
+FIDE Grandmaster
+```
+
+unless the player has separately verified an external federation title.
+
+---
+
+## 9. Summary Doctrine (Three-Zone Ladder)
+
+ACCL Overall Rating blocks use a locked three-zone structure: lower (lineage/pressure/recovery), middle (normal skin), upper (ascent accents), then promotion to the next block’s dominant skin.
+
+Paid packages inherit block and zone; they are not static wallpapers.
+
+Trainer applies the same logic in a readable, restrained form.
+
+Rating-zone ranges and ACCL-owned upper titles are locked.
+
+Prestige-material mapping per block remains open for a separate pass.
