@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { countryLabelFromIso2, flagEmojiFromIso2 } from '@/lib/flagDisplay';
+import { countryLabelFromIso2, flagEmojiFromIso2, flagIconUrlFromIso2 } from '@/lib/flagDisplay';
 import countries from 'i18n-iso-countries';
 
 export type CountryFlagComboboxProps = {
@@ -18,9 +18,14 @@ function buildOptions() {
     code,
     name,
     emoji: flagEmojiFromIso2(code),
+    iconUrl: flagIconUrlFromIso2(code),
   }));
   rows.sort((a, b) => a.name.localeCompare(b.name));
-  return [{ code: '', name: '— None —', emoji: null as string | null }, ...rows, { code: 'OTHER', name: 'Other / prefer not to say', emoji: null }];
+  return [
+    { code: '', name: '— None —', emoji: null as string | null, iconUrl: null as string | null },
+    ...rows,
+    { code: 'OTHER', name: 'Other / prefer not to say', emoji: null, iconUrl: null },
+  ];
 }
 
 const ALL_OPTIONS = buildOptions();
@@ -41,14 +46,20 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
     );
   }, [q]);
 
-  /** Trigger: flag + label without duplicating the emoji in the text. */
+  /** Trigger: flag icon + label (emoji only as fallback when icon fails). */
   const triggerDisplay = useMemo(() => {
     const v = value.trim();
-    if (!v) return { emoji: null as string | null, text: 'Select country…' as string };
-    const emoji = flagEmojiFromIso2(v);
-    if (v === 'OTHER') return { emoji: null, text: 'Other / prefer not to say' };
-    const name = countryLabelFromIso2(v);
-    return { emoji, text: name ?? v };
+    if (!v) {
+      return { iconUrl: null as string | null, emoji: null as string | null, text: 'Select country…' as string };
+    }
+    if (v === 'OTHER') {
+      return { iconUrl: null, emoji: null, text: 'Other / prefer not to say' };
+    }
+    return {
+      iconUrl: flagIconUrlFromIso2(v),
+      emoji: flagEmojiFromIso2(v),
+      text: countryLabelFromIso2(v) ?? v,
+    };
   }, [value]);
 
   useEffect(() => {
@@ -77,7 +88,17 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
         data-testid="edit-profile-flag-trigger"
       >
         <span className="flex min-w-0 items-center gap-2 truncate">
-          {triggerDisplay.emoji ? (
+          {triggerDisplay.iconUrl ? (
+            <img
+              src={triggerDisplay.iconUrl}
+              alt=""
+              width={24}
+              height={18}
+              referrerPolicy="no-referrer"
+              className="h-[18px] w-6 shrink-0 rounded-sm border border-slate-700/80 object-cover"
+              aria-hidden
+            />
+          ) : triggerDisplay.emoji ? (
             <span className="shrink-0 text-lg leading-none" aria-hidden>
               {triggerDisplay.emoji}
             </span>
@@ -120,7 +141,19 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
                   }}
                   data-testid={o.code ? `edit-profile-flag-option-${o.code}` : 'edit-profile-flag-option-none'}
                 >
-                  {o.emoji ? <span className="text-lg leading-none">{o.emoji}</span> : null}
+                  {o.iconUrl ? (
+                    <img
+                      src={o.iconUrl}
+                      alt=""
+                      width={24}
+                      height={18}
+                      referrerPolicy="no-referrer"
+                      className="h-[18px] w-6 shrink-0 rounded-sm border border-slate-700/80 object-cover"
+                      aria-hidden
+                    />
+                  ) : o.emoji ? (
+                    <span className="text-lg leading-none">{o.emoji}</span>
+                  ) : null}
                   <span className="min-w-0 flex-1">
                     {o.name}
                     {o.code && o.code !== 'OTHER' ? (

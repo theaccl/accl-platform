@@ -3,8 +3,10 @@
 import Image from 'next/image';
 import { useState } from 'react';
 
+import ProfileFlagPill from '@/components/profile/ProfileFlagPill';
 import ProfileImage from '@/components/profile/ProfileImage';
 import { ProfileActivityLight } from '@/components/profile/ProfileActivityLight';
+import { resolveFlagIdentity } from '@/lib/flagDisplay';
 import { publicIdentityFromProfileUsername } from '@/lib/profileIdentity';
 
 export type ProfileHeaderProps = {
@@ -13,7 +15,8 @@ export type ProfileHeaderProps = {
   /** Raw username for copy (may be null). */
   username: string | null;
   joinedAt: string | null;
-  flagDisplay: string | null;
+  /** ISO2 or OTHER from public snapshot. */
+  flagCode: string | null;
   lastActiveAt: string | null;
   profileImageUrl: string | null;
   isViewingOwnProfile: boolean;
@@ -24,13 +27,14 @@ export default function ProfileHeader({
   displayName,
   username,
   joinedAt,
-  flagDisplay,
+  flagCode,
   lastActiveAt,
   profileImageUrl,
   isViewingOwnProfile,
   viewerLoggedIn,
 }: ProfileHeaderProps) {
   const [copied, setCopied] = useState(false);
+  const flagIdentity = resolveFlagIdentity(flagCode);
 
   const copyUsername = async () => {
     const text = publicIdentityFromProfileUsername(username, null);
@@ -86,7 +90,7 @@ export default function ProfileHeader({
               className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-sm text-slate-200"
               data-testid="profile-flag-pill"
             >
-              {flagDisplay ?? '—'}
+              <ProfileFlagPill identity={flagIdentity} />
             </div>
             <ProfileActivityLight
               lastActiveAt={lastActiveAt}

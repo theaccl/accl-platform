@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { PublicP1Read } from '@/lib/p1PublicRatingRead';
-import { formatFlagDisplay } from '@/lib/flagDisplay';
 import { publicProfileHref } from '@/lib/profileHref';
 import { publicIdentityFromProfileUsername } from '@/lib/profileIdentity';
 import { supabase } from '@/lib/supabaseClient';
@@ -258,7 +257,7 @@ export default function PublicProfilePage() {
           displayName={displayName}
           username={payload.profile.username}
           joinedAt={joinedAt}
-          flagDisplay={formatFlagDisplay(payload.profile.flag)}
+          flagCode={payload.profile.flag}
           lastActiveAt={payload.profile.last_active_at ?? null}
           profileImageUrl={profileImageUrl}
           isViewingOwnProfile={isSelf}

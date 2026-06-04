@@ -17,5 +17,14 @@ test.describe('public profile [id] layout (static)', () => {
     expect(src).toContain('isSelf ?');
     expect(src).toContain('resolvePublicProfileIdFromRoute');
     expect(src).toContain('get_public_profile_snapshot');
+    expect(src).toContain('flagCode={payload.profile.flag}');
+  });
+
+  test('ProfileHeader renders flag icon pill not plain text only', () => {
+    const src = readFileSync(join(process.cwd(), 'components', 'profile', 'ProfileHeader.tsx'), 'utf8');
+    expect(src).toContain('ProfileFlagPill');
+    expect(src).toContain('resolveFlagIdentity');
+    expect(src).not.toContain('flagDisplay:');
+    expect(src).not.toContain('flagDisplay={');
   });
 });
