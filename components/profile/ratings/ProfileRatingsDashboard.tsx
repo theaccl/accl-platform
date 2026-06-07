@@ -14,6 +14,7 @@ import type { ProfileTopLevelTrackId } from '@/lib/ratingHistoryTypes';
 import { supabase } from '@/lib/supabaseClient';
 import { RatingCard } from '@/components/profile/ratings/RatingCard';
 import { RatingSubtrackGrid } from '@/components/profile/ratings/RatingSubtrackGrid';
+import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/RatingFamilyComparisonPanel';
 import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
 
 type Props = {
@@ -161,6 +162,13 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
         isSelf={isSelf}
         canLinkFinishedGames={isSelf}
       />
+
+      {isSelf ? (
+        <RatingFamilyComparisonPanel
+          historyByTrack={dashboard.historyByTrack}
+          canLinkFinishedGames
+        />
+      ) : null}
     </section>
   );
 }
