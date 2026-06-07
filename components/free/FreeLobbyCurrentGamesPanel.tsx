@@ -4,10 +4,15 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 
 import { GameContinuityGameRows } from '@/components/free/GameContinuityGameRows';
+import {
+  LiveGameRecoveryBanner,
+  selectSeatedLiveRecoveryRows,
+} from '@/components/free/LiveGameRecoveryBanner';
 import type { useLobbyUserObligations } from '@/hooks/useLobbyUserObligations';
 import {
   DAILY_ASYNC_SECTION_HINT,
   freeActiveGamesHref,
+  isOpenSeatRow,
 } from '@/lib/gameContinuityPresentation';
 import {
   isLiveFreeRecoveryObligation,
@@ -77,9 +82,16 @@ export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: P
     return sortLobbyObligationRows(filtered, uid);
   }, [tournamentRows, modeFilter, uid]);
 
-  const freeLive = useMemo(() => {
-    const recovery = (freeLiveRaw ?? []).filter((r) => isLiveFreeRecoveryObligation(r, uid));
-    return sortLobbyObligationRows(filterRowsByLobbyMode(recovery, modeFilter), uid);
+  const seatedLiveRecovery = useMemo(
+    () => selectSeatedLiveRecoveryRows(freeLiveRaw, uid),
+    [freeLiveRaw, uid],
+  );
+
+  const freeLiveOpenSeats = useMemo(() => {
+    const open = (freeLiveRaw ?? []).filter(
+      (r) => isOpenSeatRow(r) && isLiveFreeRecoveryObligation(r, uid),
+    );
+    return sortLobbyObligationRows(filterRowsByLobbyMode(open, modeFilter), uid);
   }, [freeLiveRaw, modeFilter, uid]);
 
   const dailyAsync = useMemo(
@@ -88,7 +100,7 @@ export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: P
   );
 
   const showTournament = shouldRenderLobbyObligationSubsection(modeFilter, tournamentLive.length, loading);
-  const showFreeLive = shouldRenderLobbyObligationSubsection(modeFilter, freeLive.length, loading);
+  const showFreeLive = shouldRenderLobbyObligationSubsection(modeFilter, freeLiveOpenSeats.length, loading);
   const showDailyAsync = shouldRenderLobbyObligationSubsection(modeFilter, dailyAsync.length, loading);
   const showAnySubsection = showTournament || showFreeLive || showDailyAsync;
 
@@ -98,6 +110,8 @@ export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: P
       data-testid="free-lobby-current-games"
       aria-label="Your move and active games"
     >
+      <LiveGameRecoveryBanner rows={seatedLiveRecovery} uid={uid} />
+
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2
           className="text-sm font-bold uppercase tracking-[0.18em] text-amber-200/95"
@@ -205,15 +219,15 @@ export function FreeLobbyCurrentGamesPanel({ modeFilter = null, obligations }: P
           titleClassName="text-sky-300/90"
           borderClassName="border-sky-500/35 bg-[#0f141c]"
         >
-          {!loading && freeLive.length === 0 ? (
+          {!loading && freeLiveOpenSeats.length === 0 ? (
             <p className="text-xs text-gray-500">
               {modeFilter
-                ? 'No live recovery items in this mode.'
-                : 'No live recovery needed — return from the board when it is your turn.'}
+                ? 'No open live seats in this mode.'
+                : 'No open live seats posted — your active live board appears in the banner above.'}
             </p>
           ) : null}
-          {freeLive.length > 0 ? (
-            <GameContinuityGameRows rows={freeLive} uid={uid} variant="live" testIdPrefix="free-lobby-live" compact />
+          {freeLiveOpenSeats.length > 0 ? (
+            <GameContinuityGameRows rows={freeLiveOpenSeats} uid={uid} variant="live" testIdPrefix="free-lobby-live" compact />
           ) : null}
         </ObligationSubsection>
       ) : null}

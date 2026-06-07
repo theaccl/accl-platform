@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
 import { FreeLobbyOpenGamesList } from '@/components/free/FreeLobbyOpenGamesList';
+import { SelfLoadingLiveGameRecoveryBanner } from '@/components/free/LiveGameRecoveryBanner';
 import { FreeLobbyPlayComputerPanel } from '@/components/free/FreeLobbyPlayComputerPanel';
 import { FreePlayWatchSpectatorForMode } from '@/components/free/FreePlayWatchSpectatorForMode';
 import { useFreeLobbyModeClockActivity } from '@/hooks/useFreeLobbyModeClockActivity';
@@ -80,6 +81,8 @@ export function FreeLobbyModeRoomContent({ mode }: Props) {
       data-computer-play-enabled={showPlayComputer ? 'true' : 'false'}
     >
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-5 sm:py-6">
+        <SelfLoadingLiveGameRecoveryBanner />
+
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <Link
             href="/free/lobby"
