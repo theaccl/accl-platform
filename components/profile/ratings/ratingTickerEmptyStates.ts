@@ -13,6 +13,9 @@ export const RATING_BADGE_UNAVAILABLE =
 export const RATING_EXACT_SELF_ONLY =
   'Exact-track settlement ratings are visible on your profile when signed in.';
 
+/** Selected lane window has no authoritative points (other lanes may still have data). */
+export const RATING_LANE_EMPTY = 'No rating movement in this lane yet.';
+
 export function exactTrackNoGamesLabel(displayLabel: string): string {
   return `No rated ${displayLabel} games recorded yet.`;
 }
