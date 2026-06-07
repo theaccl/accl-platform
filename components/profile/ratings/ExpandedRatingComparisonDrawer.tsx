@@ -1,12 +1,20 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { MajorFamilySeriesData } from '@/lib/profileRatingChartLevels';
+import { filterMajorFamilySeriesByLane, majorFamilySeriesHasAnyPoints } from '@/lib/profileRatingFamilyComparison';
+import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
+import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
+import { RATING_LANE_EMPTY } from '@/components/profile/ratings/ratingTickerEmptyStates';
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  series: MajorFamilySeriesData[];
+  /** Full major-family series before lane filtering. */
+  baseSeries: MajorFamilySeriesData[];
+  lane: RatingLane;
+  onLaneChange: (lane: RatingLane) => void;
   visibleTrackIds: ReadonlySet<string>;
   canLinkFinishedGames: boolean;
 };
@@ -14,10 +22,22 @@ type Props = {
 export function ExpandedRatingComparisonDrawer({
   open,
   onClose,
-  series,
+  baseSeries,
+  lane,
+  onLaneChange,
   visibleTrackIds,
   canLinkFinishedGames,
 }: Props) {
+  const laneSeries = useMemo(() => filterMajorFamilySeriesByLane(baseSeries, lane), [baseSeries, lane]);
+  const anyLanePoints = majorFamilySeriesHasAnyPoints(laneSeries);
+  const renderedPointCount = useMemo(
+    () =>
+      laneSeries
+        .filter((s) => visibleTrackIds.has(s.trackId))
+        .reduce((n, s) => n + s.points.length, 0),
+    [laneSeries, visibleTrackIds],
+  );
+
   if (!open) return null;
 
   return (
@@ -39,13 +59,29 @@ export function ExpandedRatingComparisonDrawer({
           Close
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <MultiLineRatingTickerChart
-          series={series}
-          visibleTrackIds={visibleTrackIds}
-          canLinkFinishedGames={canLinkFinishedGames}
-          expanded
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        <RatingLaneTabs
+          lane={lane}
+          onLaneChange={onLaneChange}
+          testIdPrefix="comparison"
+          ariaLabel="Comparison history window"
         />
+        {!anyLanePoints ? (
+          <p className="m-0 text-xs text-gray-500" data-testid="comparison-lane-empty">
+            {RATING_LANE_EMPTY}
+          </p>
+        ) : renderedPointCount === 0 ? (
+          <p className="m-0 text-xs text-gray-500" data-testid="comparison-all-hidden">
+            Show at least one family in the legend to draw the chart.
+          </p>
+        ) : (
+          <MultiLineRatingTickerChart
+            series={laneSeries}
+            visibleTrackIds={visibleTrackIds}
+            canLinkFinishedGames={canLinkFinishedGames}
+            expanded
+          />
+        )}
       </div>
     </div>
   );

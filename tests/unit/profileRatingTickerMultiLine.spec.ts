@@ -26,7 +26,8 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     expect(panel).toContain('MAJOR_FAMILY_COMPARISON_SERIES');
     expect(panel).toContain('data-testid="major-family-legend"');
     expect(panel).toContain('data-visible');
-    expect(panel).toContain('comparison-lane-tabs');
+    expect(panel).toContain('RatingLaneTabs');
+    expect(panel).toContain("testIdPrefix=\"comparison\"");
     expect(panel).toContain('ExpandedRatingComparisonDrawer');
     expect(panel).toContain('data-testid={def.legendTestId}');
     expect(MAJOR_FAMILY_COMPARISON_SERIES).toHaveLength(5);
@@ -53,8 +54,11 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     const drawer = src('components/profile/ratings/ExpandedRatingComparisonDrawer.tsx');
     const singleDrawer = src('components/profile/ratings/ExpandedRatingTickerDrawer.tsx');
     expect(drawer).toContain('expanded-rating-comparison-drawer');
+    expect(drawer).toContain('RatingLaneTabs');
     expect(drawer).toContain('MultiLineRatingTickerChart');
+    expect(drawer).toContain('baseSeries');
     expect(singleDrawer).toContain('expanded-rating-ticker-drawer');
+    expect(singleDrawer).toContain('RatingLaneTabs');
     expect(singleDrawer).toContain('RatingTickerChart');
     expect(singleDrawer).not.toContain('MultiLineRatingTickerChart');
   });

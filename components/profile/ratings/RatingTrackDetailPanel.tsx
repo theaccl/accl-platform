@@ -1,15 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { PlayerBadgeStateRow } from '@/lib/badgeSettlement';
 import { timeControlByRatingTrackId } from '@/lib/acclTimeControls';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
+import {
+  DEFAULT_RATING_LANE,
+  filterPointsByLane,
+  type RatingLane,
+} from '@/lib/ratingHistoryMetrics';
 import { BadgeBoundaryPanel } from '@/components/profile/ratings/BadgeBoundaryPanel';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
+import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import {
   exactTrackHistoryEmptyLabel,
   RATING_EXACT_SELF_ONLY,
+  RATING_LANE_EMPTY,
 } from '@/components/profile/ratings/ratingTickerEmptyStates';
 
 type Props = {
@@ -35,7 +42,12 @@ export function RatingTrackDetailPanel({
   const isExact = Boolean(def?.badgeTrackKey);
   const showBadgeUnavailable = isExact && !isSelf;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const exactEmptyHistory = isExact && isSelf && points.length === 0;
+  const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
+
+  const lanePoints = useMemo(() => filterPointsByLane(points, lane), [points, lane]);
+  const allEmpty = points.length === 0;
+  const laneEmpty = !allEmpty && lanePoints.length === 0;
+  const exactEmptyHistory = isExact && isSelf && allEmpty;
 
   return (
     <div data-testid="rating-track-detail-panel" className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4">
@@ -60,11 +72,28 @@ export function RatingTrackDetailPanel({
           {exactTrackHistoryEmptyLabel(trackLabel)}
         </p>
       ) : null}
-      <RatingTickerChart
-        points={points}
-        currentRating={currentRating}
-        canLinkFinishedGames={canLinkFinishedGames}
-      />
+
+      {!allEmpty ? (
+        <RatingLaneTabs
+          lane={lane}
+          onLaneChange={setLane}
+          testIdPrefix="rating"
+          ariaLabel="Rating history window"
+        />
+      ) : null}
+
+      {laneEmpty ? (
+        <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
+          {RATING_LANE_EMPTY}
+        </p>
+      ) : (
+        <RatingTickerChart
+          points={lanePoints}
+          currentRating={currentRating}
+          canLinkFinishedGames={canLinkFinishedGames}
+        />
+      )}
+
       <BadgeBoundaryPanel badge={badge} showUnavailable={showBadgeUnavailable || (isSelf && isExact)} />
       <ExpandedRatingTickerDrawer
         open={drawerOpen}
@@ -72,6 +101,8 @@ export function RatingTrackDetailPanel({
         trackLabel={trackLabel}
         currentRating={currentRating}
         points={points}
+        lane={lane}
+        onLaneChange={setLane}
         canLinkFinishedGames={canLinkFinishedGames}
       />
     </div>

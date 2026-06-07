@@ -11,13 +11,9 @@ import {
   majorFamilySeriesHasAnyPoints,
 } from '@/lib/profileRatingFamilyComparison';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
-import {
-  DEFAULT_RATING_LANE,
-  RATING_LANES,
-  RATING_LANE_LABELS,
-  type RatingLane,
-} from '@/lib/ratingHistoryMetrics';
+import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import { ExpandedRatingComparisonDrawer } from '@/components/profile/ratings/ExpandedRatingComparisonDrawer';
+import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
 import { RATING_LANE_EMPTY } from '@/components/profile/ratings/ratingTickerEmptyStates';
 
@@ -126,32 +122,12 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         })}
       </ul>
 
-      <div
-        className="flex gap-1 overflow-x-auto rounded-lg border border-[#23303f] bg-[#0c121c] p-1"
-        data-testid="comparison-lane-tabs"
-        role="tablist"
-        aria-label="Comparison history window"
-      >
-        {RATING_LANES.map((l) => {
-          const sel = l === lane;
-          return (
-            <button
-              key={l}
-              type="button"
-              role="tab"
-              aria-selected={sel}
-              data-testid={`comparison-lane-tab-${l}`}
-              data-selected={sel ? 'true' : 'false'}
-              onClick={() => setLane(l)}
-              className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                sel ? 'bg-sky-950/40 text-sky-300' : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              {RATING_LANE_LABELS[l]}
-            </button>
-          );
-        })}
-      </div>
+      <RatingLaneTabs
+        lane={lane}
+        onLaneChange={setLane}
+        testIdPrefix="comparison"
+        ariaLabel="Comparison history window"
+      />
 
       {!anyBasePoints ? (
         <p className="m-0 text-sm text-gray-400" data-testid="comparison-empty-all">
@@ -176,7 +152,9 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
       <ExpandedRatingComparisonDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        series={laneSeries}
+        baseSeries={baseSeries}
+        lane={lane}
+        onLaneChange={setLane}
         visibleTrackIds={visibleTrackIds}
         canLinkFinishedGames={canLinkFinishedGames}
       />
