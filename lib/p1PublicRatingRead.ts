@@ -9,6 +9,7 @@ import { P1_TOURNAMENT_BUCKET } from '@/lib/p1RatingsSpec';
 /** Matches RPC `get_public_profile_snapshot` → `p1` object. */
 export type PublicP1Read = {
   accl_rating: number | null;
+  accl_overall: { rating: number; games_played: number } | null;
   tournament_rating: number | null;
   tournament_unified: { rating: number; games_played: number } | null;
   free_bullet: { rating: number; games_played: number } | null;
@@ -29,7 +30,7 @@ function rowRating(row: { rating: number; games_played: number } | null | undefi
   return row.rating;
 }
 
-/** Identity headline: P1 ACCL (tournament_unified) when present, else legacy profiles.rating. */
+/** Identity headline: P1 ACCL Overall (accl_overall bucket) when present, else legacy profiles.rating. */
 export function acclRatingFromP1(
   p1: PublicP1Read | null | undefined,
   legacyProfileRating: number | null | undefined,
@@ -37,10 +38,12 @@ export function acclRatingFromP1(
   if (p1 && typeof p1.accl_rating === 'number' && Number.isFinite(p1.accl_rating)) {
     return p1.accl_rating;
   }
+  const fromOverall = rowRating(p1?.accl_overall ?? null);
+  if (fromOverall != null) return fromOverall;
   if (typeof legacyProfileRating === 'number' && Number.isFinite(legacyProfileRating)) {
     return legacyProfileRating;
   }
-  return rowRating(p1?.tournament_unified ?? null);
+  return null;
 }
 
 export function formatRatingDisplay(n: number | null | undefined): string {
@@ -99,8 +102,16 @@ export function ratingFromPlayerRatingsMap(
   const m = byUser.get(uid);
   const r = m?.get(bucket);
   if (typeof r === 'number' && Number.isFinite(r)) return r;
-  const tu = m?.get('tournament_unified');
-  if (typeof tu === 'number' && Number.isFinite(tu)) return tu;
+
+  if (bucket === P1_TOURNAMENT_BUCKET) {
+    return typeof legacyProfileRating === 'number' && Number.isFinite(legacyProfileRating)
+      ? legacyProfileRating
+      : null;
+  }
+
+  const acclOverall = m?.get('accl_overall');
+  if (typeof acclOverall === 'number' && Number.isFinite(acclOverall)) return acclOverall;
+
   return typeof legacyProfileRating === 'number' && Number.isFinite(legacyProfileRating)
     ? legacyProfileRating
     : null;

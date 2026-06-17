@@ -38,7 +38,8 @@ function ledgerTrackMatchesProfileTrack(
   profileTrackId: string,
 ): boolean {
   if (ledgerTrackId === profileTrackId) return true;
-  if (profileTrackId === 'accl' && ledgerTrackId === 'tournament') return true;
+  // O1-A: ACCL Overall track never ingests tournament ledger rows (pre-O2: empty history is correct).
+  if (profileTrackId === 'accl' && ledgerTrackId === 'accl_overall') return true;
   return false;
 }
 

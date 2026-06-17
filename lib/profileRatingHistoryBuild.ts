@@ -74,7 +74,11 @@ function p1BucketToMode(bucket: P1RatingBucket): RatingHistoryMode | null {
 }
 
 function trackMatchesP1Bucket(ratingTrackId: string, bucket: P1RatingBucket): boolean {
-  if (ratingTrackId === 'accl' || ratingTrackId === 'tournament') {
+  if (ratingTrackId === 'accl') {
+    // accl_overall game history not wired until O2; never alias tournament_unified as ACCL Overall.
+    return false;
+  }
+  if (ratingTrackId === 'tournament') {
     return bucket === P1_TOURNAMENT_BUCKET;
   }
   return ratingTrackId === bucket;

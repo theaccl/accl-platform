@@ -147,11 +147,17 @@ export function PublicIdentityCard({ playerId, onClose }: { playerId: string; on
 
   const ratingRows: Array<{ label: string; value: string }> = [];
   if (p1) {
+    const acclOverallRow =
+      p1.accl_overall ??
+      (typeof p1.accl_rating === "number" && Number.isFinite(p1.accl_rating)
+        ? { rating: p1.accl_rating, games_played: 0 }
+        : null);
+    ratingRows.push(p1RowLabel("ACCL Overall", acclOverallRow));
     ratingRows.push(p1RowLabel("Free · Bullet", p1.free_bullet));
     ratingRows.push(p1RowLabel("Free · Blitz", p1.free_blitz));
     ratingRows.push(p1RowLabel("Free · Rapid", p1.free_rapid));
     ratingRows.push(p1RowLabel("Free · Daily", p1.free_day));
-    ratingRows.push(p1RowLabel("Tournament (ACCL)", p1.tournament_unified));
+    ratingRows.push(p1RowLabel("Tournament", p1.tournament_unified));
   }
 
   const challengeHref =

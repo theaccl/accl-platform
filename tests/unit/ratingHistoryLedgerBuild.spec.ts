@@ -87,11 +87,29 @@ test.describe('rating history ledger builder', () => {
     expect(points[0].metadata?.backfill).toBe(true);
   });
 
-  test('accl profile track reads tournament ledger rows', () => {
+  test('accl profile track does not read tournament ledger rows', () => {
     const points = buildRatingHistoryPointsFromLedger(
       [row({ id: 'l1', rating_track_id: 'tournament', ecosystem: 'tournament' })],
       'u1',
       'accl',
+    );
+    expect(points).toHaveLength(0);
+  });
+
+  test('accl profile track reads accl_overall ledger rows when present', () => {
+    const points = buildRatingHistoryPointsFromLedger(
+      [row({ id: 'l1', rating_track_id: 'accl_overall', ecosystem: 'global' })],
+      'u1',
+      'accl',
+    );
+    expect(points).toHaveLength(1);
+  });
+
+  test('tournament profile track reads tournament ledger rows', () => {
+    const points = buildRatingHistoryPointsFromLedger(
+      [row({ id: 'l1', rating_track_id: 'tournament', ecosystem: 'tournament' })],
+      'u1',
+      'tournament',
     );
     expect(points).toHaveLength(1);
   });

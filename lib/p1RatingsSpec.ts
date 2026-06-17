@@ -3,11 +3,11 @@
  * Source for classifier parity: SQL `classify_p1_rating_bucket`, `lib/p1RatingClassifier.ts`,
  * backfill, and future UI labels.
  *
- * ACCL Rating (display) = Tournament Rating for P1 (same numeric snapshot).
+ * O1: ACCL Overall stored in accl_overall bucket; Tournament in tournament_unified (separate).
  * Migration strategy: additive storage then cutover (legacy six-bucket rows remain until later phases).
  */
 
-/** DB bucket for unified tournament + ACCL identity (P1). */
+/** DB bucket for unified tournament rating (P1). Separate from accl_overall (O1). */
 export const P1_TOURNAMENT_BUCKET = 'tournament_unified' as const;
 
 /**

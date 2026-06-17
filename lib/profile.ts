@@ -25,7 +25,7 @@ export function overallEloFromP1(p1: PublicP1Read | null | undefined): number | 
     blitz_elo: p1.free_blitz?.rating ?? null,
     rapid_elo: p1.free_rapid?.rating ?? null,
     daily_elo: p1.free_day?.rating ?? null,
-    tournament_elo: p1.tournament_unified?.rating ?? p1.accl_rating ?? null,
+    tournament_elo: p1.tournament_unified?.rating ?? p1.tournament_rating ?? null,
   });
 }
 
