@@ -9,6 +9,7 @@ test.describe('profile rating ticker (unit)', () => {
   test('top-level cards use ACCL + tournament + four modes', () => {
     const cards = topLevelRatingCardsFromP1({
       accl_rating: 1600,
+      accl_overall: { rating: 1600, games_played: 0 },
       tournament_rating: 1600,
       tournament_unified: { rating: 1600, games_played: 3 },
       free_bullet: { rating: 1500, games_played: 1 },

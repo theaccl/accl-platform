@@ -33,6 +33,7 @@ export async function getLiveGames(ecosystem: NexusEcosystem): Promise<NexusLive
   const tidList = [...new Set(pool.map((r) => String(r.tournament_id ?? '')).filter(Boolean))];
 
   const p1Buckets = [
+    'accl_overall',
     'tournament_unified',
     'free_bullet',
     'free_blitz',

@@ -21,8 +21,8 @@ export function topLevelRatingCardsFromP1(p1: PublicP1Read | null | undefined): 
     {
       id: 'accl',
       label: 'ACCL Rating',
-      rating: p1?.accl_rating ?? p1?.tournament_unified?.rating ?? null,
-      gamesPlayed: p1?.tournament_unified?.games_played ?? null,
+      rating: p1?.accl_rating ?? p1?.accl_overall?.rating ?? null,
+      gamesPlayed: p1?.accl_overall?.games_played ?? null,
       testId: 'profile-elo-accl',
     },
     {

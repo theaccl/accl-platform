@@ -23,9 +23,10 @@ test.describe('lib/profile helpers', () => {
     ).toBe(1333);
   });
 
-  test('overallEloFromP1 maps P1 rows', () => {
+  test('overallEloFromP1 maps P1 rows without accl in tournament slot', () => {
     const p1: PublicP1Read = {
-      accl_rating: 1600,
+      accl_rating: 1500,
+      accl_overall: { rating: 1500, games_played: 0 },
       tournament_rating: 1600,
       tournament_unified: { rating: 1600, games_played: 1 },
       free_bullet: { rating: 1200, games_played: 0 },
