@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   onboardingStatusGet,
   type OnboardingStatusRouteDeps,
-} from '../../app/api/profile/onboarding-status/route';
+} from '../../app/api/profile/onboarding-status/handler';
 
 const AUTH_UID = '550e8400-e29b-41d4-a716-446655440000';
 const OTHER_UID = '660e8400-e29b-41d4-a716-446655440001';
@@ -223,7 +223,7 @@ test.describe('onboarding-status route', () => {
 test.describe('onboarding-status route static guards', () => {
   test('route source performs no profile mutations', () => {
     const src = readFileSync(
-      join(process.cwd(), 'app', 'api', 'profile', 'onboarding-status', 'route.ts'),
+      join(process.cwd(), 'app', 'api', 'profile', 'onboarding-status', 'handler.ts'),
       'utf8',
     );
     expect(src).toContain('resolveAuthenticatedUserId');

@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   claimUsernamePost,
   type ClaimUsernameRouteDeps,
-} from '../../app/api/profile/claim-username/route';
+} from '../../app/api/profile/claim-username/handler';
 import type { EnsureOwnProfileRowResult } from '../../lib/ensureOwnProfileRow';
 
 const AUTH_UID = '550e8400-e29b-41d4-a716-446655440000';
@@ -404,7 +404,7 @@ test.describe('claim-username route', () => {
 test.describe('claim-username route static guards', () => {
   test('route uses resolveAuthenticatedUserId, ensureOwnProfileRow, and CAS helper', () => {
     const src = readFileSync(
-      join(process.cwd(), 'app', 'api', 'profile', 'claim-username', 'route.ts'),
+      join(process.cwd(), 'app', 'api', 'profile', 'claim-username', 'handler.ts'),
       'utf8',
     );
     expect(src).toContain('resolveAuthenticatedUserId');
