@@ -1,8 +1,12 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { ensureOwnProfileRow } from '@/lib/ensureOwnProfileRow';
+import { resolveProfileUsernameClaimCas } from '@/lib/profileUsernameClaimCas';
 import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
-import { profileRowNeedsUsername, validateAcclUsername } from '@/lib/usernameRules';
+import { validateAcclUsername } from '@/lib/usernameRules';
 
 export const runtime = 'nodejs';
 
@@ -13,8 +17,49 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-export async function POST(request: Request): Promise<Response> {
-  const userId = await resolveAuthenticatedUserId(request);
+export type ClaimUsernameRouteDeps = {
+  resolveAuthenticatedUserId: typeof resolveAuthenticatedUserId;
+  createServiceRoleClient: typeof createServiceRoleClient;
+  ensureOwnProfileRow: typeof ensureOwnProfileRow;
+};
+
+const defaultClaimUsernameRouteDeps: ClaimUsernameRouteDeps = {
+  resolveAuthenticatedUserId,
+  createServiceRoleClient,
+  ensureOwnProfileRow,
+};
+
+async function classifyCasUpdateMiss(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Response> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,username')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    return json({ error: 'profile_lookup_failed' }, 503);
+  }
+  if (!data) {
+    return json({ error: 'profile_provision_failed' }, 503);
+  }
+
+  const cas = resolveProfileUsernameClaimCas((data as { username?: string | null }).username);
+  if (!cas.eligible) {
+    return json({ error: 'username_already_set' }, 409);
+  }
+
+  return json({ error: 'profile_provision_failed' }, 503);
+}
+
+/** Core claim-username handler; optional deps for focused unit tests. */
+export async function claimUsernamePost(
+  request: Request,
+  deps: ClaimUsernameRouteDeps = defaultClaimUsernameRouteDeps,
+): Promise<Response> {
+  const userId = await deps.resolveAuthenticatedUserId(request);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
   const rl = checkRateLimit(`claim-username:${userId}`, 15, 60_000);
@@ -33,47 +78,71 @@ export async function POST(request: Request): Promise<Response> {
   const v = validateAcclUsername(raw);
   if (!v.ok) return json({ error: v.error }, 400);
 
-  const supabase = createServiceRoleClient();
+  const supabase = deps.createServiceRoleClient();
 
-  const { data: mine, error: mineErr } = await supabase
+  const ensured = await deps.ensureOwnProfileRow(supabase, userId);
+  if (!ensured.ok) {
+    if (ensured.error === 'profile_lookup_failed') {
+      return json({ error: 'profile_lookup_failed' }, 503);
+    }
+    return json({ error: 'profile_provision_failed' }, 503);
+  }
+
+  const { data: profileRow, error: profileErr } = await supabase
     .from('profiles')
     .select('username')
     .eq('id', userId)
     .maybeSingle();
 
-  if (mineErr) return json({ error: 'profile_lookup_failed' }, 503);
-  const current = (mine as { username?: string | null } | null)?.username ?? null;
-  if (!profileRowNeedsUsername(current)) {
+  if (profileErr) {
+    return json({ error: 'profile_lookup_failed' }, 503);
+  }
+  if (!profileRow) {
+    return json({ error: 'profile_provision_failed' }, 503);
+  }
+
+  const currentStoredUsername = (profileRow as { username?: string | null }).username;
+  const cas = resolveProfileUsernameClaimCas(currentStoredUsername);
+  if (!cas.eligible) {
     return json({ error: 'username_already_set' }, 409);
   }
 
-  const { data: taken } = await supabase
+  const { data: taken, error: takenErr } = await supabase
     .from('profiles')
     .select('id')
     .eq('username', v.username)
     .neq('id', userId)
     .maybeSingle();
 
+  if (takenErr) {
+    return json({ error: 'profile_lookup_failed' }, 503);
+  }
   if (taken?.id) {
     return json({ error: 'username_taken' }, 409);
   }
 
-  const { error: upErr, data: updated } = await supabase
+  let updateQuery = supabase
     .from('profiles')
     .update({ username: v.username })
-    .eq('id', userId)
-    .select('id,username')
-    .maybeSingle();
+    .eq('id', userId);
+
+  if (cas.filter.kind === 'is_null') {
+    updateQuery = updateQuery.is('username', null);
+  } else {
+    updateQuery = updateQuery.eq('username', cas.filter.username);
+  }
+
+  const { error: upErr, data: updated } = await updateQuery.select('id,username').maybeSingle();
 
   if (upErr) {
-    if (/duplicate|unique|23505/i.test(upErr.message)) {
+    if (String(upErr.code) === '23505') {
       return json({ error: 'username_taken' }, 409);
     }
-    return json({ error: upErr.message }, 503);
+    return json({ error: 'profile_provision_failed' }, 503);
   }
 
   if (!updated) {
-    return json({ error: 'profile_not_found' }, 503);
+    return classifyCasUpdateMiss(supabase, userId);
   }
 
   const { data: authUser, error: getErr } = await supabase.auth.admin.getUserById(userId);
@@ -89,4 +158,8 @@ export async function POST(request: Request): Promise<Response> {
 
   auditApiLog('username_claim', { user: shortId(userId) });
   return json({ ok: true, username: v.username });
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return claimUsernamePost(request);
 }

@@ -12,11 +12,25 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-export async function GET(request: Request): Promise<Response> {
-  const userId = await resolveAuthenticatedUserId(request);
+export type OnboardingStatusRouteDeps = {
+  resolveAuthenticatedUserId: typeof resolveAuthenticatedUserId;
+  createServiceRoleClient: typeof createServiceRoleClient;
+};
+
+const defaultOnboardingStatusRouteDeps: OnboardingStatusRouteDeps = {
+  resolveAuthenticatedUserId,
+  createServiceRoleClient,
+};
+
+/** Core onboarding-status handler; optional deps for focused unit tests. */
+export async function onboardingStatusGet(
+  request: Request,
+  deps: OnboardingStatusRouteDeps = defaultOnboardingStatusRouteDeps,
+): Promise<Response> {
+  const userId = await deps.resolveAuthenticatedUserId(request);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const supabase = createServiceRoleClient();
+  const supabase = deps.createServiceRoleClient();
   const { data, error } = await supabase.from('profiles').select('username').eq('id', userId).maybeSingle();
   if (error) {
     auditApiLog('profile_onboarding_status', { result: 'lookup_failed', user: shortId(userId) });
@@ -30,9 +44,24 @@ export async function GET(request: Request): Promise<Response> {
       503,
     );
   }
-  const username = (data as { username?: string | null } | null)?.username ?? null;
+
+  if (!data) {
+    return json({
+      needsUsername: true,
+      profileExists: false,
+      username: null,
+    });
+  }
+
+  const storedUsername = (data as { username?: string | null }).username ?? null;
+  const needsUsername = profileRowNeedsUsername(storedUsername);
   return json({
-    needsUsername: profileRowNeedsUsername(username),
-    username: username?.trim() || null,
+    needsUsername,
+    profileExists: true,
+    username: needsUsername ? null : storedUsername?.trim() || null,
   });
+}
+
+export async function GET(request: Request): Promise<Response> {
+  return onboardingStatusGet(request);
 }
