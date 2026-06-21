@@ -1,44 +1,20 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { performSignIn, performSignUp } from '@/app/login/authHandlers';
+import { resolvePostAuthRoute } from '@/lib/loginPostAuthRoute';
+import {
+  buildAuthPageHref,
+  getAlternateModePrompt,
+  getAuthPageHeading,
+  getPasswordAutocomplete,
+  getPrimarySubmitLabel,
+  getPrimarySubmitTestId,
+  resolveAuthFormMode,
+} from '@/lib/loginPageMode';
 import { supabase } from '@/lib/supabaseClient';
-import { getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
-import { getStoredEntrySource, getStoredReferral } from '@/lib/public/referralTracking';
-import { validateAcclUsername } from '@/lib/usernameRules';
 import NavigationBar from '@/components/NavigationBar';
-
-async function attachGrowthProfile(accessToken: string) {
-  try {
-    await fetch('/api/public/attach-growth-profile', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        referral_id: getStoredReferral() ?? undefined,
-        entry_source: getStoredEntrySource(),
-        conversion_event: 'session',
-      }),
-    });
-  } catch {
-    /* non-blocking */
-  }
-}
-
-async function resolvePostAuthRoute(accessToken: string, nextParam: string | null): Promise<string> {
-  await attachGrowthProfile(accessToken);
-  const safe = getSafePostLoginRedirect(nextParam);
-  const res = await fetch('/api/profile/onboarding-status', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const j = (await res.json()) as { needsUsername?: boolean };
-  if (j.needsUsername) {
-    return `/onboarding/username?next=${encodeURIComponent(safe)}`;
-  }
-  return safe;
-}
 
 function loginShell(children: React.ReactNode) {
   return (
@@ -56,6 +32,9 @@ const loginCardClass =
 const loginInputClass =
   'w-full rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3 text-sm text-white placeholder:text-gray-500 appearance-none transition-colors focus:border-red-500/40 focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:ring-offset-0 [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(255,255,255)] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_rgb(21,29,44)]';
 
+const primarySubmitClass =
+  'inline-flex w-full items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none';
+
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,8 +44,26 @@ function LoginPageInner() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState(false);
-  const intent = (searchParams.get('intent') ?? '').toLowerCase();
-  const signupIntent = intent === 'signup';
+  const mode = resolveAuthFormMode(searchParams.get('intent'));
+  const signupMode = mode === 'signup';
+  const nextParam = searchParams.get('next');
+
+  const authDeps = {
+    signInWithPassword: (args: { email: string; password: string }) =>
+      supabase.auth.signInWithPassword(args),
+    signUp: (args: {
+      email: string;
+      password: string;
+      options?: { data?: { username: string } };
+    }) => supabase.auth.signUp(args),
+    auditLogin: async (accessToken: string) => {
+      await fetch('/api/auth/audit-login', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    },
+    resolvePostAuthRoute,
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +79,7 @@ function LoginPageInner() {
       if (data.user?.id) {
         const { data: sess } = await supabase.auth.getSession();
         if (sess.session?.access_token) {
-          const dest = await resolvePostAuthRoute(sess.session.access_token, searchParams.get('next'));
+          const dest = await resolvePostAuthRoute(sess.session.access_token, nextParam);
           router.replace(dest);
         }
         return;
@@ -92,7 +89,7 @@ function LoginPageInner() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user?.id && session.access_token) {
         void (async () => {
-          const dest = await resolvePostAuthRoute(session.access_token, searchParams.get('next'));
+          const dest = await resolvePostAuthRoute(session.access_token, nextParam);
           router.replace(dest);
         })();
       }
@@ -102,73 +99,60 @@ function LoginPageInner() {
       window.clearTimeout(showFormFallback);
       listener.subscription.unsubscribe();
     };
-  }, [router, searchParams]);
+  }, [router, nextParam]);
 
-  const signIn = async () => {
+  const switchMode = (targetMode: 'login' | 'signup') => {
+    if (busy) return;
+    setMessage('');
+    router.replace(buildAuthPageHref(targetMode, searchParams));
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (busy) return;
     setBusy(true);
     setMessage('');
     try {
-      const { error, data } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (error) {
-        setMessage(error.message);
-        setBusy(false);
-        return;
-      }
-      if (!data.session?.access_token) {
-        setBusy(false);
-        return;
-      }
-      try {
-        await fetch('/api/auth/audit-login', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${data.session.access_token}`,
+      if (signupMode) {
+        const result = await performSignUp(
+          {
+            email,
+            password,
+            username: signupUsername,
+            signupMode: true,
+            nextParam,
           },
-        });
-      } catch {
-        /* non-blocking */
+          authDeps,
+        );
+        if (!result.ok) {
+          setMessage(result.message);
+          setBusy(false);
+          return;
+        }
+        setMessage(result.message);
+        if (result.sessionCreated && result.destination) {
+          router.replace(result.destination);
+          return;
+        }
+        setBusy(false);
+        return;
       }
-      const dest = await resolvePostAuthRoute(data.session.access_token, searchParams.get('next'));
-      router.replace(dest);
+
+      const result = await performSignIn({ email, password, nextParam }, authDeps);
+      if (!result.ok) {
+        setMessage(result.message);
+        setBusy(false);
+        return;
+      }
+      router.replace(result.destination);
       /* Keep busy until navigation replaces this view — avoids a dead-feeling gap after auth. */
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Sign-in failed. Try again.');
+      setMessage(e instanceof Error ? e.message : signupMode ? 'Sign-up failed. Try again.' : 'Sign-in failed. Try again.');
       setBusy(false);
     }
   };
 
-  const signUp = async () => {
-    if (busy) return;
-    setBusy(true);
-    setMessage('');
-    let signupData: { username: string } | undefined;
-    if (signupIntent) {
-      const uv = validateAcclUsername(signupUsername);
-      if (!uv.ok) {
-        setMessage(uv.error);
-        setBusy(false);
-        return;
-      }
-      signupData = { username: uv.username };
-    }
-    try {
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        ...(signupData ? { options: { data: signupData } } : {}),
-      });
-      if (error) {
-        setMessage(error.message);
-        return;
-      }
-      setMessage(
-        'Check your email to confirm signup, then sign in. After sign-in you will land on your chosen destination.'
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
+  const alternateMode = getAlternateModePrompt(mode);
 
   if (!checked) {
     return loginShell(
@@ -184,85 +168,91 @@ function LoginPageInner() {
         <div className={`${loginCardClass} p-8 w-full`}>
           <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 mb-2">ACCL</p>
           <h1 className="text-2xl sm:text-[1.65rem] font-bold text-white tracking-tight leading-snug">
-            {signupIntent ? 'Create your ACCL account' : 'Sign in to ACCL'}
+            {getAuthPageHeading(mode)}
           </h1>
           <p className="mt-3 text-gray-400 text-sm leading-relaxed">
             Access Nexus, free play, tournaments, and progression.
           </p>
 
-          <div className="mt-8 space-y-4">
-            <div>
-              <label htmlFor="login-email" className="block text-xs font-medium text-gray-400 mb-1.5">
-                Email
-              </label>
-              <input
-                id="login-email"
-                data-testid="login-email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                className={loginInputClass}
-              />
-            </div>
-            <div>
-              <label htmlFor="login-password" className="block text-xs font-medium text-gray-400 mb-1.5">
-                Password
-              </label>
-              <input
-                id="login-password"
-                data-testid="login-password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={signupIntent ? 'new-password' : 'current-password'}
-                className={loginInputClass}
-              />
-            </div>
-            {signupIntent ? (
+          <form className="mt-8" onSubmit={handleSubmit} noValidate>
+            <div className="space-y-4">
               <div>
-                <label htmlFor="signup-username" className="block text-xs font-medium text-gray-400 mb-1.5">
-                  Username
+                <label htmlFor="login-email" className="block text-xs font-medium text-gray-400 mb-1.5">
+                  Email
                 </label>
                 <input
-                  id="signup-username"
-                  data-testid="signup-username"
-                  type="text"
-                  placeholder="your_public_name"
-                  value={signupUsername}
-                  onChange={(e) => setSignupUsername(e.target.value)}
-                  autoComplete="username"
+                  id="login-email"
+                  data-testid="login-email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   className={loginInputClass}
+                  disabled={busy}
                 />
-                <p className="mt-1.5 text-[11px] text-gray-500 leading-relaxed">
-                  Public identity (3–20 chars, letter then letters, numbers, underscores). Never your email.
-                </p>
               </div>
-            ) : null}
-          </div>
+              <div>
+                <label htmlFor="login-password" className="block text-xs font-medium text-gray-400 mb-1.5">
+                  Password
+                </label>
+                <input
+                  id="login-password"
+                  data-testid="login-password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={getPasswordAutocomplete(mode)}
+                  className={loginInputClass}
+                  disabled={busy}
+                />
+              </div>
+              {signupMode ? (
+                <div>
+                  <label htmlFor="signup-username" className="block text-xs font-medium text-gray-400 mb-1.5">
+                    Username
+                  </label>
+                  <input
+                    id="signup-username"
+                    data-testid="signup-username"
+                    type="text"
+                    placeholder="your_public_name"
+                    value={signupUsername}
+                    onChange={(e) => setSignupUsername(e.target.value)}
+                    autoComplete="username"
+                    className={loginInputClass}
+                    disabled={busy}
+                  />
+                  <p className="mt-1.5 text-[11px] text-gray-500 leading-relaxed">
+                    Public identity (3–20 chars, letter then letters, numbers, underscores). Never your email.
+                  </p>
+                </div>
+              ) : null}
+            </div>
 
-          <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <button
-              data-testid="login-submit"
-              type="button"
-              onClick={signIn}
+              type="submit"
+              data-testid={getPrimarySubmitTestId(mode)}
               disabled={busy}
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-red-500/45 bg-red-900/25 px-4 py-3.5 text-sm font-semibold text-red-100 shadow-sm transition hover:bg-red-900/40 hover:border-red-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
+              className={`${primarySubmitClass} mt-6`}
             >
-              {busy ? 'Signing in…' : 'Log in'}
+              {getPrimarySubmitLabel(mode, busy)}
             </button>
-            <button
-              type="button"
-              onClick={signUp}
-              disabled={busy}
-              data-testid="signup-submit"
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#2a3442] bg-[#151d2c] px-4 py-3.5 text-sm font-medium text-gray-100 transition hover:border-red-500/35 hover:bg-[#1a2435] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111723] disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {busy ? (signupIntent ? 'Creating account…' : 'Please wait…') : 'Sign up'}
-            </button>
-          </div>
+
+            <p className="mt-4 text-center text-sm text-gray-400">
+              {alternateMode.lead}{' '}
+              <button
+                type="button"
+                data-testid="auth-mode-switch"
+                disabled={busy}
+                onClick={() => switchMode(signupMode ? 'login' : 'signup')}
+                className="font-medium text-red-200 underline-offset-2 transition hover:text-red-100 hover:underline disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {alternateMode.action}
+              </button>
+            </p>
+          </form>
 
           {message ? (
             <p className="mt-5 text-sm text-gray-300 leading-relaxed" role="status">
