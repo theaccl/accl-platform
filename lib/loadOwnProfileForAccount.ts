@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 
+import { minimalProfileInsertRow } from '@/lib/profileProvisioningContract';
+
 export type OwnProfileRow = {
   username: string | null;
   bio: string | null;
@@ -37,11 +39,7 @@ export async function loadOrCreateOwnProfile(
 
   const { data: inserted, error: insertError } = await supabase
     .from('profiles')
-    .insert({
-      id: user.id,
-      // Keep username empty until explicit claim/onboarding writes a validated value.
-      username: null,
-    })
+    .insert(minimalProfileInsertRow(user.id))
     .select('username,bio,flag,avatar_path')
     .single();
 
