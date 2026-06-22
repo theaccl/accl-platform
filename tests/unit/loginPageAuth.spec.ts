@@ -9,7 +9,8 @@ import {
   getPrimarySubmitTestId,
   resolveAuthFormMode,
   resolveFormSubmitAction,
-  SIGNUP_SUCCESS_MESSAGE,
+  SIGNUP_ACTIVE_SESSION_MESSAGE,
+  SIGNUP_VERIFICATION_PENDING_MESSAGE,
 } from '../../lib/loginPageMode';
 
 function makeDeps(overrides: Partial<LoginAuthHandlerDeps> = {}): LoginAuthHandlerDeps {
@@ -107,14 +108,15 @@ test.describe('login auth handlers', () => {
         username: 'alice',
         signupMode: true,
         nextParam: '/nexus',
+        typoDecision: null,
       },
       deps,
     );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.message).toBe(SIGNUP_SUCCESS_MESSAGE);
-      expect(result.sessionCreated).toBe(false);
+      expect(result.outcome).toBe('confirmation_pending');
+      expect(result.message).toBe(SIGNUP_VERIFICATION_PENDING_MESSAGE);
     }
     expect(signInCalls).toBe(0);
     expect(signUpCalls).toBe(1);
@@ -137,14 +139,15 @@ test.describe('login auth handlers', () => {
         username: 'alice',
         signupMode: true,
         nextParam: '/nexus',
+        typoDecision: null,
       },
       deps,
     );
 
     expect(result).toEqual({
       ok: true,
-      message: SIGNUP_SUCCESS_MESSAGE,
-      sessionCreated: true,
+      outcome: 'active_session',
+      message: SIGNUP_ACTIVE_SESSION_MESSAGE,
       destination: '/onboarding/username?next=%2Fnexus',
     });
   });
@@ -165,6 +168,7 @@ test.describe('login auth handlers', () => {
         username: 'alice',
         signupMode: true,
         nextParam: null,
+        typoDecision: null,
       },
       deps,
     );
@@ -188,6 +192,7 @@ test.describe('login auth handlers', () => {
         username: 'ab',
         signupMode: true,
         nextParam: null,
+        typoDecision: null,
       },
       deps,
     );
