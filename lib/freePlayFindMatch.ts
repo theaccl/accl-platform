@@ -11,6 +11,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { openSeatNewGameInsert } from '@/lib/gameStartupInsert';
+import { postAuthenticatedJson } from '@/lib/postAuthenticatedJson';
 import type { GameTempo } from '@/lib/gameTempo';
 import {
   type PlatMode,
@@ -251,6 +252,31 @@ export async function runFreePlayCreateGame(
   }
 
   const row = buildOpenSeatRow(userId, mode, normalizedClock, rated);
+
+  if (typeof window !== 'undefined') {
+    const httpRes = await postAuthenticatedJson(supabase, '/api/free-play/create-open-seat', {
+      mode,
+      clock: normalizedClock,
+      rated,
+    });
+    const payload = (await httpRes.json().catch(() => ({}))) as {
+      ok?: boolean;
+      gameId?: string;
+      hostLiveOpenSeat?: boolean;
+      error?: string;
+      resumeGameId?: string;
+    };
+    if (!httpRes.ok) {
+      if (payload.resumeGameId) {
+        return { error: payload.error ?? FREE_PLAY_QUEUE_BUSY_MESSAGE, resumeGameId: payload.resumeGameId };
+      }
+      return { error: payload.error ?? 'Could not create open seat.' };
+    }
+    const id = typeof payload.gameId === 'string' ? payload.gameId.trim() : '';
+    if (!id) return { error: 'Could not post to the queue.' };
+    return { gameId: id, hostLiveOpenSeat: payload.hostLiveOpenSeat === true };
+  }
+
   const { data: created, error: insErr } = await supabase.from('games').insert(row).select('id').single();
   if (insErr) {
     const slot = freePlayTargetSlot(mode, normalizedClock, rated);

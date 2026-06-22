@@ -342,9 +342,9 @@ test.describe('match requests and direct challenges', () => {
       {
         resolveAuthenticatedUser: async () => unconfirmedEmailUser(),
         bearerToken: () => 'token',
-        createUserSupabase: () => {
+        createServiceRoleClient: () => {
           supabaseCreated = true;
-          throw new Error('supabase should not be created');
+          throw new Error('service role should not be created');
         },
         userHasConflictingPlatQueueSlotAdmin: async () => null,
         invalidateLiveQueueAvailabilityForUsers: async () => {},
@@ -369,9 +369,9 @@ test.describe('match requests and direct challenges', () => {
       {
         resolveAuthenticatedUser: async () => unconfirmedEmailUser(),
         bearerToken: () => 'token',
-        createUserSupabase: () => {
+        createServiceRoleClient: () => {
           supabaseCreated = true;
-          throw new Error('supabase should not be created');
+          throw new Error('service role should not be created');
         },
         userInSeatedInSamePlatQueueSlotAdmin: async () => ({ blocked: false }),
         invalidateLiveQueueAvailabilityForUsers: async () => {},
@@ -395,7 +395,7 @@ test.describe('match requests and direct challenges', () => {
       {
         resolveAuthenticatedUser: async () => oauthUser(),
         bearerToken: () => 'token',
-        createUserSupabase: () => {
+        createServiceRoleClient: () => {
           supabaseCreated = true;
           return {
             from: () => ({
@@ -449,15 +449,16 @@ test.describe('tournament check-in and bootstrap invariants', () => {
   });
 });
 
-test.describe('remaining client-side competitive surfaces', () => {
-  test('direct match_requests insert and create_seated_game_guard remain client-side only', () => {
+test.describe('Phase B3 supersession (client boundary moved server-side)', () => {
+  test('direct challenge and seated-game browser paths use gated API routes', () => {
     const challengePanel = readFileSync(
       join(process.cwd(), 'components', 'DirectChallengePanel.tsx'),
       'utf8',
     );
-    expect(challengePanel).toContain("from('match_requests')");
-    expect(challengePanel).not.toContain('/api/match-requests/');
+    expect(challengePanel).toContain('/api/match-requests/create-challenge');
+    expect(challengePanel).not.toMatch(/from\(['"]match_requests['"]\)[\s\S]*?\.insert\(/);
     const seated = readFileSync(join(process.cwd(), 'lib', 'createSeatedFreePlayGame.ts'), 'utf8');
-    expect(seated).toContain('create_seated_game_guard');
+    expect(seated).toContain('/api/free-play/create-seated-game');
+    expect(seated).toContain('createSeatedGameGuardViaApi');
   });
 });

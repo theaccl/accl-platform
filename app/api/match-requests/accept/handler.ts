@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { gameInsertFromAcceptedChallenge } from '@/lib/gameStartupInsert';
 import { freePlayTargetSlotFromGameOrRequestFields } from '@/lib/hasActiveWaitingLiveFreeGame';
@@ -10,7 +10,9 @@ import { emailVerificationRequiredPayload, provisioningBlockedReason } from '@/l
 import { invalidateLiveQueueAvailabilityForUsers } from '@/lib/server/invalidateLiveQueueAvailability';
 import { userHasConflictingPlatQueueSlotAdmin } from '@/lib/server/userHasLiveFreeSessionAdmin';
 import { jsonResponse } from '@/lib/server/httpJson';
+import { bearerToken } from '@/lib/server/matchRequestRouteAuth';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
+import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import { formatMatchRequestApiError } from '@/lib/userFacingQueueError';
 
 type MatchRequestRow = {
@@ -28,35 +30,10 @@ type MatchRequestRow = {
   rated?: boolean | null;
 };
 
-export function bearerToken(request: Request): string | null {
-  const authHeader = request.headers.get('authorization') ?? '';
-  const m = /^Bearer\s+(.+)$/i.exec(authHeader);
-  const t = m?.[1]?.trim();
-  return t && t.length > 0 ? t : null;
-}
-
-export function userScopedSupabase(accessToken: string): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!url || !anon) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY');
-  }
-  return createClient(url, anon, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  });
-}
-
 export type MatchRequestAcceptRouteDeps = {
   resolveAuthenticatedUser: typeof resolveAuthenticatedUser;
   bearerToken: typeof bearerToken;
-  createUserSupabase: typeof userScopedSupabase;
+  createServiceRoleClient: typeof createServiceRoleClient;
   userHasConflictingPlatQueueSlotAdmin: typeof userHasConflictingPlatQueueSlotAdmin;
   invalidateLiveQueueAvailabilityForUsers: typeof invalidateLiveQueueAvailabilityForUsers;
 };
@@ -64,7 +41,7 @@ export type MatchRequestAcceptRouteDeps = {
 const defaultDeps: MatchRequestAcceptRouteDeps = {
   resolveAuthenticatedUser,
   bearerToken,
-  createUserSupabase: userScopedSupabase,
+  createServiceRoleClient,
   userHasConflictingPlatQueueSlotAdmin,
   invalidateLiveQueueAvailabilityForUsers,
 };
@@ -81,8 +58,7 @@ export async function matchRequestAcceptPost(
   }
 
   const userId = user.id;
-  const token = deps.bearerToken(request);
-  if (!token) return jsonResponse({ error: 'Unauthorized' }, 401);
+  if (!deps.bearerToken(request)) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   let body: { requestId?: unknown };
   try {
@@ -94,14 +70,14 @@ export async function matchRequestAcceptPost(
   const requestId = typeof body.requestId === 'string' ? body.requestId.trim() : '';
   if (!requestId) return jsonResponse({ error: 'requestId is required' }, 400);
 
-  let supabase;
+  let serviceSupabase: SupabaseClient;
   try {
-    supabase = deps.createUserSupabase(token);
+    serviceSupabase = deps.createServiceRoleClient();
   } catch (e) {
     return jsonResponse({ error: e instanceof Error ? e.message : 'Server misconfigured' }, 500);
   }
 
-  const { data: row, error: fetchErr } = await supabase
+  const { data: row, error: fetchErr } = await serviceSupabase
     .from('match_requests')
     .select('*')
     .eq('id', requestId)
@@ -142,7 +118,11 @@ export async function matchRequestAcceptPost(
   }
 
   const challengeRow = { ...gameInsertFromAcceptedChallenge(r) };
-  const { data: newGame, error: insErr } = await supabase.from('games').insert(challengeRow).select('id').single();
+  const { data: newGame, error: insErr } = await serviceSupabase
+    .from('games')
+    .insert(challengeRow)
+    .select('id')
+    .single();
 
   if (insErr) {
     console.warn('[match-requests.accept] game insert failed', insErr.message);
@@ -157,7 +137,7 @@ export async function matchRequestAcceptPost(
     return jsonResponse({ error: 'Game was not created (empty response).' }, 500);
   }
 
-  const { data: updatedRows, error: uErr } = await supabase
+  const { data: updatedRows, error: uErr } = await serviceSupabase
     .from('match_requests')
     .update({
       status: 'accepted',
@@ -166,6 +146,7 @@ export async function matchRequestAcceptPost(
     })
     .eq('id', requestId)
     .eq('status', 'pending')
+    .eq('to_user_id', userId)
     .select('id');
 
   if (uErr) {
