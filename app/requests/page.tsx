@@ -410,17 +410,27 @@ export default function RequestsPage() {
       setBusyReqId(r.id);
       setMessage('');
       try {
-        const { error } = await supabase
-          .from('match_requests')
-          .update({
-            status: 'declined',
-            responded_at: new Date().toISOString(),
-          })
-          .eq('id', r.id)
-          .eq('status', 'pending')
-          .eq('to_user_id', authUserId);
-        if (error) {
-          setMessage(formatUserFacingQueueError(error.message));
+        const { data: s } = await supabase.auth.getSession();
+        const token = s.session?.access_token;
+        if (!token) {
+          setMessage('Session expired. Sign in again.');
+          return;
+        }
+        const httpRes = await fetch('/api/match-requests/decline', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requestId: r.id }),
+        });
+        const payload = (await httpRes.json().catch(() => ({}))) as { error?: unknown };
+        if (!httpRes.ok) {
+          const err =
+            typeof payload.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : `Decline failed (${httpRes.status})`;
+          setMessage(formatUserFacingQueueError(err));
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));
@@ -440,17 +450,27 @@ export default function RequestsPage() {
       setBusyReqId(r.id);
       setMessage('');
       try {
-        const { error } = await supabase
-          .from('match_requests')
-          .update({
-            status: 'cancelled',
-            responded_at: new Date().toISOString(),
-          })
-          .eq('id', r.id)
-          .eq('status', 'pending')
-          .eq('from_user_id', authUserId);
-        if (error) {
-          setMessage(formatUserFacingQueueError(error.message));
+        const { data: s } = await supabase.auth.getSession();
+        const token = s.session?.access_token;
+        if (!token) {
+          setMessage('Session expired. Sign in again.');
+          return;
+        }
+        const httpRes = await fetch('/api/match-requests/cancel', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requestId: r.id }),
+        });
+        const payload = (await httpRes.json().catch(() => ({}))) as { error?: unknown };
+        if (!httpRes.ok) {
+          const err =
+            typeof payload.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : `Cancel failed (${httpRes.status})`;
+          setMessage(formatUserFacingQueueError(err));
           return;
         }
         setRequests((prev) => prev.filter((x) => x.id !== r.id));

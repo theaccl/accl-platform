@@ -41,6 +41,11 @@ import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentC
 import { TournamentFirstMoveGraceBanner } from '@/components/tournament/TournamentFirstMoveGraceBanner';
 import { TournamentSessionRail } from '@/components/tournament/TournamentSessionRail';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
+import {
+  EMAIL_VERIFICATION_REQUIRED_CODE,
+  EMAIL_VERIFICATION_REQUIRED_MESSAGE,
+} from '@/lib/emailVerificationGate';
+import { postAuthenticatedJson } from '@/lib/postAuthenticatedJson';
 import { canPickPieceForMove } from '@/lib/boardInteraction';
 import {
   finishedGameResultBannerText,
@@ -1885,46 +1890,36 @@ export default function GamePage() {
     if (userId !== game.white_player_id && userId !== game.black_player_id) {
       return;
     }
-    const toUserId =
-      userId === game.white_player_id ? game.black_player_id : game.white_player_id;
 
     setRematchRequestBusy(true);
     setMessage('');
     setRematchSentBanner(false);
     setPendingRematchRequestId(null);
     try {
-      const rematchTempo = normalizeGameTempo(game.tempo);
-      const rawRematchLtc = game.live_time_control ?? null;
-      const rematchLtc =
-        canonicalLiveTimeControlForInsert(rematchTempo, rawRematchLtc) ?? rawRematchLtc;
-      const { data: inserted, error } = await supabase
-        .from('match_requests')
-        .insert({
-          from_user_id: userId,
-          to_user_id: toUserId,
-          request_type: 'rematch',
-          source_game_id: game.id,
-          white_player_id: game.white_player_id,
-          black_player_id: game.black_player_id,
-          status: 'pending',
-          visibility: 'direct',
-          tempo: rematchTempo,
-          live_time_control: rematchLtc,
-          rated: game.rated === true,
-        })
-        .select('id')
-        .single();
-
-      if (error) {
-        setMessage(userMessageForMatchRequestInsertError(error));
+      const httpRes = await postAuthenticatedJson(supabase, '/api/match-requests/create-rematch', {
+        sourceGameId: game.id,
+      });
+      const payload = (await httpRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        requestId?: string;
+        code?: string;
+        error?: string;
+      };
+      if (httpRes.status === 403 && payload.code === EMAIL_VERIFICATION_REQUIRED_CODE) {
+        setMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE);
         return;
       }
-      if (!inserted?.id) {
+      if (!httpRes.ok) {
+        setMessage(payload.error ?? userMessageForMatchRequestInsertError({ message: 'Could not send rematch.' }));
+        return;
+      }
+      const requestId = typeof payload.requestId === 'string' ? payload.requestId.trim() : '';
+      if (!requestId) {
         setMessage('Could not confirm rematch request was saved.');
         return;
       }
       setRematchSentBanner(true);
-      setPendingRematchRequestId(inserted.id);
+      setPendingRematchRequestId(requestId);
     } finally {
       setRematchRequestBusy(false);
     }

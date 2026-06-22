@@ -21,7 +21,12 @@ import {
 import { RatedUnratedToggle } from '@/components/RatedUnratedToggle';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { userMessageForMatchRequestInsertError } from '@/lib/matchRequestInsertError';
-import { logLiveTimeControlInsert, logSupabaseWriteError } from '@/lib/logSupabaseWriteError';
+import { logSupabaseWriteError } from '@/lib/logSupabaseWriteError';
+import { postAuthenticatedJson } from '@/lib/postAuthenticatedJson';
+import {
+  EMAIL_VERIFICATION_REQUIRED_CODE,
+  EMAIL_VERIFICATION_REQUIRED_MESSAGE,
+} from '@/lib/emailVerificationGate';
 import { publicDisplayNameFromProfileUsername } from '@/lib/profileIdentity';
 import {
   formatRatingDisplay,
@@ -417,52 +422,35 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
     setChallengeSentDetail(null);
     setPendingChallengeRequestId(null);
     try {
-      logLiveTimeControlInsert('Challenge request create', {
-        table: 'match_requests',
-        operation: 'insert',
-        tempo: challengeTempo,
-        rawFromUiOrRow: coercePlatTimeForMode(platMode, platClock),
-        finalForSupabase: challengeLtc,
+      const httpRes = await postAuthenticatedJson(supabase, '/api/match-requests/create-challenge', {
+        toUserId: trimmedOpponent,
+        colorPreference: challengeColorPreference,
+        platMode,
+        platClock,
+        rated: challengeRated,
       });
-      const { data: inserted, error } = await supabase
-        .from('match_requests')
-        .insert({
-          from_user_id: currentUserId,
-          to_user_id: trimmedOpponent,
-          request_type: 'challenge',
-          source_game_id: null,
-          white_player_id: challengeWhiteId,
-          black_player_id: challengeBlackId,
-          status: 'pending',
-          visibility: 'direct',
-          tempo: challengeTempo,
-          live_time_control: challengeLtc,
-          rated: challengeRated,
-        })
-        .select('id')
-        .single();
+      const payload = (await httpRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        requestId?: string;
+        code?: string;
+        error?: string;
+      };
 
-      if (error) {
-        logSupabaseWriteError('Challenge opponent → match_requests insert', {
-          table: 'match_requests',
-          operation: 'insert',
-          payload: {
-            tempo: challengeTempo,
-            live_time_control: challengeLtc,
-            raw_from_ui: coercePlatTimeForMode(platMode, platClock),
-            request_type: 'challenge',
-          },
-          error,
-        });
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[direct-challenge] match_requests insert failed', error);
-        }
-        setMessage(userMessageForMatchRequestInsertError(error));
+      if (httpRes.status === 403 && payload.code === EMAIL_VERIFICATION_REQUIRED_CODE) {
+        setMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE);
         return;
       }
-      if (!inserted?.id) {
+      if (!httpRes.ok) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[direct-challenge] insert returned no id');
+          console.warn('[direct-challenge] create-challenge failed', httpRes.status, payload);
+        }
+        setMessage(payload.error ?? userMessageForMatchRequestInsertError({ message: 'Could not send challenge.' }));
+        return;
+      }
+      const requestId = typeof payload.requestId === 'string' ? payload.requestId.trim() : '';
+      if (!requestId) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[direct-challenge] create-challenge returned no requestId');
         }
         setMessage('Could not confirm challenge request was saved.');
         return;
@@ -471,7 +459,7 @@ export function DirectChallengePanel({ anchorId = 'direct-challenge', singleStep
       setChallengeSentDetail(detail);
       setMessage('');
       setChallengeSentBanner(true);
-      setPendingChallengeRequestId(inserted.id);
+      setPendingChallengeRequestId(requestId);
       setOpponentEmail('');
       setOpponentUserId('');
       setOpponentResolvedUsername(null);
