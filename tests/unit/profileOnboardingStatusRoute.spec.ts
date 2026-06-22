@@ -11,6 +11,17 @@ import {
 const AUTH_UID = '550e8400-e29b-41d4-a716-446655440000';
 const OTHER_UID = '660e8400-e29b-41d4-a716-446655440001';
 
+function confirmedAuthUser() {
+  return {
+    id: AUTH_UID,
+    email: 'confirmed@example.com',
+    email_confirmed_at: '2026-01-01T00:00:00Z',
+    app_metadata: { provider: 'email' },
+    user_metadata: {},
+    identities: [{ provider: 'email' }],
+  };
+}
+
 type MockConfig = {
   profileUsername?: string | null | 'absent';
   lookupError?: boolean;
@@ -82,7 +93,7 @@ function createOnboardingStatusMockSupabase(config: MockConfig) {
 
 function makeDeps(mock: ReturnType<typeof createOnboardingStatusMockSupabase>): OnboardingStatusRouteDeps {
   return {
-    resolveAuthenticatedUserId: async () => AUTH_UID,
+    resolveAuthenticatedUser: async () => confirmedAuthUser(),
     createServiceRoleClient: () => mock.client,
   };
 }
@@ -102,7 +113,7 @@ test.describe('onboarding-status route', () => {
   test('unauthenticated request returns 401 and performs no profile query', async () => {
     const mock = createOnboardingStatusMockSupabase({ profileUsername: null });
     const res = await onboardingStatusGet(makeGetRequest(), {
-      resolveAuthenticatedUserId: async () => null,
+      resolveAuthenticatedUser: async () => null,
       createServiceRoleClient: () => mock.client,
     });
     expect(res.status).toBe(401);
@@ -114,6 +125,7 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), makeDeps(mock));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
       needsUsername: true,
       profileExists: false,
       username: null,
@@ -125,6 +137,7 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), makeDeps(mock));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
       needsUsername: true,
       profileExists: true,
       username: null,
@@ -136,6 +149,7 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), makeDeps(mock));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
       needsUsername: true,
       profileExists: true,
       username: null,
@@ -147,6 +161,7 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), makeDeps(mock));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
       needsUsername: true,
       profileExists: true,
       username: null,
@@ -158,6 +173,7 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), makeDeps(mock));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
       needsUsername: true,
       profileExists: true,
       username: null,
@@ -169,6 +185,7 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), makeDeps(mock));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
       needsUsername: false,
       profileExists: true,
       username: 'alice',
@@ -226,7 +243,7 @@ test.describe('onboarding-status route static guards', () => {
       join(process.cwd(), 'app', 'api', 'profile', 'onboarding-status', 'handler.ts'),
       'utf8',
     );
-    expect(src).toContain('resolveAuthenticatedUserId');
+    expect(src).toContain('resolveAuthenticatedUser');
     expect(src).not.toMatch(/\.insert\s*\(/);
     expect(src).not.toMatch(/\.update\s*\(/);
     expect(src).not.toMatch(/\.upsert\s*\(/);

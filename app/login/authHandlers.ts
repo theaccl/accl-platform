@@ -1,4 +1,12 @@
-import { resolvePostAuthRoute } from '@/lib/loginPostAuthRoute';
+import {
+  buildEmailConfirmationCallbackUrl,
+  resolveTrustedEmailConfirmationOrigin,
+} from '@/lib/emailConfirmationRedirect';
+import { requiresEmailVerificationForProvisioning, type EmailVerificationUser } from '@/lib/emailVerificationGate';
+import {
+  resolvePostAuthRoute,
+  type PostAuthRouteResult,
+} from '@/lib/loginPostAuthRoute';
 import {
   SIGNUP_ACTIVE_SESSION_MESSAGE,
   SIGNUP_VERIFICATION_PENDING_MESSAGE,
@@ -13,7 +21,8 @@ import {
 import { validateAcclUsername } from '@/lib/usernameRules';
 
 export type SignInResult =
-  | { ok: true; destination: string }
+  | { ok: true; kind: 'redirect'; destination: string }
+  | { ok: true; kind: 'verification_required'; email: string }
   | { ok: false; message: string };
 
 export type SignUpOutcome = 'active_session' | 'confirmation_pending';
@@ -24,6 +33,7 @@ export type SignUpResult =
       outcome: SignUpOutcome;
       message: string;
       destination?: string;
+      pendingEmail?: string;
     }
   | {
       ok: false;
@@ -34,32 +44,46 @@ export type SignUpResult =
 export type LoginAuthHandlerDeps = {
   signInWithPassword: (args: { email: string; password: string }) => Promise<{
     error: { message: string } | null;
-    data: { session: { access_token: string } | null };
+    data: {
+      session: { access_token: string } | null;
+      user: EmailVerificationUser | null;
+    };
   }>;
   signUp: (args: {
     email: string;
     password: string;
-    options?: { data?: { username: string } };
+    options?: {
+      data?: { username: string };
+      emailRedirectTo?: string;
+    };
   }) => Promise<{
     error: { message: string } | null;
-    data: { session: { access_token: string } | null };
+    data: {
+      session: { access_token: string } | null;
+      user: EmailVerificationUser | null;
+    };
   }>;
   auditLogin: (accessToken: string) => Promise<void>;
-  resolvePostAuthRoute: typeof resolvePostAuthRoute;
+  resolvePostAuthRoute: (
+    accessToken: string,
+    nextParam: string | null,
+    user?: EmailVerificationUser | null,
+  ) => Promise<PostAuthRouteResult>;
 };
 
 const defaultDeps: LoginAuthHandlerDeps = {
   signInWithPassword: async () => ({
     error: { message: 'signInWithPassword not configured' },
-    data: { session: null },
+    data: { session: null, user: null },
   }),
   signUp: async () => ({
     error: { message: 'signUp not configured' },
-    data: { session: null },
+    data: { session: null, user: null },
   }),
   auditLogin: async () => {},
   resolvePostAuthRoute,
 };
+
 
 export async function performSignIn(
   input: { email: string; password: string; nextParam: string | null },
@@ -76,13 +100,23 @@ export async function performSignIn(
   if (!data.session?.access_token) {
     return { ok: false, message: 'Sign-in failed. Try again.' };
   }
+  if (data.user && requiresEmailVerificationForProvisioning(data.user)) {
+    return { ok: true, kind: 'verification_required', email: data.user.email?.trim() || normalized };
+  }
   try {
     await deps.auditLogin(data.session.access_token);
   } catch {
     /* non-blocking */
   }
-  const destination = await deps.resolvePostAuthRoute(data.session.access_token, input.nextParam);
-  return { ok: true, destination };
+  const route = await deps.resolvePostAuthRoute(
+    data.session.access_token,
+    input.nextParam,
+    data.user,
+  );
+  if (route.status === 'verification_required') {
+    return { ok: true, kind: 'verification_required', email: route.email || normalized };
+  }
+  return { ok: true, kind: 'redirect', destination: route.destination };
 }
 
 export async function performSignUp(
@@ -93,6 +127,7 @@ export async function performSignUp(
     signupMode: boolean;
     nextParam: string | null;
     typoDecision: EmailTypoDecisionState | null;
+    confirmationRedirectOrigin: string | null;
   },
   deps: LoginAuthHandlerDeps = defaultDeps,
 ): Promise<SignUpResult> {
@@ -118,27 +153,63 @@ export async function performSignUp(
       return { ok: false, message: uv.error, reason: 'provider_error' };
     }
 
+    const signUpOptions: {
+      data: { username: string };
+      emailRedirectTo?: string;
+    } = { data: { username: uv.username } };
+
+    const trustedOrigin = resolveTrustedEmailConfirmationOrigin({
+      clientOrigin: input.confirmationRedirectOrigin,
+    });
+    signUpOptions.emailRedirectTo = buildEmailConfirmationCallbackUrl(
+      input.nextParam,
+      trustedOrigin,
+    );
+
     const { error, data } = await deps.signUp({
       email: syntax.email,
       password: input.password,
-      options: { data: { username: uv.username } },
+      options: signUpOptions,
     });
     if (error) {
       return { ok: false, message: error.message, reason: 'provider_error' };
     }
+
     if (data.session?.access_token) {
-      const destination = await deps.resolvePostAuthRoute(data.session.access_token, input.nextParam);
+      if (data.user && requiresEmailVerificationForProvisioning(data.user)) {
+        return {
+          ok: true,
+          outcome: 'confirmation_pending',
+          message: SIGNUP_VERIFICATION_PENDING_MESSAGE,
+          pendingEmail: syntax.email,
+        };
+      }
+      const route = await deps.resolvePostAuthRoute(
+        data.session.access_token,
+        input.nextParam,
+        data.user,
+      );
+      if (route.status === 'verification_required') {
+        return {
+          ok: true,
+          outcome: 'confirmation_pending',
+          message: SIGNUP_VERIFICATION_PENDING_MESSAGE,
+          pendingEmail: syntax.email,
+        };
+      }
       return {
         ok: true,
         outcome: 'active_session',
         message: SIGNUP_ACTIVE_SESSION_MESSAGE,
-        destination,
+        destination: route.destination,
       };
     }
+
     return {
       ok: true,
       outcome: 'confirmation_pending',
       message: SIGNUP_VERIFICATION_PENDING_MESSAGE,
+      pendingEmail: syntax.email,
     };
   }
 
@@ -147,9 +218,19 @@ export async function performSignUp(
     return { ok: false, message: syntax.error, reason: 'invalid_email' };
   }
 
+  const signUpOptions: { emailRedirectTo?: string } = {};
+  const trustedOrigin = resolveTrustedEmailConfirmationOrigin({
+    clientOrigin: input.confirmationRedirectOrigin,
+  });
+  signUpOptions.emailRedirectTo = buildEmailConfirmationCallbackUrl(
+    input.nextParam,
+    trustedOrigin,
+  );
+
   const { error } = await deps.signUp({
     email: syntax.email,
     password: input.password,
+    options: signUpOptions,
   });
   if (error) {
     return { ok: false, message: error.message, reason: 'provider_error' };
@@ -158,5 +239,6 @@ export async function performSignUp(
     ok: true,
     outcome: 'confirmation_pending',
     message: SIGNUP_VERIFICATION_PENDING_MESSAGE,
+    pendingEmail: syntax.email,
   };
 }

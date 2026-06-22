@@ -1,5 +1,9 @@
 import { getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { getStoredEntrySource, getStoredReferral } from '@/lib/public/referralTracking';
+import {
+  requiresEmailVerificationForProvisioning,
+  type EmailVerificationUser,
+} from '@/lib/emailVerificationGate';
 
 async function attachGrowthProfile(accessToken: string): Promise<void> {
   try {
@@ -20,15 +24,36 @@ async function attachGrowthProfile(accessToken: string): Promise<void> {
   }
 }
 
-export async function resolvePostAuthRoute(accessToken: string, nextParam: string | null): Promise<string> {
+export type PostAuthRouteResult =
+  | { status: 'redirect'; destination: string }
+  | { status: 'verification_required'; email: string };
+
+export async function resolvePostAuthRoute(
+  accessToken: string,
+  nextParam: string | null,
+  user?: EmailVerificationUser | null,
+): Promise<PostAuthRouteResult> {
+  if (user && requiresEmailVerificationForProvisioning(user)) {
+    return {
+      status: 'verification_required',
+      email: user.email?.trim() || '',
+    };
+  }
+
   await attachGrowthProfile(accessToken);
   const safe = getSafePostLoginRedirect(nextParam);
   const res = await fetch('/api/profile/onboarding-status', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  const j = (await res.json()) as { needsUsername?: boolean };
-  if (j.needsUsername) {
-    return `/onboarding/username?next=${encodeURIComponent(safe)}`;
+  const j = (await res.json()) as { needsEmailVerification?: boolean; needsUsername?: boolean };
+  if (j.needsEmailVerification) {
+    return { status: 'verification_required', email: user?.email?.trim() || '' };
   }
-  return safe;
+  if (j.needsUsername) {
+    return {
+      status: 'redirect',
+      destination: `/onboarding/username?next=${encodeURIComponent(safe)}`,
+    };
+  }
+  return { status: 'redirect', destination: safe };
 }

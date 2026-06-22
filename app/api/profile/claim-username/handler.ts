@@ -2,7 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { ensureOwnProfileRow } from '@/lib/ensureOwnProfileRow';
 import { resolveProfileUsernameClaimCas } from '@/lib/profileUsernameClaimCas';
-import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
+import { requiresEmailVerificationForProvisioning } from '@/lib/emailVerificationGate';
+import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
@@ -16,13 +17,13 @@ function json(body: unknown, status = 200): Response {
 }
 
 export type ClaimUsernameRouteDeps = {
-  resolveAuthenticatedUserId: typeof resolveAuthenticatedUserId;
+  resolveAuthenticatedUser: typeof resolveAuthenticatedUser;
   createServiceRoleClient: typeof createServiceRoleClient;
   ensureOwnProfileRow: typeof ensureOwnProfileRow;
 };
 
 const defaultClaimUsernameRouteDeps: ClaimUsernameRouteDeps = {
-  resolveAuthenticatedUserId,
+  resolveAuthenticatedUser,
   createServiceRoleClient,
   ensureOwnProfileRow,
 };
@@ -57,9 +58,14 @@ export async function claimUsernamePost(
   request: Request,
   deps: ClaimUsernameRouteDeps = defaultClaimUsernameRouteDeps,
 ): Promise<Response> {
-  const userId = await deps.resolveAuthenticatedUserId(request);
-  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  const user = await deps.resolveAuthenticatedUser(request);
+  if (!user) return json({ error: 'Unauthorized' }, 401);
 
+  if (requiresEmailVerificationForProvisioning(user)) {
+    return json({ error: 'email_verification_required' }, 403);
+  }
+
+  const userId = user.id;
   const rl = checkRateLimit(`claim-username:${userId}`, 15, 60_000);
   if (!rl.allowed) {
     return json({ error: 'rate_limited', retry_after_sec: rl.retryAfterSec }, 429);

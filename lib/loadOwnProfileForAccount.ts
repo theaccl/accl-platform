@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 
+import { requiresEmailVerificationForProvisioning } from '@/lib/emailVerificationGate';
 import { minimalProfileInsertRow } from '@/lib/profileProvisioningContract';
 
 export type OwnProfileRow = {
@@ -35,6 +36,10 @@ export async function loadOrCreateOwnProfile(
 
   if (data) {
     return { ok: true, profile: data as OwnProfileRow };
+  }
+
+  if (requiresEmailVerificationForProvisioning(user)) {
+    return { ok: false, message: 'Confirm your email before setting up your profile.' };
   }
 
   const { data: inserted, error: insertError } = await supabase

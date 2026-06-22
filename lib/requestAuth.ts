@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-export type AuthenticatedUser = {
+import type { EmailVerificationUser } from '@/lib/emailVerificationGate';
+
+export type AuthenticatedUser = EmailVerificationUser & {
   id: string;
   app_metadata: Record<string, unknown>;
   user_metadata: Record<string, unknown>;
@@ -26,6 +28,10 @@ export async function resolveAuthenticatedUser(request: Request): Promise<Authen
   if (error || !data.user?.id) return null;
   return {
     id: data.user.id,
+    email: data.user.email,
+    email_confirmed_at: data.user.email_confirmed_at,
+    confirmed_at: data.user.confirmed_at,
+    identities: data.user.identities?.map((identity) => ({ provider: identity.provider })) ?? null,
     app_metadata: (data.user.app_metadata ?? {}) as Record<string, unknown>,
     user_metadata: (data.user.user_metadata ?? {}) as Record<string, unknown>,
   };
