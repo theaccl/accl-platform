@@ -2,7 +2,8 @@ import { getClientIp } from '@/lib/server/clientIp';
 import { invalidateLiveQueueAvailabilityForUsers } from '@/lib/server/invalidateLiveQueueAvailability';
 import { jsonResponse, tooManyRequests } from '@/lib/server/httpJson';
 import { checkRateLimit } from '@/lib/server/rateLimit';
-import { resolveAuthenticatedUserId } from '@/lib/requestAuth';
+import { resolveAuthenticatedUser } from '@/lib/requestAuth';
+import { emailVerificationRequiredPayload, provisioningBlockedReason } from '@/lib/emailVerificationGate';
 
 export const runtime = 'nodejs';
 
@@ -22,8 +23,13 @@ export async function POST(request: Request): Promise<Response> {
   const limited = checkRateLimit(`match-requests:invalidate-live:${ip}`, 40, 60_000);
   if (!limited.allowed) return tooManyRequests(limited.retryAfterSec);
 
-  const uid = await resolveAuthenticatedUserId(request);
-  if (!uid) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const user = await resolveAuthenticatedUser(request);
+  if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  if (provisioningBlockedReason(user)) {
+    return jsonResponse(emailVerificationRequiredPayload(), 403);
+  }
+
+  const uid = user.id;
 
   let body: Body;
   try {

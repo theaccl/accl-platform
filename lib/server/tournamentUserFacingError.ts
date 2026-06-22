@@ -1,3 +1,4 @@
+import { EMAIL_VERIFICATION_REQUIRED_MESSAGE } from '@/lib/emailVerificationGate';
 import { TOURNAMENT_REGISTRATION_CLOSED_CODE, TOURNAMENT_REGISTRATION_CLOSED_MESSAGE } from '@/lib/server/tournamentRegistrationGate';
 
 const STABLE_MESSAGES: Record<string, string> = {
@@ -29,6 +30,7 @@ const STABLE_MESSAGES: Record<string, string> = {
   NOT_FOUND: 'Tournament not found.',
   INVALID_TOURNAMENT_ID_SNAPSHOT: 'Invalid tournament id.',
   paid_entry_disabled: 'Paid entry is temporarily unavailable.',
+  email_verification_required: EMAIL_VERIFICATION_REQUIRED_MESSAGE,
 };
 
 function looksLikeInternalError(m: string): boolean {
