@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import fetchPolyfill from 'cross-fetch';
+import { emailVerificationRequiredPayload, provisioningBlockedReason } from '@/lib/emailVerificationGate';
+import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 
 import {
   BOT_DIFFICULTY_LABELS,
@@ -45,30 +45,17 @@ function resolveLegacyBotName(raw: unknown): BotName | null {
   return null;
 }
 
-async function resolveAuthenticatedUserId(request: Request): Promise<string | null> {
-  const authHeader = request.headers.get('authorization') ?? '';
-  const m = /^Bearer\s+(.+)$/i.exec(authHeader);
-  if (!m) return null;
-  const token = m[1]?.trim();
-  if (!token) return null;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!url || !anon) return null;
-  const client = createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { fetch: fetchPolyfill as unknown as typeof fetch },
-  });
-  const { data, error } = await client.auth.getUser(token);
-  if (error) return null;
-  return data.user?.id ?? null;
-}
-
 export async function POST(request: Request): Promise<Response> {
-  const userId = await resolveAuthenticatedUserId(request);
-  if (!userId) {
+  const user = await resolveAuthenticatedUser(request);
+  if (!user) {
     auditApiLog('bot_game_start', { result: 'unauthorized' });
     return json({ error: 'Unauthorized' }, 401);
   }
+  if (provisioningBlockedReason(user)) {
+    auditApiLog('bot_game_start', { result: 'email_verification_required', user: shortId(user.id) });
+    return json(emailVerificationRequiredPayload(), 403);
+  }
+  const userId = user.id;
   const rl = checkRateLimit(`bot-game-start:${userId}`, 30, 60_000);
   if (!rl.allowed) {
     auditApiLog('bot_game_start', { result: 'rate_limited', user: shortId(userId) });

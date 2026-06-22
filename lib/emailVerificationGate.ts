@@ -39,6 +39,22 @@ export function requiresEmailVerificationForProvisioning(user: EmailVerification
   return isEmailPasswordIdentity(user) && !hasVerifiedMailbox(user);
 }
 
-export function provisioningBlockedReason(user: EmailVerificationUser): 'email_verification_required' | null {
-  return requiresEmailVerificationForProvisioning(user) ? 'email_verification_required' : null;
+export const EMAIL_VERIFICATION_REQUIRED_CODE = 'email_verification_required' as const;
+
+export const EMAIL_VERIFICATION_REQUIRED_MESSAGE =
+  'Confirm your email before joining tournaments or using payment features.';
+
+export function provisioningBlockedReason(user: EmailVerificationUser): typeof EMAIL_VERIFICATION_REQUIRED_CODE | null {
+  return requiresEmailVerificationForProvisioning(user) ? EMAIL_VERIFICATION_REQUIRED_CODE : null;
+}
+
+/** Stable machine-readable payload for competitive and economic route denials. */
+export function emailVerificationRequiredPayload(
+  extra?: Record<string, unknown>,
+): { code: typeof EMAIL_VERIFICATION_REQUIRED_CODE; error: string } & Record<string, unknown> {
+  return {
+    code: EMAIL_VERIFICATION_REQUIRED_CODE,
+    error: EMAIL_VERIFICATION_REQUIRED_MESSAGE,
+    ...extra,
+  };
 }
