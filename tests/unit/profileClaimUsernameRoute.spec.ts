@@ -10,6 +10,17 @@ import {
 import type { EnsureOwnProfileRowResult } from '../../lib/ensureOwnProfileRow';
 
 const AUTH_UID = '550e8400-e29b-41d4-a716-446655440000';
+
+function confirmedAuthUser() {
+  return {
+    id: AUTH_UID,
+    email: 'confirmed@example.com',
+    email_confirmed_at: '2026-01-01T00:00:00Z',
+    app_metadata: { provider: 'email' },
+    user_metadata: {},
+    identities: [{ provider: 'email' }],
+  };
+}
 const OTHER_UID = '660e8400-e29b-41d4-a716-446655440001';
 
 type ProfileRow = { id: string; username: string | null };
@@ -145,7 +156,7 @@ function makeDeps(
   ensure?: EnsureOwnProfileRowResult,
 ): ClaimUsernameRouteDeps {
   return {
-    resolveAuthenticatedUserId: async () => AUTH_UID,
+    resolveAuthenticatedUser: async () => confirmedAuthUser(),
     createServiceRoleClient: () => mock.client,
     ensureOwnProfileRow: async () =>
       ensure ?? ({ ok: true, existed: true } as EnsureOwnProfileRowResult),
@@ -164,7 +175,7 @@ test.describe('claim-username route', () => {
     });
     let ensureCalls = 0;
     const res = await claimUsernamePost(makeRequest({ username: 'alice' }), {
-      resolveAuthenticatedUserId: async () => null,
+      resolveAuthenticatedUser: async () => null,
       createServiceRoleClient: () => mock.client,
       ensureOwnProfileRow: async () => {
         ensureCalls += 1;
@@ -402,12 +413,12 @@ test.describe('claim-username route', () => {
 });
 
 test.describe('claim-username route static guards', () => {
-  test('route uses resolveAuthenticatedUserId, ensureOwnProfileRow, and CAS helper', () => {
+  test('route uses resolveAuthenticatedUser, ensureOwnProfileRow, and CAS helper', () => {
     const src = readFileSync(
       join(process.cwd(), 'app', 'api', 'profile', 'claim-username', 'handler.ts'),
       'utf8',
     );
-    expect(src).toContain('resolveAuthenticatedUserId');
+    expect(src).toContain('resolveAuthenticatedUser');
     expect(src).toContain('ensureOwnProfileRow');
     expect(src).toContain('resolveProfileUsernameClaimCas');
     expect(src).not.toContain('profile_not_found');

@@ -12,16 +12,27 @@ import {
   type EmailTypoDecisionState,
   type EmailTypoSuggestion,
 } from '@/lib/emailIntegrity';
+import type { EmailVerificationUser } from '@/lib/emailVerificationGate';
 import { resolvePostAuthRoute } from '@/lib/loginPostAuthRoute';
 import {
   buildAuthPageHref,
+  EMAIL_CONFIRMATION_COMPLETE_MESSAGE,
+  EMAIL_CONFIRMATION_FAILED_MESSAGE,
+  EMAIL_CONFIRMATION_MISSING_MESSAGE,
   getAlternateModePrompt,
   getAuthPageHeading,
   getPasswordAutocomplete,
   getPrimarySubmitLabel,
   getPrimarySubmitTestId,
   resolveAuthFormMode,
+  USE_DIFFERENT_EMAIL_HINT,
+  VERIFICATION_PENDING_HEADING,
 } from '@/lib/loginPageMode';
+import {
+  clearPendingVerificationEmail,
+  readPendingVerificationEmail,
+  storePendingVerificationEmail,
+} from '@/lib/loginVerificationStorage';
 import { supabase } from '@/lib/supabaseClient';
 import NavigationBar from '@/components/NavigationBar';
 
@@ -60,18 +71,35 @@ function LoginPageInner() {
   const [pendingTypo, setPendingTypo] = useState<EmailTypoSuggestion | null>(null);
   const [showEmailReview, setShowEmailReview] = useState(false);
   const [reviewEmail, setReviewEmail] = useState('');
+  const [verificationPendingEmail, setVerificationPendingEmail] = useState('');
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
   const mode = resolveAuthFormMode(searchParams.get('intent'));
   const signupMode = mode === 'signup';
   const nextParam = searchParams.get('next');
+  const confirmationResult = searchParams.get('confirmation');
 
   const authDeps = {
     signInWithPassword: (args: { email: string; password: string }) =>
-      supabase.auth.signInWithPassword(args),
+      supabase.auth.signInWithPassword(args).then(({ data, error }) => ({
+        error,
+        data: {
+          session: data.session,
+          user: (data.user ?? null) as EmailVerificationUser | null,
+        },
+      })),
     signUp: (args: {
       email: string;
       password: string;
-      options?: { data?: { username: string } };
-    }) => supabase.auth.signUp(args),
+      options?: { data?: { username: string }; emailRedirectTo?: string };
+    }) =>
+      supabase.auth.signUp(args).then(({ data, error }) => ({
+        error,
+        data: {
+          session: data.session,
+          user: (data.user ?? null) as EmailVerificationUser | null,
+        },
+      })),
     auditLogin: async (accessToken: string) => {
       await fetch('/api/auth/audit-login', {
         method: 'POST',
@@ -94,6 +122,79 @@ function LoginPageInner() {
     setMessage('');
   };
 
+  const showVerificationPending = (pendingEmail: string) => {
+    const normalized = pendingEmail.trim();
+    if (!normalized) return;
+    storePendingVerificationEmail(normalized);
+    setVerificationPendingEmail(normalized);
+    setShowEmailReview(false);
+    setReviewEmail('');
+    setMessage('');
+  };
+
+  const routeAuthenticatedSession = async (
+    accessToken: string,
+    user: EmailVerificationUser | null | undefined,
+  ) => {
+    const route = await resolvePostAuthRoute(accessToken, nextParam, user ?? null);
+    if (route.status === 'verification_required') {
+      await supabase.auth.signOut({ scope: 'local' });
+      showVerificationPending(route.email || user?.email?.trim() || '');
+      setChecked(true);
+      return;
+    }
+    router.replace(route.destination);
+  };
+
+  const restartSignupWithDifferentEmail = () => {
+    clearPendingVerificationEmail();
+    setVerificationPendingEmail('');
+    setResendMessage('');
+    setPassword('');
+    setSignupUsername('');
+    resetEmailIntegrityState();
+    router.replace(buildAuthPageHref('signup', searchParams));
+  };
+
+  const handleResendConfirmation = async () => {
+    if (resendBusy || !verificationPendingEmail) return;
+    setResendBusy(true);
+    setResendMessage('');
+    try {
+      const res = await fetch('/api/auth/resend-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verificationPendingEmail, next: nextParam }),
+      });
+      const body = (await res.json()) as { message?: string; error?: string };
+      if (res.status === 429) {
+        setResendMessage('Please wait before requesting another confirmation email.');
+      } else {
+        setResendMessage(body.message ?? 'If this address needs confirmation, check your inbox.');
+      }
+    } catch {
+      setResendMessage('Could not send a confirmation email right now. Try again shortly.');
+    } finally {
+      setResendBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    const stored = readPendingVerificationEmail();
+    if (stored) {
+      setVerificationPendingEmail(stored);
+    }
+    if (confirmationResult === 'complete') {
+      clearPendingVerificationEmail();
+      setVerificationPendingEmail('');
+      setMessage(EMAIL_CONFIRMATION_COMPLETE_MESSAGE);
+    } else if (confirmationResult === 'failed') {
+      setMessage(EMAIL_CONFIRMATION_FAILED_MESSAGE);
+    } else if (confirmationResult === 'missing') {
+      setMessage(EMAIL_CONFIRMATION_MISSING_MESSAGE);
+    }
+  }, [confirmationResult]);
+
   useEffect(() => {
     let cancelled = false;
     /** If Supabase is misconfigured or unreachable, `getUser()` can hang; still show the form for manual sign-in. */
@@ -108,8 +209,7 @@ function LoginPageInner() {
       if (data.user?.id) {
         const { data: sess } = await supabase.auth.getSession();
         if (sess.session?.access_token) {
-          const dest = await resolvePostAuthRoute(sess.session.access_token, nextParam);
-          router.replace(dest);
+          await routeAuthenticatedSession(sess.session.access_token, data.user);
         }
         return;
       }
@@ -117,10 +217,7 @@ function LoginPageInner() {
     })();
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user?.id && session.access_token) {
-        void (async () => {
-          const dest = await resolvePostAuthRoute(session.access_token, nextParam);
-          router.replace(dest);
-        })();
+        void routeAuthenticatedSession(session.access_token, session.user);
       }
     });
     return () => {
@@ -195,6 +292,8 @@ function LoginPageInner() {
             signupMode: true,
             nextParam,
             typoDecision,
+            confirmationRedirectOrigin:
+              typeof window !== 'undefined' ? window.location.origin : null,
           },
           authDeps,
         );
@@ -211,6 +310,10 @@ function LoginPageInner() {
           router.replace(result.destination);
           return;
         }
+        if (result.outcome === 'confirmation_pending') {
+          await supabase.auth.signOut({ scope: 'local' });
+          showVerificationPending(result.pendingEmail ?? normalized);
+        }
         setMessage(result.message);
         setShowEmailReview(false);
         setBusy(false);
@@ -226,6 +329,12 @@ function LoginPageInner() {
       const result = await performSignIn({ email, password, nextParam }, authDeps);
       if (!result.ok) {
         setMessage(result.message);
+        setBusy(false);
+        return;
+      }
+      if (result.kind === 'verification_required') {
+        await supabase.auth.signOut({ scope: 'local' });
+        showVerificationPending(result.email);
         setBusy(false);
         return;
       }
@@ -258,6 +367,49 @@ function LoginPageInner() {
             Access Nexus, free play, tournaments, and progression.
           </p>
 
+          {verificationPendingEmail ? (
+            <div
+              className="mt-8 rounded-xl border border-[#2a3442] bg-[#151d2c]/80 px-4 py-5"
+              data-testid="verification-pending-panel"
+            >
+              <h2 className="text-lg font-semibold text-white">{VERIFICATION_PENDING_HEADING}</h2>
+              <p className="mt-3 text-sm text-gray-300 leading-relaxed">
+                We sent a confirmation link to:
+              </p>
+              <p className="mt-2 text-sm text-white break-all" data-testid="verification-pending-email">
+                {verificationPendingEmail}
+              </p>
+              <p className="mt-3 text-xs text-gray-400 leading-relaxed">
+                Your account is not active until you confirm this email. Follow the link in your inbox, then sign in.
+              </p>
+              <button
+                type="button"
+                data-testid="verification-resend"
+                disabled={resendBusy}
+                onClick={() => void handleResendConfirmation()}
+                className={`${primarySubmitClass} mt-5`}
+              >
+                {resendBusy ? 'Sending…' : 'Resend confirmation email'}
+              </button>
+              <button
+                type="button"
+                data-testid="verification-use-different-email"
+                disabled={resendBusy || busy}
+                onClick={restartSignupWithDifferentEmail}
+                className={`${secondaryActionClass} mt-3`}
+              >
+                Use a different email
+              </button>
+              <p className="mt-3 text-[11px] text-gray-500 leading-relaxed">{USE_DIFFERENT_EMAIL_HINT}</p>
+              {resendMessage ? (
+                <p className="mt-4 text-sm text-gray-300" role="status">
+                  {resendMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!verificationPendingEmail ? (
           <form className="mt-8" onSubmit={handleSubmit} noValidate>
             <div className="space-y-4">
               <div>
@@ -387,6 +539,7 @@ function LoginPageInner() {
               </button>
             </p>
           </form>
+          ) : null}
 
           {message ? (
             <p className="mt-5 text-sm text-gray-300 leading-relaxed" role="status">

@@ -13,18 +13,27 @@ import {
   SIGNUP_VERIFICATION_PENDING_MESSAGE,
 } from '../../lib/loginPageMode';
 
+function confirmedUser(email = 'user@example.com') {
+  return {
+    email,
+    email_confirmed_at: '2026-01-01T00:00:00Z',
+    app_metadata: { provider: 'email' },
+    identities: [{ provider: 'email' }],
+  };
+}
+
 function makeDeps(overrides: Partial<LoginAuthHandlerDeps> = {}): LoginAuthHandlerDeps {
   return {
     signInWithPassword: async () => ({
       error: null,
-      data: { session: { access_token: 'login-token' } },
+      data: { session: { access_token: 'login-token' }, user: confirmedUser() },
     }),
     signUp: async () => ({
       error: null,
-      data: { session: null },
+      data: { session: null, user: null },
     }),
     auditLogin: async () => {},
-    resolvePostAuthRoute: async () => '/profile',
+    resolvePostAuthRoute: async () => ({ status: 'redirect', destination: '/profile' }),
     ...overrides,
   };
 }
@@ -68,13 +77,13 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signInWithPassword: async () => {
         signInCalls += 1;
-        return { error: null, data: { session: { access_token: 'token' } } };
+        return { error: null, data: { session: { access_token: 'token' }, user: confirmedUser() } };
       },
       signUp: async () => {
         signUpCalls += 1;
-        return { error: null, data: { session: null } };
+        return { error: null, data: { session: null, user: null } };
       },
-      resolvePostAuthRoute: async () => '/profile',
+      resolvePostAuthRoute: async () => ({ status: 'redirect', destination: '/profile' }),
     });
 
     const result = await performSignIn(
@@ -82,7 +91,7 @@ test.describe('login auth handlers', () => {
       deps,
     );
 
-    expect(result).toEqual({ ok: true, destination: '/profile' });
+    expect(result).toEqual({ ok: true, kind: 'redirect', destination: '/profile' });
     expect(signInCalls).toBe(1);
     expect(signUpCalls).toBe(0);
   });
@@ -93,11 +102,11 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signInWithPassword: async () => {
         signInCalls += 1;
-        return { error: null, data: { session: { access_token: 'token' } } };
+        return { error: null, data: { session: { access_token: 'token' }, user: confirmedUser() } };
       },
       signUp: async () => {
         signUpCalls += 1;
-        return { error: null, data: { session: null } };
+        return { error: null, data: { session: null, user: null } };
       },
     });
 
@@ -109,6 +118,7 @@ test.describe('login auth handlers', () => {
         signupMode: true,
         nextParam: '/nexus',
         typoDecision: null,
+        confirmationRedirectOrigin: 'https://play.theaccl.com',
       },
       deps,
     );
@@ -126,10 +136,17 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signUp: async () => ({
         error: null,
-        data: { session: { access_token: 'signup-token' } },
+        data: {
+          session: { access_token: 'signup-token' },
+          user: confirmedUser(),
+        },
       }),
-      resolvePostAuthRoute: async (_token, next) =>
-        next ? `/onboarding/username?next=${encodeURIComponent('/nexus')}` : '/onboarding/username?next=%2Fprofile',
+      resolvePostAuthRoute: async (_token, next) => ({
+        status: 'redirect' as const,
+        destination: next
+          ? `/onboarding/username?next=${encodeURIComponent('/nexus')}`
+          : '/onboarding/username?next=%2Fprofile',
+      }),
     });
 
     const result = await performSignUp(
@@ -140,6 +157,7 @@ test.describe('login auth handlers', () => {
         signupMode: true,
         nextParam: '/nexus',
         typoDecision: null,
+        confirmationRedirectOrigin: 'https://play.theaccl.com',
       },
       deps,
     );
@@ -157,7 +175,7 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signInWithPassword: async () => {
         signInCalls += 1;
-        return { error: null, data: { session: { access_token: 'token' } } };
+        return { error: null, data: { session: { access_token: 'token' }, user: confirmedUser() } };
       },
     });
 
@@ -169,6 +187,7 @@ test.describe('login auth handlers', () => {
         signupMode: true,
         nextParam: null,
         typoDecision: null,
+        confirmationRedirectOrigin: 'https://play.theaccl.com',
       },
       deps,
     );
@@ -181,7 +200,7 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signUp: async () => {
         signUpCalls += 1;
-        return { error: null, data: { session: null } };
+        return { error: null, data: { session: null, user: null } };
       },
     });
 
@@ -193,6 +212,7 @@ test.describe('login auth handlers', () => {
         signupMode: true,
         nextParam: null,
         typoDecision: null,
+        confirmationRedirectOrigin: 'https://play.theaccl.com',
       },
       deps,
     );
@@ -205,7 +225,7 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signInWithPassword: async () => ({
         error: { message: 'Invalid login credentials' },
-        data: { session: null },
+        data: { session: null, user: null },
       }),
     });
 
@@ -222,7 +242,7 @@ test.describe('login auth handlers', () => {
     const deps = makeDeps({
       signInWithPassword: async () => {
         signInCalls += 1;
-        return { error: null, data: { session: { access_token: 'token' } } };
+        return { error: null, data: { session: { access_token: 'token' }, user: confirmedUser() } };
       },
     });
 

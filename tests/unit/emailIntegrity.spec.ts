@@ -16,18 +16,27 @@ import {
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+function confirmedUser(email = 'user@gmail.com') {
+  return {
+    email,
+    email_confirmed_at: '2026-01-01T00:00:00Z',
+    app_metadata: { provider: 'email' },
+    identities: [{ provider: 'email' }],
+  };
+}
+
 function makeDeps(overrides: Partial<LoginAuthHandlerDeps> = {}): LoginAuthHandlerDeps {
   return {
     signInWithPassword: async () => ({
       error: null,
-      data: { session: { access_token: 'token' } },
+      data: { session: { access_token: 'token' }, user: confirmedUser() },
     }),
     signUp: async () => ({
       error: null,
-      data: { session: null },
+      data: { session: null, user: null },
     }),
     auditLogin: async () => {},
-    resolvePostAuthRoute: async () => '/profile',
+    resolvePostAuthRoute: async () => ({ status: 'redirect', destination: '/profile' }),
     ...overrides,
   };
 }
@@ -151,7 +160,7 @@ test.describe('emailIntegrity signup handler integration', () => {
     const deps = makeDeps({
       signUp: async () => {
         signUpCalls += 1;
-        return { error: null, data: { session: null } };
+        return { error: null, data: { session: null, user: null } };
       },
     });
 
@@ -163,6 +172,7 @@ test.describe('emailIntegrity signup handler integration', () => {
         signupMode: true,
         nextParam: null,
         typoDecision: { email: 'user@gmai.com', decision: 'use_original' },
+        confirmationRedirectOrigin: null,
       },
       deps,
     );
@@ -177,7 +187,7 @@ test.describe('emailIntegrity signup handler integration', () => {
     const deps = makeDeps({
       signUp: async () => {
         signUpCalls += 1;
-        return { error: null, data: { session: null } };
+        return { error: null, data: { session: null, user: null } };
       },
     });
 
@@ -189,6 +199,7 @@ test.describe('emailIntegrity signup handler integration', () => {
         signupMode: true,
         nextParam: null,
         typoDecision: null,
+        confirmationRedirectOrigin: null,
       },
       deps,
     );
@@ -202,9 +213,15 @@ test.describe('emailIntegrity signup handler integration', () => {
     const deps = makeDeps({
       signUp: async () => ({
         error: null,
-        data: { session: { access_token: 'signup-token' } },
+        data: {
+          session: { access_token: 'signup-token' },
+          user: confirmedUser(),
+        },
       }),
-      resolvePostAuthRoute: async () => '/onboarding/username',
+      resolvePostAuthRoute: async () => ({
+        status: 'redirect',
+        destination: '/onboarding/username',
+      }),
     });
 
     const result = await performSignUp(
@@ -215,6 +232,7 @@ test.describe('emailIntegrity signup handler integration', () => {
         signupMode: true,
         nextParam: null,
         typoDecision: null,
+        confirmationRedirectOrigin: null,
       },
       deps,
     );
@@ -230,7 +248,7 @@ test.describe('emailIntegrity signup handler integration', () => {
 
   test('no-session signup returns confirmation_pending outcome', async () => {
     const deps = makeDeps({
-      signUp: async () => ({ error: null, data: { session: null } }),
+      signUp: async () => ({ error: null, data: { session: null, user: null } }),
     });
 
     const result = await performSignUp(
@@ -241,6 +259,7 @@ test.describe('emailIntegrity signup handler integration', () => {
         signupMode: true,
         nextParam: null,
         typoDecision: null,
+        confirmationRedirectOrigin: null,
       },
       deps,
     );
@@ -249,6 +268,7 @@ test.describe('emailIntegrity signup handler integration', () => {
       ok: true,
       outcome: 'confirmation_pending',
       message: SIGNUP_VERIFICATION_PENDING_MESSAGE,
+      pendingEmail: 'user@gmail.com',
     });
   });
 });
