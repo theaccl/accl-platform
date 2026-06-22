@@ -49,5 +49,9 @@ export function getPasswordAutocomplete(mode: AuthFormMode): 'new-password' | 'c
   return mode === 'signup' ? 'new-password' : 'current-password';
 }
 
-export const SIGNUP_SUCCESS_MESSAGE =
-  'Check your email to confirm signup, then sign in. After sign-in you will land on your chosen destination.';
+/** Shown when signUp returns no session (confirmation may be required). */
+export const SIGNUP_VERIFICATION_PENDING_MESSAGE =
+  'Check your email to confirm signup. Your account is not active until you confirm the link we send.';
+
+/** Shown briefly when signUp returns an immediate session (no false confirmation copy). */
+export const SIGNUP_ACTIVE_SESSION_MESSAGE = 'Account created. Continuing…';
