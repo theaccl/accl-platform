@@ -86,8 +86,7 @@ export async function resendConfirmationPost(
     requestOrigin: request.headers.get('origin'),
   });
 
-  const nextParam = typeof body.next === 'string' ? body.next : null;
-  const emailRedirectTo = buildEmailConfirmationCallbackUrl(nextParam, origin);
+  const emailRedirectTo = buildEmailConfirmationCallbackUrl(origin);
 
   const client = deps.createAuthClient();
   if (!client) {

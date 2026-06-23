@@ -164,7 +164,7 @@ function LoginPageInner() {
       const res = await fetch('/api/auth/resend-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: verificationPendingEmail, next: nextParam }),
+        body: JSON.stringify({ email: verificationPendingEmail }),
       });
       const body = (await res.json()) as { message?: string; error?: string };
       if (res.status === 429) {
@@ -203,6 +203,11 @@ function LoginPageInner() {
       if (!cancelled) setChecked(true);
     }, showFormFallbackMs);
     void (async () => {
+      if (confirmationResult === 'complete') {
+        await supabase.auth.signOut({ scope: 'local' });
+        if (!cancelled) setChecked(true);
+        return;
+      }
       const { data } = await supabase.auth.getUser();
       window.clearTimeout(showFormFallback);
       if (cancelled) return;
@@ -216,6 +221,7 @@ function LoginPageInner() {
       setChecked(true);
     })();
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (confirmationResult === 'complete') return;
       if (session?.user?.id && session.access_token) {
         void routeAuthenticatedSession(session.access_token, session.user);
       }
@@ -225,7 +231,7 @@ function LoginPageInner() {
       window.clearTimeout(showFormFallback);
       listener.subscription.unsubscribe();
     };
-  }, [router, nextParam]);
+  }, [router, nextParam, confirmationResult]);
 
   const switchMode = (targetMode: 'login' | 'signup') => {
     if (busy) return;

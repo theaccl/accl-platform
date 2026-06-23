@@ -161,10 +161,7 @@ export async function performSignUp(
     const trustedOrigin = resolveTrustedEmailConfirmationOrigin({
       clientOrigin: input.confirmationRedirectOrigin,
     });
-    signUpOptions.emailRedirectTo = buildEmailConfirmationCallbackUrl(
-      input.nextParam,
-      trustedOrigin,
-    );
+    signUpOptions.emailRedirectTo = buildEmailConfirmationCallbackUrl(trustedOrigin);
 
     const { error, data } = await deps.signUp({
       email: syntax.email,
@@ -222,10 +219,7 @@ export async function performSignUp(
   const trustedOrigin = resolveTrustedEmailConfirmationOrigin({
     clientOrigin: input.confirmationRedirectOrigin,
   });
-  signUpOptions.emailRedirectTo = buildEmailConfirmationCallbackUrl(
-    input.nextParam,
-    trustedOrigin,
-  );
+  signUpOptions.emailRedirectTo = buildEmailConfirmationCallbackUrl(trustedOrigin);
 
   const { error } = await deps.signUp({
     email: syntax.email,
