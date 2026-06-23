@@ -2,7 +2,6 @@ import type { EmailOtpType } from '@supabase/supabase-js';
 
 import { buildLoginConfirmationResultPath } from '@/lib/emailConfirmationRedirect';
 import { requiresEmailVerificationForProvisioning } from '@/lib/emailVerificationGate';
-import { getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /** Supabase signup confirmation links use `type=email` in the token_hash flow. */
@@ -31,6 +30,25 @@ function redirectTo(origin: string, path: string): Response {
   });
 }
 
+type ConfirmSupabaseClient = {
+  auth: {
+    exchangeCodeForSession: (code: string) => Promise<{ error: { message: string } | null }>;
+    verifyOtp: (args: { token_hash: string; type: typeof SIGNUP_CONFIRMATION_OTP_TYPE }) => Promise<{
+      error: { message: string } | null;
+    }>;
+    getUser: () => Promise<{
+      error: { message: string } | null;
+      data: { user: Parameters<typeof requiresEmailVerificationForProvisioning>[0] | null };
+    }>;
+    signOut: () => Promise<{ error: { message: string } | null }>;
+  };
+};
+
+async function clearVerificationSession(supabase: ConfirmSupabaseClient): Promise<{ ok: true } | { ok: false }> {
+  const { error } = await supabase.auth.signOut();
+  return error ? { ok: false } : { ok: true };
+}
+
 /** Handle Supabase email confirmation callback (PKCE code or token_hash). */
 export async function handleEmailConfirmCallback(
   request: Request,
@@ -41,13 +59,12 @@ export async function handleEmailConfirmCallback(
   const tokenHash = requestUrl.searchParams.get('token_hash');
   const typeParam = requestUrl.searchParams.get('type');
   const code = requestUrl.searchParams.get('code');
-  const nextParam = requestUrl.searchParams.get('next');
 
   if (!code && !tokenHash) {
     return redirectTo(origin, buildLoginConfirmationResultPath('missing'));
   }
 
-  const supabase = await deps.createSupabaseServerClient();
+  const supabase = (await deps.createSupabaseServerClient()) as ConfirmSupabaseClient;
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -76,6 +93,9 @@ export async function handleEmailConfirmCallback(
     return redirectTo(origin, buildLoginConfirmationResultPath('failed'));
   }
 
-  const safeNext = getSafePostLoginRedirect(nextParam);
-  return redirectTo(origin, safeNext);
+  const cleared = await clearVerificationSession(supabase);
+  if (!cleared.ok) {
+    return redirectTo(origin, buildLoginConfirmationResultPath('failed'));
+  }
+  return redirectTo(origin, buildLoginConfirmationResultPath('complete'));
 }

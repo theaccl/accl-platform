@@ -57,7 +57,7 @@ export const SIGNUP_VERIFICATION_PENDING_MESSAGE =
 export const SIGNUP_ACTIVE_SESSION_MESSAGE = 'Account created. Continuing…';
 
 export const EMAIL_CONFIRMATION_COMPLETE_MESSAGE =
-  'Email confirmed. You can sign in to continue.';
+  'Email verified. Sign in to continue.';
 
 export const EMAIL_CONFIRMATION_FAILED_MESSAGE =
   'That confirmation link is invalid or expired. Request a new link or sign up again.';

@@ -116,7 +116,7 @@ test.describe('signup confirmation redirect', () => {
       deps,
     );
 
-    expect(capturedRedirect).toBe(`${SITE}/auth/confirm?next=%2Fnexus`);
+    expect(capturedRedirect).toBe(`${SITE}/auth/confirm`);
   });
 
   test('no-session signup enters verification pending with exact email', async () => {
@@ -173,7 +173,7 @@ test.describe('resend confirmation', () => {
     expect(resendArgs).toEqual({
       type: 'signup',
       email: 'user@example.com',
-      options: { emailRedirectTo: `${SITE}/auth/confirm?next=%2Fnexus` },
+      options: { emailRedirectTo: `${SITE}/auth/confirm` },
     });
     const body = (await res.json()) as { ok: boolean; message: string };
     expect(body.ok).toBe(true);
@@ -256,8 +256,9 @@ test.describe('confirmation callback', () => {
     expect(parseSignupConfirmationOtpType(null)).toBeNull();
   });
 
-  test('token_hash signup flow accepts type=email', async () => {
+  test('token_hash signup flow accepts type=email and returns to manual sign-in', async () => {
     let verifyArgs: unknown;
+    let signOutCalls = 0;
     const res = await handleEmailConfirmCallback(
       new Request(`${SITE}/auth/confirm?token_hash=good&type=email`),
       {
@@ -272,13 +273,18 @@ test.describe('confirmation callback', () => {
                 error: null,
                 data: { user: confirmedEmailUser() },
               }),
+              signOut: async () => {
+                signOutCalls += 1;
+                return { error: null };
+              },
             },
           }) as never,
       },
     );
 
     expect(verifyArgs).toEqual({ token_hash: 'good', type: 'email' });
-    expect(res.headers.get('location')).toBe(`${SITE}/profile`);
+    expect(signOutCalls).toBe(1);
+    expect(res.headers.get('location')).toBe(`${SITE}/login?confirmation=complete`);
     expect(res.headers.get('cache-control')).toContain('no-store');
   });
 
@@ -341,7 +347,8 @@ test.describe('confirmation callback', () => {
     expect(res.headers.get('location')).toContain('/login?confirmation=missing');
   });
 
-  test('rejects unsafe next destinations', async () => {
+  test('ignores next query and always redirects to login success', async () => {
+    let signOutCalls = 0;
     const res = await handleEmailConfirmCallback(
       new Request(`${SITE}/auth/confirm?code=abc&next=https://evil.example`),
       {
@@ -353,11 +360,16 @@ test.describe('confirmation callback', () => {
                 error: null,
                 data: { user: confirmedEmailUser() },
               }),
+              signOut: async () => {
+                signOutCalls += 1;
+                return { error: null };
+              },
             },
           }) as never,
       },
     );
-    expect(res.headers.get('location')).toBe(`${SITE}/profile`);
+    expect(signOutCalls).toBe(1);
+    expect(res.headers.get('location')).toBe(`${SITE}/login?confirmation=complete`);
   });
 
   test('invalid confirmation produces failed redirect', async () => {
@@ -494,7 +506,7 @@ test.describe('redirect helpers', () => {
     ).toBe(getCanonicalEmailConfirmationOrigin());
   });
 
-  test('buildEmailConfirmationCallbackUrl blocks external next values', () => {
-    expect(buildEmailConfirmationCallbackUrl('https://evil.example', SITE)).toBe(`${SITE}/auth/confirm`);
+  test('buildEmailConfirmationCallbackUrl uses fixed callback path only', () => {
+    expect(buildEmailConfirmationCallbackUrl(SITE)).toBe(`${SITE}/auth/confirm`);
   });
 });

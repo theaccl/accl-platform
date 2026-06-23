@@ -1,5 +1,3 @@
-import { DEFAULT_POST_LOGIN_PATH, getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
-
 const CONFIRM_CALLBACK_PATH = '/auth/confirm';
 
 /** Production canonical origin when env is unset (see docs/ops/ALPHA_TESTER_CONTROLLED_FLOW.md). */
@@ -79,18 +77,10 @@ export function resolveSiteOrigin(explicitOrigin?: string | null): string | null
   return resolveTrustedEmailConfirmationOrigin({ clientOrigin: explicitOrigin });
 }
 
-/** Build the Supabase emailRedirectTo target for signup confirmation. */
-export function buildEmailConfirmationCallbackUrl(
-  nextParam: string | null | undefined,
-  siteOrigin: string,
-): string {
+/** Build the Supabase emailRedirectTo target for signup confirmation (fixed ACCL callback only). */
+export function buildEmailConfirmationCallbackUrl(siteOrigin: string): string {
   const origin = siteOrigin.replace(/\/$/, '');
-  const safeNext = getSafePostLoginRedirect(nextParam);
-  const url = new URL(CONFIRM_CALLBACK_PATH, origin);
-  if (safeNext !== DEFAULT_POST_LOGIN_PATH) {
-    url.searchParams.set('next', safeNext);
-  }
-  return url.toString();
+  return new URL(CONFIRM_CALLBACK_PATH, origin).toString();
 }
 
 export function buildLoginConfirmationResultPath(result: 'complete' | 'failed' | 'missing'): string {
