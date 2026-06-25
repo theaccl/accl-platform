@@ -197,6 +197,20 @@ test.describe('rating initialization 1000 migration (static acceptance)', () => 
     expect(sql).not.toMatch(/\bemail\b/i);
   });
 
+  test('verification SQL is self-contained for pre-apply and post-apply runs', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/RATING_INITIALIZATION_1000_VERIFICATION.sql'), 'utf8');
+    expect(sql).not.toContain('accl_rating_initialization_major_family_buckets');
+    expect(sql).not.toContain('accl_is_zero_game_legacy_rating_seed_eligible');
+    expect(sql).not.toContain('accl_is_platform_bot_user_id');
+    expect(sql).toMatch(/major_buckets as \(\s*select v\.bucket\s*from \(\s*values[\s\S]*\('accl_overall'\)/);
+    for (const bucket of MAJOR_FAMILIES) {
+      expect(sql).toContain(`('${bucket}')`);
+    }
+    expect(sql).not.toMatch(/\b(username|token|password|secret)\b/i);
+    expect(sql).not.toMatch(/\bcreate\s+(or\s+replace\s+)?function\b/i);
+    expect(sql).not.toMatch(/\bcreate\s+table\b/i);
+  });
+
   test('controlling documentation states 1000 seed doctrine', () => {
     const doc = readFileSync(join(process.cwd(), 'docs/rating-initialization-1000.md'), 'utf8');
     expect(doc).toContain('**1000**');

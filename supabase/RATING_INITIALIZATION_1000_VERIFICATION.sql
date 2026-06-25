@@ -1,17 +1,36 @@
 -- ACCL rating initialization 1000 — verification pack (counts only, no PII).
 -- Read-only. Safe to run before and after migration apply.
--- Requires service_role (helper EXECUTE is revoked from anon/authenticated).
+-- Self-contained: does not depend on migration-created helper functions.
 
 \set ON_ERROR_STOP on
 
 with
 major_buckets as (
-  select unnest(public.accl_rating_initialization_major_family_buckets()) as bucket
+  select v.bucket
+  from (
+    values
+      ('accl_overall'),
+      ('tournament_unified'),
+      ('free_bullet'),
+      ('free_blitz'),
+      ('free_rapid'),
+      ('free_day')
+  ) as v(bucket)
+),
+platform_bot_user_ids as (
+  select v.id
+  from (
+    values
+      ('10000000-0000-0000-0000-000000000001'::uuid),
+      ('10000000-0000-0000-0000-000000000002'::uuid),
+      ('10000000-0000-0000-0000-000000000003'::uuid),
+      ('9bc30963-68d9-41b7-a442-b38c450301d2'::uuid)
+  ) as v(id)
 ),
 ordinary_profiles as (
   select p.id
   from public.profiles p
-  where not public.accl_is_platform_bot_user_id(p.id)
+  where p.id not in (select id from platform_bot_user_ids)
 ),
 accounts_with_games as (
   select distinct p.id
@@ -41,12 +60,39 @@ accounts_with_any_gp as (
 eligible_pre_apply as (
   select p.id
   from ordinary_profiles p
-  where public.accl_is_zero_game_legacy_rating_seed_eligible(p.id)
+  where not exists (
+      select 1
+      from public.games g
+      where g.white_player_id = p.id or g.black_player_id = p.id
+    )
+    and not exists (
+      select 1
+      from public.tournament_entries te
+      where te.user_id = p.id
+    )
+    and not exists (
+      select 1
+      from public.player_rating_history_ledger l
+      where l.player_id = p.id
+    )
+    and not exists (
+      select 1
+      from public.player_ratings pr_any
+      where pr_any.user_id = p.id
+        and pr_any.games_played > 0
+    )
+    and not exists (
+      select 1
+      from public.player_ratings pr
+      join major_buckets mb on mb.bucket = pr.bucket
+      where pr.user_id = p.id
+        and (pr.games_played <> 0 or pr.rating <> 1500)
+    )
 ),
 excluded_mixed as (
   select distinct p.id
   from ordinary_profiles p
-  where not public.accl_is_zero_game_legacy_rating_seed_eligible(p.id)
+  where p.id not in (select id from eligible_pre_apply)
     and exists (
       select 1
       from public.player_ratings pr
@@ -61,7 +107,7 @@ excluded_mixed as (
 excluded_bots as (
   select p.id
   from public.profiles p
-  where public.accl_is_platform_bot_user_id(p.id)
+  where p.id in (select id from platform_bot_user_ids)
 ),
 zero_game_major_at_1000 as (
   select p.id
@@ -70,7 +116,6 @@ zero_game_major_at_1000 as (
     and not exists (select 1 from accounts_with_tournament_entries t where t.id = p.id)
     and not exists (select 1 from accounts_with_ledger l where l.id = p.id)
     and not exists (select 1 from accounts_with_any_gp gp where gp.id = p.id)
-    and not public.accl_is_platform_bot_user_id(p.id)
     and not exists (
       select 1
       from major_buckets mb
@@ -102,7 +147,7 @@ ineligible_changed as (
       or exists (select 1 from accounts_with_tournament_entries t where t.id = pr.user_id)
       or exists (select 1 from accounts_with_ledger l where l.id = pr.user_id)
       or exists (select 1 from accounts_with_any_gp gp where gp.id = pr.user_id)
-      or public.accl_is_platform_bot_user_id(pr.user_id)
+      or pr.user_id in (select id from platform_bot_user_ids)
     )
 )
 select 'ordinary_player_profiles' as metric, (select count(*) from ordinary_profiles)::bigint as value
@@ -136,12 +181,25 @@ select 'legacy_1500_major_family_rows_remaining', (
 order by metric;
 
 -- Detailed bucket breakdown (major families)
+with
+major_buckets as (
+  select v.bucket
+  from (
+    values
+      ('accl_overall'),
+      ('tournament_unified'),
+      ('free_bullet'),
+      ('free_blitz'),
+      ('free_rapid'),
+      ('free_day')
+  ) as v(bucket)
+)
 select
-  pr.bucket,
-  count(*) as rows_total,
+  mb.bucket,
+  count(pr.*) as rows_total,
   count(*) filter (where pr.rating = 1000 and pr.games_played = 0) as at_1000_gp0,
   count(*) filter (where pr.rating = 1500 and pr.games_played = 0) as at_1500_gp0
-from public.player_ratings pr
-where pr.bucket = any (public.accl_rating_initialization_major_family_buckets())
-group by pr.bucket
-order by pr.bucket;
+from major_buckets mb
+left join public.player_ratings pr on pr.bucket = mb.bucket
+group by mb.bucket
+order by mb.bucket;
