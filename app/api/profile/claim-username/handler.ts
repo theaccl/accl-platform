@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { ensureOwnProfileRow } from '@/lib/ensureOwnProfileRow';
-import { resolveProfileUsernameClaimCas } from '@/lib/profileUsernameClaimCas';
+import { executeProfileUsernameClaim } from '@/lib/profileUsernameClaimCore';
 import { requiresEmailVerificationForProvisioning } from '@/lib/emailVerificationGate';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { checkRateLimit } from '@/lib/server/rateLimit';
@@ -45,8 +45,8 @@ async function classifyCasUpdateMiss(
     return json({ error: 'profile_provision_failed' }, 503);
   }
 
-  const cas = resolveProfileUsernameClaimCas((data as { username?: string | null }).username);
-  if (!cas.eligible) {
+  const stored = (data as { username?: string | null }).username;
+  if (stored?.trim()) {
     return json({ error: 'username_already_set' }, 409);
   }
 
@@ -83,83 +83,27 @@ export async function claimUsernamePost(
   if (!v.ok) return json({ error: v.error }, 400);
 
   const supabase = deps.createServiceRoleClient();
+  const claim = await executeProfileUsernameClaim(supabase, userId, raw, deps.ensureOwnProfileRow);
 
-  const ensured = await deps.ensureOwnProfileRow(supabase, userId);
-  if (!ensured.ok) {
-    if (ensured.error === 'profile_lookup_failed') {
-      return json({ error: 'profile_lookup_failed' }, 503);
-    }
-    return json({ error: 'profile_provision_failed' }, 503);
+  if (claim.ok) {
+    auditApiLog('username_claim', { user: shortId(userId) });
+    return json({ ok: true, username: claim.username });
   }
 
-  const { data: profileRow, error: profileErr } = await supabase
-    .from('profiles')
-    .select('username')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (profileErr) {
-    return json({ error: 'profile_lookup_failed' }, 503);
-  }
-  if (!profileRow) {
-    return json({ error: 'profile_provision_failed' }, 503);
-  }
-
-  const currentStoredUsername = (profileRow as { username?: string | null }).username;
-  const cas = resolveProfileUsernameClaimCas(currentStoredUsername);
-  if (!cas.eligible) {
-    return json({ error: 'username_already_set' }, 409);
-  }
-
-  const { data: taken, error: takenErr } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('username', v.username)
-    .neq('id', userId)
-    .maybeSingle();
-
-  if (takenErr) {
-    return json({ error: 'profile_lookup_failed' }, 503);
-  }
-  if (taken?.id) {
-    return json({ error: 'username_taken' }, 409);
-  }
-
-  let updateQuery = supabase
-    .from('profiles')
-    .update({ username: v.username })
-    .eq('id', userId);
-
-  if (cas.filter.kind === 'is_null') {
-    updateQuery = updateQuery.is('username', null);
-  } else {
-    updateQuery = updateQuery.eq('username', cas.filter.username);
-  }
-
-  const { error: upErr, data: updated } = await updateQuery.select('id,username').maybeSingle();
-
-  if (upErr) {
-    if (String(upErr.code) === '23505') {
+  switch (claim.code) {
+    case 'invalid_username':
+      return json({ error: claim.message }, 400);
+    case 'username_already_set':
+      return json({ error: 'username_already_set' }, 409);
+    case 'username_taken':
       return json({ error: 'username_taken' }, 409);
-    }
-    return json({ error: 'profile_provision_failed' }, 503);
+    case 'profile_lookup_failed':
+      return json({ error: 'profile_lookup_failed' }, 503);
+    case 'profile_provision_failed':
+      return classifyCasUpdateMiss(supabase, userId);
+    case 'metadata_sync_failed':
+      return json({ error: 'metadata_sync_failed', username: claim.username }, 503);
+    default:
+      return json({ error: 'profile_provision_failed' }, 503);
   }
-
-  if (!updated) {
-    return classifyCasUpdateMiss(supabase, userId);
-  }
-
-  const { data: authUser, error: getErr } = await supabase.auth.admin.getUserById(userId);
-  if (getErr || !authUser.user) {
-    return json({ error: 'metadata_sync_failed', username: v.username }, 503);
-  }
-
-  const meta = { ...(authUser.user.user_metadata ?? {}), username: v.username };
-  const { error: metaErr } = await supabase.auth.admin.updateUserById(userId, { user_metadata: meta });
-  if (metaErr) {
-    return json({ error: 'metadata_sync_failed', username: v.username }, 503);
-  }
-
-  auditApiLog('username_claim', { user: shortId(userId) });
-  return json({ ok: true, username: v.username });
 }

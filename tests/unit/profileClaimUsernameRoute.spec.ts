@@ -420,7 +420,7 @@ test.describe('claim-username route static guards', () => {
     );
     expect(src).toContain('resolveAuthenticatedUser');
     expect(src).toContain('ensureOwnProfileRow');
-    expect(src).toContain('resolveProfileUsernameClaimCas');
+    expect(src).toContain('executeProfileUsernameClaim');
     expect(src).not.toContain('profile_not_found');
     expect(src).not.toContain('onConflict');
     expect(src).not.toContain('ignoreDuplicates');

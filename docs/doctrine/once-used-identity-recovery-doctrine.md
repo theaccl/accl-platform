@@ -518,6 +518,26 @@ Every recovery decision must be logged.
 
 ---
 
+## 22A. Internal Administrative Test Identity Exception
+
+The once-used identity doctrine must **not** permanently burn identities that are expressly designated as internal administrative test identities.
+
+This is a narrow exception for controlled ACCL testing only. It does **not** implement the general once-used identity registry in this lane.
+
+### Controlling rules
+
+1. The identity must be **expressly designated** as an internal administrative test identity by the ACCL owner or an authorized administrator.
+2. It may be used only for development, migration, authentication, email-delivery, QA, or production-readiness testing.
+3. It must **not** have real-player games, ratings, tournaments, prizes, payouts, scholarships, guardian records, moderation history, disputes, or financial history.
+4. Its deletion and reuse must be recorded in an internal test/audit record.
+5. It cannot be transferred to an ordinary player account.
+6. Once used as a **real player identity**, the normal permanent once-used identity doctrine applies without exception.
+7. The exception does **not** apply to banned users, ordinary closed accounts, fraud cases, or history-evasion attempts.
+
+Administrators must not use this exception to bypass tournament integrity, payout audit, scholarship records, or moderation history for any account that has ever carried real-player activity.
+
+---
+
 ## 23. Final User-Facing Account Closure Warning
 
 Before a user closes an account, ACCL should clearly warn:

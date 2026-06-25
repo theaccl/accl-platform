@@ -17,14 +17,18 @@ import { resolvePostAuthRoute } from '@/lib/loginPostAuthRoute';
 import {
   buildAuthPageHref,
   EMAIL_CONFIRMATION_COMPLETE_MESSAGE,
+  EMAIL_CONFIRMATION_COMPLETE_HEADING,
   EMAIL_CONFIRMATION_FAILED_MESSAGE,
   EMAIL_CONFIRMATION_MISSING_MESSAGE,
   getAlternateModePrompt,
   getAuthPageHeading,
+  getLoginEmailAutocomplete,
   getPasswordAutocomplete,
   getPrimarySubmitLabel,
   getPrimarySubmitTestId,
+  getSignupPublicHandleAutocomplete,
   resolveAuthFormMode,
+  SESSION_EXPIRED_LOGIN_MESSAGE,
   USE_DIFFERENT_EMAIL_HINT,
   VERIFICATION_PENDING_HEADING,
 } from '@/lib/loginPageMode';
@@ -78,6 +82,8 @@ function LoginPageInner() {
   const signupMode = mode === 'signup';
   const nextParam = searchParams.get('next');
   const confirmationResult = searchParams.get('confirmation');
+  const sessionExpired = searchParams.get('reason') === 'session_expired';
+  const confirmationComplete = confirmationResult === 'complete';
 
   const authDeps = {
     signInWithPassword: (args: { email: string; password: string }) =>
@@ -192,8 +198,10 @@ function LoginPageInner() {
       setMessage(EMAIL_CONFIRMATION_FAILED_MESSAGE);
     } else if (confirmationResult === 'missing') {
       setMessage(EMAIL_CONFIRMATION_MISSING_MESSAGE);
+    } else if (sessionExpired) {
+      setMessage(SESSION_EXPIRED_LOGIN_MESSAGE);
     }
-  }, [confirmationResult]);
+  }, [confirmationResult, sessionExpired]);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,7 +211,7 @@ function LoginPageInner() {
       if (!cancelled) setChecked(true);
     }, showFormFallbackMs);
     void (async () => {
-      if (confirmationResult === 'complete') {
+      if (confirmationComplete) {
         await supabase.auth.signOut({ scope: 'local' });
         if (!cancelled) setChecked(true);
         return;
@@ -221,7 +229,7 @@ function LoginPageInner() {
       setChecked(true);
     })();
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (confirmationResult === 'complete') return;
+      if (confirmationComplete) return;
       if (session?.user?.id && session.access_token) {
         void routeAuthenticatedSession(session.access_token, session.user);
       }
@@ -231,7 +239,7 @@ function LoginPageInner() {
       window.clearTimeout(showFormFallback);
       listener.subscription.unsubscribe();
     };
-  }, [router, nextParam, confirmationResult]);
+  }, [router, nextParam, confirmationComplete]);
 
   const switchMode = (targetMode: 'login' | 'signup') => {
     if (busy) return;
@@ -415,6 +423,22 @@ function LoginPageInner() {
             </div>
           ) : null}
 
+          {confirmationComplete && !verificationPendingEmail ? (
+            <div
+              className="mt-8 rounded-xl border border-emerald-500/40 bg-emerald-950/25 px-4 py-5"
+              data-testid="confirmation-complete-panel"
+              role="status"
+            >
+              <h2 className="text-lg font-semibold text-emerald-100">{EMAIL_CONFIRMATION_COMPLETE_HEADING}</h2>
+              <p className="mt-3 text-sm text-emerald-50/95 leading-relaxed">
+                {EMAIL_CONFIRMATION_COMPLETE_MESSAGE}
+              </p>
+              <p className="mt-3 text-xs text-emerald-100/80 leading-relaxed">
+                Enter the email and password for your account below to sign in.
+              </p>
+            </div>
+          ) : null}
+
           {!verificationPendingEmail ? (
           <form className="mt-8" onSubmit={handleSubmit} noValidate>
             <div className="space-y-4">
@@ -425,11 +449,12 @@ function LoginPageInner() {
                 <input
                   id="login-email"
                   data-testid="login-email"
+                  name="accl-login-email"
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => handleEmailChange(e.target.value)}
-                  autoComplete="email"
+                  autoComplete={getLoginEmailAutocomplete()}
                   className={loginInputClass}
                   disabled={busy}
                 />
@@ -441,6 +466,7 @@ function LoginPageInner() {
                 <input
                   id="login-password"
                   data-testid="login-password"
+                  name="accl-login-password"
                   type="password"
                   placeholder="••••••••"
                   value={password}
@@ -453,16 +479,17 @@ function LoginPageInner() {
               {signupMode ? (
                 <div>
                   <label htmlFor="signup-username" className="block text-xs font-medium text-gray-400 mb-1.5">
-                    Username
+                    Public username
                   </label>
                   <input
                     id="signup-username"
                     data-testid="signup-username"
+                    name="accl-signup-public-handle"
                     type="text"
                     placeholder="your_public_name"
                     value={signupUsername}
                     onChange={(e) => setSignupUsername(e.target.value)}
-                    autoComplete="username"
+                    autoComplete={getSignupPublicHandleAutocomplete()}
                     className={loginInputClass}
                     disabled={busy}
                   />
@@ -547,7 +574,7 @@ function LoginPageInner() {
           </form>
           ) : null}
 
-          {message ? (
+          {message && !(confirmationComplete && !verificationPendingEmail) ? (
             <p className="mt-5 text-sm text-gray-300 leading-relaxed" role="status">
               {message}
             </p>

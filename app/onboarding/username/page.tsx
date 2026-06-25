@@ -4,7 +4,9 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import NavigationBar from '@/components/NavigationBar';
 import { getSafePostLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
+import { SIGNUP_USERNAME_CONFLICT_MESSAGE } from '@/lib/promotePendingSignupUsername';
 import { supabase } from '@/lib/supabaseClient';
+import { syncValidatedClientAuth } from '@/lib/auth/clientSessionValidation';
 import { validateAcclUsername } from '@/lib/usernameRules';
 
 const cardClass =
@@ -18,31 +20,47 @@ function UsernameOnboardingInner() {
   const searchParams = useSearchParams();
   const nextRaw = searchParams.get('next');
   const nextPath = getSafePostLoginRedirect(nextRaw);
+  const signupUsernameConflict = searchParams.get('conflict') === 'signup_username';
 
   const [checked, setChecked] = useState(false);
   const [draft, setDraft] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(
+    signupUsernameConflict ? SIGNUP_USERNAME_CONFLICT_MESSAGE : '',
+  );
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { data: sess } = await supabase.auth.getSession();
+      const { user } = await syncValidatedClientAuth();
       if (cancelled) return;
-      if (!sess.session?.access_token) {
+      if (!user) {
         router.replace(`/login?next=${encodeURIComponent('/onboarding/username')}`);
         return;
       }
-      const meta = sess.session.user?.user_metadata as Record<string, unknown> | undefined;
+      const { data: sess } = await supabase.auth.getSession();
+      const accessToken = sess.session?.access_token;
+      if (!accessToken) {
+        router.replace(`/login?next=${encodeURIComponent('/onboarding/username')}`);
+        return;
+      }
+      const meta = user.user_metadata as Record<string, unknown> | undefined;
       const hint =
         typeof meta?.username === 'string' && meta.username.trim() ? meta.username.trim() : '';
-      if (hint) setDraft(hint);
+      if (hint && !signupUsernameConflict) setDraft(hint);
 
       const res = await fetch('/api/profile/onboarding-status', {
-        headers: { Authorization: `Bearer ${sess.session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
-      const j = (await res.json()) as { needsUsername?: boolean };
+      const j = (await res.json()) as {
+        needsUsername?: boolean;
+        signupUsernameConflict?: boolean;
+        signupUsernameConflictMessage?: string;
+      };
       if (cancelled) return;
+      if (j.signupUsernameConflict && j.signupUsernameConflictMessage) {
+        setMessage(j.signupUsernameConflictMessage);
+      }
       if (!j.needsUsername) {
         router.replace(nextPath);
         return;
@@ -52,7 +70,7 @@ function UsernameOnboardingInner() {
     return () => {
       cancelled = true;
     };
-  }, [router, nextPath]);
+  }, [router, nextPath, signupUsernameConflict]);
 
   const submit = async () => {
     setBusy(true);
@@ -109,8 +127,9 @@ function UsernameOnboardingInner() {
             <input
               id="accl-username"
               data-testid="onboarding-username-input"
+              name="accl-onboarding-public-handle"
               type="text"
-              autoComplete="username"
+              autoComplete="off"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               className={inputClass}

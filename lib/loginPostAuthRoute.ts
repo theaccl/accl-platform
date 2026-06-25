@@ -45,14 +45,19 @@ export async function resolvePostAuthRoute(
   const res = await fetch('/api/profile/onboarding-status', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  const j = (await res.json()) as { needsEmailVerification?: boolean; needsUsername?: boolean };
+  const j = (await res.json()) as {
+    needsEmailVerification?: boolean;
+    needsUsername?: boolean;
+    signupUsernameConflict?: boolean;
+  };
   if (j.needsEmailVerification) {
     return { status: 'verification_required', email: user?.email?.trim() || '' };
   }
   if (j.needsUsername) {
+    const conflict = j.signupUsernameConflict ? '&conflict=signup_username' : '';
     return {
       status: 'redirect',
-      destination: `/onboarding/username?next=${encodeURIComponent(safe)}`,
+      destination: `/onboarding/username?next=${encodeURIComponent(safe)}${conflict}`,
     };
   }
   return { status: 'redirect', destination: safe };

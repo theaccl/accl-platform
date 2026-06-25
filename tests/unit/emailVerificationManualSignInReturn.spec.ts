@@ -229,9 +229,10 @@ test.describe('manual sign-in return player experience', () => {
 
   test('login page clears local session when confirmation=complete', () => {
     const loginSource = readFileSync(join(process.cwd(), 'app/login/page.tsx'), 'utf8');
+    expect(loginSource).toContain('confirmationComplete');
     expect(loginSource).toContain("confirmationResult === 'complete'");
     expect(loginSource).toContain('signOut({ scope: \'local\' })');
     expect(loginSource).toContain('EMAIL_CONFIRMATION_COMPLETE_MESSAGE');
-    expect(loginSource).toMatch(/onAuthStateChange[\s\S]*confirmationResult === 'complete'/);
+    expect(loginSource).toMatch(/onAuthStateChange[\s\S]*if \(confirmationComplete\) return/);
   });
 });
