@@ -10,6 +10,7 @@ import { useProfileUsername } from "@/hooks/useProfileUsername";
 import { identityPreviewFromUser, publicIdentityFromProfileUsername } from "@/lib/profileIdentity";
 import { publicProfileHref } from "@/lib/profileHref";
 import { supabase } from "@/lib/supabaseClient";
+import { syncValidatedClientAuth } from "@/lib/auth/clientSessionValidation";
 
 /**
  * Logged-in users are routed to `/profile/[id]` (canonical public profile).
@@ -22,15 +23,24 @@ export default function ProfilePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void supabase.auth.getSession().then(({ data }) => {
+    void syncValidatedClientAuth().then(({ user }) => {
       if (!cancelled) {
-        setUser(data.session?.user ?? null);
+        setUser(user);
         setReady(true);
       }
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-      setReady(true);
+    const { data: sub } = supabase.auth.onAuthStateChange((_e) => {
+      if (_e === "SIGNED_OUT") {
+        setUser(null);
+        setReady(true);
+        return;
+      }
+      void syncValidatedClientAuth().then(({ user: validated }) => {
+        if (!cancelled) {
+          setUser(validated);
+          setReady(true);
+        }
+      });
     });
     return () => {
       cancelled = true;

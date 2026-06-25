@@ -1,12 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { PublicP1Read } from '@/lib/p1PublicRatingRead';
 import { publicProfileHref } from '@/lib/profileHref';
 import { publicIdentityFromProfileUsername } from '@/lib/profileIdentity';
 import { supabase } from '@/lib/supabaseClient';
+import { syncValidatedClientAuth } from '@/lib/auth/clientSessionValidation';
 import { resolvePublicProfileIdFromRoute } from '@/lib/resolvePublicProfileRoute';
 import { touchProfileActivityThrottled } from '@/lib/touchProfileActivity';
 import NavigationBar from '@/components/NavigationBar';
@@ -86,6 +87,7 @@ const PROFILE_AVATAR_BUCKET = 'profile-avatars';
  * mis-classifies own profile as visitor (missing Add Friend / wrong actions).
  */
 export default function PublicProfilePage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const paramId = decodeURIComponent(String(params?.id ?? '').trim());
   const [payload, setPayload] = useState<PublicProfilePayload | null>(null);
@@ -97,14 +99,22 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void supabase.auth.getSession().then(({ data }) => {
+    void syncValidatedClientAuth().then(({ user }) => {
       if (cancelled) return;
-      setViewerId(data.session?.user?.id ?? null);
+      setViewerId(user?.id ?? null);
       setAuthReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setViewerId(session?.user?.id ?? null);
-      setAuthReady(true);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event) => {
+      if (_event === 'SIGNED_OUT') {
+        setViewerId(null);
+        setAuthReady(true);
+        return;
+      }
+      void syncValidatedClientAuth().then(({ user }) => {
+        if (cancelled) return;
+        setViewerId(user?.id ?? null);
+        setAuthReady(true);
+      });
     });
     return () => {
       cancelled = true;
@@ -150,6 +160,14 @@ export default function PublicProfilePage() {
         return;
       }
       if (!data) {
+        if (viewerId && resolved.profileId === viewerId) {
+          const { user, cleared } = await syncValidatedClientAuth();
+          if (cancelled) return;
+          if (!user || cleared) {
+            router.replace('/login?reason=session_expired');
+            return;
+          }
+        }
         setPayload(null);
         setMessage('Profile not found.');
         setLoading(false);
@@ -161,7 +179,7 @@ export default function PublicProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [paramId]);
+  }, [paramId, viewerId, router]);
 
   if (loading || !authReady) {
     return (

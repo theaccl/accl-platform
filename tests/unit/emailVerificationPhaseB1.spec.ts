@@ -432,6 +432,8 @@ test.describe('provisioning gates', () => {
               }),
             }),
           }) as never,
+        ensureOwnProfileRow: async () => ({ ok: true, existed: false }),
+        tryPromotePendingSignupUsername: async () => ({ status: 'none' }),
       } satisfies OnboardingStatusRouteDeps,
     );
     const body = (await res.json()) as { needsEmailVerification?: boolean };

@@ -12,6 +12,7 @@ import { usePublicProfileAcclRating } from "@/hooks/usePublicProfileAcclRating";
 import { identityPreviewFromUser } from "@/lib/profileIdentity";
 import { publicProfileHref } from "@/lib/profileHref";
 import { supabase } from "@/lib/supabaseClient";
+import { syncValidatedClientAuth } from "@/lib/auth/clientSessionValidation";
 import { logPhase1SupabaseFailure } from "@/lib/supabasePhase1Debug";
 import { touchProfileActivityThrottled } from "@/lib/touchProfileActivity";
 
@@ -150,19 +151,26 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
   useEffect(() => {
     let cancelled = false;
     const sync = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { user } = await syncValidatedClientAuth();
       if (cancelled) return;
-      const u = data.session?.user ?? null;
-      setIsLoggedIn(Boolean(u?.id));
-      setSessionUser(u);
+      setIsLoggedIn(Boolean(user?.id));
+      setSessionUser(user);
       setChecked(true);
     };
     void sync();
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user ?? null;
-      setIsLoggedIn(Boolean(u?.id));
-      setSessionUser(u);
-      setChecked(true);
+    const { data: listener } = supabase.auth.onAuthStateChange((_event) => {
+      if (_event === "SIGNED_OUT") {
+        setIsLoggedIn(false);
+        setSessionUser(null);
+        setChecked(true);
+        return;
+      }
+      void syncValidatedClientAuth().then(({ user }) => {
+        if (cancelled) return;
+        setIsLoggedIn(Boolean(user?.id));
+        setSessionUser(user);
+        setChecked(true);
+      });
     });
     const onPageShow = (e: PageTransitionEvent) => {
       if (!e.persisted) return;

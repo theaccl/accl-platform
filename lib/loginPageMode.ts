@@ -49,6 +49,21 @@ export function getPasswordAutocomplete(mode: AuthFormMode): 'new-password' | 'c
   return mode === 'signup' ? 'new-password' : 'current-password';
 }
 
+/** Login identifier is always email — never advertise the public handle as an auth username. */
+export function getLoginEmailAutocomplete(): 'email' {
+  return 'email';
+}
+
+/** Public chess handle during signup — not an authentication credential for password managers. */
+export function getSignupPublicHandleAutocomplete(): 'off' {
+  return 'off';
+}
+
+export const EMAIL_CONFIRMATION_COMPLETE_HEADING = 'Email verified';
+
+export const SESSION_EXPIRED_LOGIN_MESSAGE =
+  'Your session expired. Sign in again to continue.';
+
 /** Shown when signUp returns no session (confirmation may be required). */
 export const SIGNUP_VERIFICATION_PENDING_MESSAGE =
   'Check your email to confirm signup. Your account is not active until you confirm the link we send.';

@@ -91,10 +91,17 @@ function createOnboardingStatusMockSupabase(config: MockConfig) {
   };
 }
 
-function makeDeps(mock: ReturnType<typeof createOnboardingStatusMockSupabase>): OnboardingStatusRouteDeps {
+function makeDeps(
+  mock: ReturnType<typeof createOnboardingStatusMockSupabase>,
+  promoteResult: Awaited<ReturnType<typeof import('@/lib/promotePendingSignupUsername').tryPromotePendingSignupUsername>> = {
+    status: 'none',
+  },
+): OnboardingStatusRouteDeps {
   return {
     resolveAuthenticatedUser: async () => confirmedAuthUser(),
     createServiceRoleClient: () => mock.client,
+    ensureOwnProfileRow: async () => ({ ok: true, existed: true }),
+    tryPromotePendingSignupUsername: async () => promoteResult,
   };
 }
 
@@ -115,6 +122,8 @@ test.describe('onboarding-status route', () => {
     const res = await onboardingStatusGet(makeGetRequest(), {
       resolveAuthenticatedUser: async () => null,
       createServiceRoleClient: () => mock.client,
+      ensureOwnProfileRow: async () => ({ ok: true, existed: true }),
+      tryPromotePendingSignupUsername: async () => ({ status: 'none' }),
     });
     expect(res.status).toBe(401);
     expect(mock.getSelectCalls()).toBe(0);
@@ -210,6 +219,34 @@ test.describe('onboarding-status route', () => {
     expect(res.status).toBe(200);
     expect(mock.eqUserIds).toEqual([AUTH_UID]);
     expect(mock.eqUserIds).not.toContain(OTHER_UID);
+  });
+
+  test('promoted signup username skips duplicate onboarding', async () => {
+    const mock = createOnboardingStatusMockSupabase({ profileUsername: null });
+    const res = await onboardingStatusGet(
+      makeGetRequest(),
+      makeDeps(mock, { status: 'promoted', username: 'alice' }),
+    );
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toEqual({
+      needsEmailVerification: false,
+      needsUsername: false,
+      profileExists: true,
+      username: 'alice',
+    });
+  });
+
+  test('username conflict returns replacement guidance', async () => {
+    const mock = createOnboardingStatusMockSupabase({ profileUsername: null });
+    const res = await onboardingStatusGet(
+      makeGetRequest(),
+      makeDeps(mock, { status: 'conflict', reason: 'username_taken' }),
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.needsUsername).toBe(true);
+    expect(body.signupUsernameConflict).toBe(true);
+    expect(body.signupUsernameConflictMessage).toContain('no longer available');
   });
 
   test('route performs no insert, update, upsert, or delete', async () => {
