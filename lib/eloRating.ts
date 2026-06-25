@@ -15,7 +15,7 @@
  */
 
 export const ELO_DENOMINATOR = 400;
-export const STARTING_RATING = 1500;
+export const STARTING_RATING = 1000;
 export const RATING_FLOOR = 100;
 export const RATING_CEILING = 4000;
 

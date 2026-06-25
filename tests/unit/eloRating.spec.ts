@@ -14,8 +14,8 @@ import {
 } from '../../lib/eloRating';
 
 test.describe('eloRating — constants', () => {
-  test('starting rating stays 1500 for this slice', () => {
-    expect(STARTING_RATING).toBe(1500);
+  test('starting rating stays 1000 for this slice', () => {
+    expect(STARTING_RATING).toBe(1000);
     expect(RATING_FLOOR).toBe(100);
     expect(RATING_CEILING).toBe(4000);
   });
