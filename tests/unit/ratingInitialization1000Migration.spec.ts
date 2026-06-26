@@ -133,18 +133,44 @@ test.describe('rating initialization 1000 migration (static acceptance)', () => 
     expect(sql).toMatch(/lock table[\s\S]*public\.profiles[\s\S]*public\.games[\s\S]*public\.tournament_entries[\s\S]*public\.player_rating_history_ledger[\s\S]*public\.player_ratings[\s\S]*in share row exclusive mode/i);
   });
 
-  test('correction updates only legacy 1500 rows on major families', () => {
+  test('correction updates only legacy 1500 rows on major families for captured candidates', () => {
     const sql = migrationSql();
     expect(sql).toMatch(/set rating = 1000/);
     expect(sql).toMatch(/pr\.rating = 1500/);
-    expect(sql).toMatch(/accl_is_zero_game_legacy_rating_seed_eligible\(pr\.user_id\)/);
-    expect(sql).toMatch(/accl_is_zero_game_legacy_rating_seed_eligible\(e\.user_id\)/);
+    expect(sql).toMatch(/from accl_rating_init_correction_candidates c[\s\S]*where c\.user_id = pr\.user_id/);
+    expect(sql).not.toMatch(/update public\.player_ratings pr[\s\S]*accl_is_zero_game_legacy_rating_seed_eligible\(pr\.user_id\)/);
   });
 
-  test('insert and update paths re-check eligibility at write time', () => {
+  test('missing-row insert and legacy update use captured candidate cohort only', () => {
     const sql = migrationSql();
-    expect(sql).toMatch(/insert into public\.player_ratings[\s\S]*accl_is_zero_game_legacy_rating_seed_eligible\(e\.user_id\)/);
-    expect(sql).toMatch(/update public\.player_ratings[\s\S]*accl_is_zero_game_legacy_rating_seed_eligible\(pr\.user_id\)/);
+    const correctionSection = sql.slice(sql.indexOf('create temp table accl_rating_init_correction_candidates'));
+    expect(correctionSection).toMatch(
+      /insert into public\.player_ratings \(user_id, bucket, rating, games_played\)[\s\S]*from accl_rating_init_correction_candidates e/,
+    );
+    expect(correctionSection).not.toContain('accl_is_zero_game_legacy_rating_seed_eligible(e.user_id)');
+    expect(correctionSection).toMatch(
+      /update public\.player_ratings pr[\s\S]*exists \([\s\S]*from accl_rating_init_correction_candidates c[\s\S]*where c\.user_id = pr\.user_id/,
+    );
+  });
+
+  test('partial-row candidate uses captured cohort after missing-family insert', () => {
+    const sql = migrationSql();
+    const correctionSection = sql.slice(sql.indexOf('create temp table accl_rating_init_correction_candidates'));
+    const insertPos = correctionSection.indexOf(
+      'insert into public.player_ratings (user_id, bucket, rating, games_played)',
+    );
+    const updatePos = correctionSection.indexOf('update public.player_ratings pr');
+    expect(insertPos).toBeGreaterThan(-1);
+    expect(updatePos).toBeGreaterThan(insertPos);
+    expect(correctionSection.slice(insertPos, updatePos)).not.toContain(
+      'accl_is_zero_game_legacy_rating_seed_eligible',
+    );
+    expect(correctionSection.slice(updatePos)).toMatch(
+      /exists \([\s\S]*from accl_rating_init_correction_candidates c[\s\S]*where c\.user_id = pr\.user_id/,
+    );
+    expect(correctionSection).toMatch(
+      /create temp table accl_rating_init_correction_candidates on commit drop as[\s\S]*accl_is_zero_game_legacy_rating_seed_eligible/,
+    );
   });
 
   test('transaction-local snapshot captured before correction', () => {
