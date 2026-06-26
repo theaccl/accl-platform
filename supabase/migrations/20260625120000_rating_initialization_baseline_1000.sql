@@ -277,8 +277,7 @@ insert into public.player_ratings (user_id, bucket, rating, games_played)
 select e.user_id, req.bucket, 1000, 0
 from accl_rating_init_correction_candidates e
 cross join lateral unnest(public.accl_rating_initialization_major_family_buckets()) as req(bucket)
-where public.accl_is_zero_game_legacy_rating_seed_eligible(e.user_id)
-  and not exists (
+where not exists (
     select 1
     from public.player_ratings pr
     where pr.user_id = e.user_id
@@ -291,7 +290,11 @@ set rating = 1000
 where pr.bucket = any (public.accl_rating_initialization_major_family_buckets())
   and pr.games_played = 0
   and pr.rating = 1500
-  and public.accl_is_zero_game_legacy_rating_seed_eligible(pr.user_id);
+  and exists (
+    select 1
+    from accl_rating_init_correction_candidates c
+    where c.user_id = pr.user_id
+  );
 
 -- ---------------------------------------------------------------------------
 -- 7) Post-check invariants (migration-time, idempotent re-run safe)
