@@ -9,6 +9,8 @@ type Props = {
   selected: boolean;
   hasHistory: boolean;
   testId?: string;
+  /** Optional ACCL Overall Rank label; only the ACCL lane supplies this. Display-only. */
+  rankLabel?: string | null;
   onSelect: () => void;
 };
 
@@ -19,6 +21,7 @@ export function RatingCard({
   selected,
   hasHistory,
   testId,
+  rankLabel,
   onSelect,
 }: Props) {
   return (
@@ -36,6 +39,14 @@ export function RatingCard({
     >
       <span className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</span>
       <span className="tabular-nums text-lg font-semibold text-gray-100">{formatTrackRating(rating)}</span>
+      {rankLabel ? (
+        <span
+          data-testid="accl-overall-rank-label"
+          className="text-xs font-medium text-sky-300/90"
+        >
+          {rankLabel}
+        </span>
+      ) : null}
       {typeof gamesPlayed === 'number' ? (
         <span className="text-xs text-gray-500">{gamesPlayed} games</span>
       ) : (

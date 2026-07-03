@@ -11,6 +11,7 @@ import {
   parseP1FromSnapshotPayload,
   type PublicP1Read,
 } from "@/lib/p1PublicRatingRead";
+import { acclOverallRankDisplayLabel } from "@/lib/profile/acclOverallRank";
 import TesterBugReportDialog from "@/components/TesterBugReportDialog";
 
 const AVATAR_BUCKET = "profile-avatars";
@@ -152,7 +153,13 @@ export function PublicIdentityCard({ playerId, onClose }: { playerId: string; on
       (typeof p1.accl_rating === "number" && Number.isFinite(p1.accl_rating)
         ? { rating: p1.accl_rating, games_played: 0 }
         : null);
-    ratingRows.push(p1RowLabel("ACCL Overall", acclOverallRow));
+    const acclOverallBase = p1RowLabel("ACCL Overall", acclOverallRow);
+    const acclRankLabel = acclOverallRow ? acclOverallRankDisplayLabel(acclOverallRow.rating) : null;
+    ratingRows.push(
+      acclRankLabel && acclOverallBase.value !== "—"
+        ? { label: acclOverallBase.label, value: `${acclOverallBase.value} · ${acclRankLabel}` }
+        : acclOverallBase,
+    );
     ratingRows.push(p1RowLabel("Free · Bullet", p1.free_bullet));
     ratingRows.push(p1RowLabel("Free · Blitz", p1.free_blitz));
     ratingRows.push(p1RowLabel("Free · Rapid", p1.free_rapid));
