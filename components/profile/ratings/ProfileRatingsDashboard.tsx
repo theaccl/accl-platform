@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { RatingMode } from '@/lib/acclTimeControls';
 import { visibleTimeControlsForMode } from '@/lib/acclTimeControls';
+import { acclOverallRankLabelForLane } from '@/lib/profile/acclOverallRank';
 import { loadProfileRatingDashboardData } from '@/lib/loadProfileRatingDashboard';
 import {
   subtracksForMode,
@@ -130,6 +131,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
             label={card.label}
             rating={card.rating}
             gamesPlayed={card.gamesPlayed}
+            rankLabel={acclOverallRankLabelForLane(card.id, card.rating)}
             selected={selectedTop === card.id}
             hasHistory={
               (dashboard.historyByTrack[card.id]?.length ?? 0) > 0 ||
