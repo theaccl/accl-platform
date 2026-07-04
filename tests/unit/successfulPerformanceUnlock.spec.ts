@@ -540,3 +540,196 @@ test.describe('integration hazard hardening — identity validation and Route B 
     expect(locked.percentage).toBeNull();
   });
 });
+
+test.describe('no-threshold scope validation', () => {
+  function base(over: Partial<SuccessfulPerformanceAggregate>): SuccessfulPerformanceAggregate {
+    return {
+      scope: 'battlefield',
+      mode: null,
+      color: 'combined',
+      exactControl: null,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      eligibleGames: 0,
+      sourceStatus: 'available',
+      ...over,
+    };
+  }
+
+  test('no_threshold + battlefield remains valid', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({ wins: 4, draws: 0, losses: 4, eligibleGames: 8 }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('unlocked');
+    expect(view.percentage).toBeCloseTo(50, 10);
+  });
+
+  test('no_threshold + tournament remains valid', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'tournament',
+        wins: 6,
+        draws: 0,
+        losses: 4,
+        eligibleGames: 10,
+      }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('unlocked');
+    expect(view.percentage).toBeCloseTo(60, 10);
+  });
+
+  test('no_threshold + exact_control is invalid and exposes no percentage', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'exact_control',
+        mode: 'blitz',
+        color: 'white',
+        exactControl: '5+0',
+        wins: 6,
+        draws: 2,
+        losses: 2,
+        eligibleGames: 10,
+      }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('invalid');
+    expect(view.percentage).toBeNull();
+  });
+
+  test('no_threshold + mode is invalid and exposes no percentage', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'mode',
+        mode: 'blitz',
+        color: 'white',
+        wins: 50,
+        draws: 0,
+        losses: 50,
+        eligibleGames: 100,
+      }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('invalid');
+    expect(view.percentage).toBeNull();
+  });
+
+  test('no_threshold + overall is invalid and exposes no percentage', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'overall',
+        mode: null,
+        color: 'combined',
+        wins: 20,
+        draws: 0,
+        losses: 0,
+        eligibleGames: 20,
+      }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('invalid');
+    expect(view.percentage).toBeNull();
+  });
+
+  test('invalid no-threshold scope cannot bypass the 10-game exact-control gate', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'exact_control',
+        mode: 'blitz',
+        color: 'white',
+        exactControl: '5+0',
+        wins: 10,
+        draws: 0,
+        losses: 0,
+        eligibleGames: 10,
+      }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('invalid');
+    expect(view.percentage).toBeNull();
+    const gated = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'exact_control',
+        mode: 'blitz',
+        color: 'white',
+        exactControl: '5+0',
+        wins: 5,
+        draws: 0,
+        losses: 5,
+        eligibleGames: 10,
+      }),
+      { kind: 'exact_control' },
+    );
+    expect(gated.state).toBe('unlocked');
+    expect(gated.percentage).toBeCloseTo(50, 10);
+  });
+
+  test('invalid no-threshold scope cannot bypass the 100-game broad-mode gate', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'mode',
+        mode: 'blitz',
+        color: 'white',
+        wins: 100,
+        draws: 0,
+        losses: 0,
+        eligibleGames: 100,
+      }),
+      { kind: 'no_threshold' },
+    );
+    expect(view.state).toBe('invalid');
+    expect(view.percentage).toBeNull();
+    const gated = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'mode',
+        mode: 'blitz',
+        color: 'white',
+        wins: 50,
+        draws: 0,
+        losses: 50,
+        eligibleGames: 100,
+      }),
+      {
+        kind: 'broad_mode',
+        requiredExactControls: BLITZ_CONTROLS,
+        exactControlUnlocks: [],
+      },
+    );
+    expect(gated.state).toBe('unlocked');
+    expect(gated.percentage).toBeCloseTo(50, 10);
+  });
+
+  test('existing exact-control and broad-mode policies still behave unchanged', () => {
+    const exact = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'exact_control',
+        mode: 'blitz',
+        color: 'white',
+        exactControl: '5+0',
+        wins: 5,
+        draws: 0,
+        losses: 5,
+        eligibleGames: 10,
+      }),
+      { kind: 'exact_control' },
+    );
+    const broad = resolveSuccessfulPerformanceView(
+      base({
+        scope: 'mode',
+        mode: 'blitz',
+        color: 'white',
+        wins: 50,
+        draws: 0,
+        losses: 50,
+        eligibleGames: 100,
+      }),
+      { kind: 'broad_mode', requiredExactControls: BLITZ_CONTROLS, exactControlUnlocks: [] },
+    );
+    expect(exact.state).toBe('unlocked');
+    expect(exact.percentage).toBeCloseTo(50, 10);
+    expect(broad.state).toBe('unlocked');
+    expect(broad.percentage).toBeCloseTo(50, 10);
+  });
+});

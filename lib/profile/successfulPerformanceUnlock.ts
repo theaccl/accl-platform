@@ -157,6 +157,10 @@ function isBroadModeIdentityValid(aggregate: SuccessfulPerformanceAggregate): bo
   return aggregate.scope === 'mode' && aggregate.mode != null && aggregate.color !== 'combined';
 }
 
+function isNoThresholdScopeValid(aggregate: SuccessfulPerformanceAggregate): boolean {
+  return aggregate.scope === 'battlefield' || aggregate.scope === 'tournament';
+}
+
 /**
  * Resolve a full presentational view model from an authoritative aggregate and a
  * unlock policy. The percentage is suppressed unless BOTH:
@@ -205,7 +209,11 @@ export function resolveSuccessfulPerformanceView(
   } else {
     threshold = null;
     progressCount = null;
-    unlockState = resolveNoThresholdState(score);
+    if (!isNoThresholdScopeValid(aggregate)) {
+      unlockState = 'invalid';
+    } else {
+      unlockState = resolveNoThresholdState(score);
+    }
   }
 
   const state = reconcile(unlockState, score);
