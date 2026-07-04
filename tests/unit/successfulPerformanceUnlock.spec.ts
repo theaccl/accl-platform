@@ -140,6 +140,11 @@ test.describe('broad-mode unlock', () => {
   test('0 games with no Route B = locked', () => {
     expect(resolveBroadModeUnlockState(broad(0, 'white', []))).toBe('locked');
   });
+
+  test('zero eligibleGames with Route B satisfied returns locked, not unlocked', () => {
+    expect(resolveBroadModeUnlockState(broad(0, 'white', allBlitzUnlocked('white')))).toBe('locked');
+    expect(broadModeRouteBSatisfied(broad(0, 'white', allBlitzUnlocked('white')))).toBe(true);
+  });
 });
 
 test.describe('resolveSuccessfulPerformanceView — percentage suppression + policy dispatch', () => {
@@ -356,8 +361,8 @@ test.describe('count-contract correction — eligibleGames is the sole authorita
       ).state,
     ).toBe('locked');
 
-    // Broad-mode Route B satisfied but zero eligible games -> must NOT be unlocked
-    // (there is no valid score), and no percentage is emitted.
+    // Broad-mode Route B satisfied but zero eligible games -> locked at resolver
+    // and must NOT be unlocked in the composed view; no percentage is emitted.
     const routeBZero = resolveSuccessfulPerformanceView(
       base({ scope: 'mode', exactControl: null, wins: 0, draws: 0, losses: 0, eligibleGames: 0 }),
       {
@@ -366,7 +371,7 @@ test.describe('count-contract correction — eligibleGames is the sole authorita
         exactControlUnlocks: allBlitzUnlocked('white'),
       },
     );
-    expect(routeBZero.state).not.toBe('unlocked');
+    expect(routeBZero.state).toBe('locked');
     expect(routeBZero.percentage).toBeNull();
 
     // Property sweep: any unlocked view must carry a valid percentage and >0 games.
@@ -399,5 +404,139 @@ test.describe('count-contract correction — eligibleGames is the sole authorita
         expect(v.eligibleGames as number).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+test.describe('integration hazard hardening — identity validation and Route B zero games', () => {
+  function base(over: Partial<SuccessfulPerformanceAggregate>): SuccessfulPerformanceAggregate {
+    return {
+      scope: 'exact_control',
+      mode: 'blitz',
+      color: 'white',
+      exactControl: '5+0',
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      eligibleGames: 0,
+      sourceStatus: 'available',
+      ...over,
+    };
+  }
+
+  test('composed broad view with zero games and Route B satisfied stays locked with no percentage', () => {
+    const view = resolveSuccessfulPerformanceView(
+      base({ scope: 'mode', exactControl: null, wins: 0, draws: 0, losses: 0, eligibleGames: 0 }),
+      {
+        kind: 'broad_mode',
+        requiredExactControls: BLITZ_CONTROLS,
+        exactControlUnlocks: allBlitzUnlocked('white'),
+      },
+    );
+    expect(view.state).toBe('locked');
+    expect(view.percentage).toBeNull();
+  });
+
+  test.describe('exact-control policy identity rejection', () => {
+    const cases: Array<{ label: string; over: Partial<SuccessfulPerformanceAggregate> }> = [
+      { label: 'missing exactControl', over: { exactControl: null } },
+      { label: 'empty exactControl', over: { exactControl: '' } },
+      { label: 'whitespace-only exactControl', over: { exactControl: '   ' } },
+      { label: 'non-exact-control scope', over: { scope: 'mode', exactControl: null } },
+      { label: 'combined color', over: { color: 'combined' } },
+    ];
+
+    for (const { label, over } of cases) {
+      test(`rejects ${label}`, () => {
+        const view = resolveSuccessfulPerformanceView(base(over), { kind: 'exact_control' });
+        expect(view.state).toBe('invalid');
+        expect(view.percentage).toBeNull();
+      });
+    }
+
+    test('missing mode is invalid', () => {
+      const view = resolveSuccessfulPerformanceView(base({ mode: null }), { kind: 'exact_control' });
+      expect(view.state).toBe('invalid');
+      expect(view.percentage).toBeNull();
+    });
+  });
+
+  test.describe('broad-mode policy identity rejection', () => {
+    const cases: Array<{ label: string; over: Partial<SuccessfulPerformanceAggregate> }> = [
+      { label: 'non-mode scope', over: { scope: 'exact_control' } },
+      { label: 'combined color', over: { scope: 'mode', exactControl: null, color: 'combined' } },
+    ];
+
+    for (const { label, over } of cases) {
+      test(`rejects ${label}`, () => {
+        const view = resolveSuccessfulPerformanceView(base(over), {
+          kind: 'broad_mode',
+          requiredExactControls: BLITZ_CONTROLS,
+          exactControlUnlocks: allBlitzUnlocked('white'),
+        });
+        expect(view.state).toBe('invalid');
+        expect(view.percentage).toBeNull();
+      });
+    }
+
+    test('missing mode is invalid', () => {
+      const view = resolveSuccessfulPerformanceView(
+        base({ scope: 'mode', mode: null, exactControl: null }),
+        { kind: 'broad_mode', requiredExactControls: BLITZ_CONTROLS, exactControlUnlocks: [] },
+      );
+      expect(view.state).toBe('invalid');
+      expect(view.percentage).toBeNull();
+    });
+  });
+
+  test('valid White and Black exact-control inputs still work independently', () => {
+    const white = resolveSuccessfulPerformanceView(
+      base({ wins: 5, draws: 0, losses: 5, eligibleGames: 10, color: 'white' }),
+      { kind: 'exact_control' },
+    );
+    const black = resolveSuccessfulPerformanceView(
+      base({
+        wins: 2,
+        draws: 0,
+        losses: 3,
+        eligibleGames: 5,
+        color: 'black',
+      }),
+      { kind: 'exact_control' },
+    );
+    expect(white.state).toBe('unlocked');
+    expect(white.percentage).toBeCloseTo(50, 10);
+    expect(black.state).toBe('progress');
+    expect(black.percentage).toBeNull();
+  });
+
+  test('valid broad Route A and Route B still work', () => {
+    const routeA = resolveSuccessfulPerformanceView(
+      base({ scope: 'mode', exactControl: null, wins: 50, draws: 0, losses: 50, eligibleGames: 100 }),
+      { kind: 'broad_mode', requiredExactControls: BLITZ_CONTROLS, exactControlUnlocks: [] },
+    );
+    const routeB = resolveSuccessfulPerformanceView(
+      base({ scope: 'mode', exactControl: null, wins: 20, draws: 0, losses: 20, eligibleGames: 40 }),
+      {
+        kind: 'broad_mode',
+        requiredExactControls: BLITZ_CONTROLS,
+        exactControlUnlocks: allBlitzUnlocked('white'),
+      },
+    );
+    expect(routeA.state).toBe('unlocked');
+    expect(routeA.percentage).toBeCloseTo(50, 10);
+    expect(routeB.state).toBe('unlocked');
+    expect(routeB.percentage).toBeCloseTo(50, 10);
+  });
+
+  test('percentage suppression remains unchanged for progress and locked', () => {
+    const progress = resolveSuccessfulPerformanceView(
+      base({ wins: 3, draws: 0, losses: 2, eligibleGames: 5 }),
+      { kind: 'exact_control' },
+    );
+    const locked = resolveSuccessfulPerformanceView(base({}), { kind: 'exact_control' });
+    expect(progress.state).toBe('progress');
+    expect(progress.percentage).toBeNull();
+    expect(locked.state).toBe('locked');
+    expect(locked.percentage).toBeNull();
   });
 });

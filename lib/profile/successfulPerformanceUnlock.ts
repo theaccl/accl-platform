@@ -90,7 +90,7 @@ export function broadModeRouteBSatisfied(input: BroadModeUnlockInput): boolean {
 
 /**
  * Broad-mode color battery unlock state.
- * unavailable | invalid | unlocked (Route A >=100 or Route B) | progress (1..99) | locked (0).
+ * unavailable | invalid | unlocked (Route A >=100 or Route B with eligibleGames > 0) | progress (1..99) | locked (0).
  */
 export function resolveBroadModeUnlockState(
   input: BroadModeUnlockInput,
@@ -98,8 +98,8 @@ export function resolveBroadModeUnlockState(
   if (input.sourceStatus === 'unavailable') return 'unavailable';
   if (!isValidGameCount(input.eligibleGames)) return 'invalid';
   if (input.eligibleGames >= BROAD_MODE_UNLOCK_THRESHOLD) return 'unlocked';
-  if (broadModeRouteBSatisfied(input)) return 'unlocked';
   if (input.eligibleGames === 0) return 'locked';
+  if (broadModeRouteBSatisfied(input)) return 'unlocked';
   return 'progress';
 }
 
@@ -140,6 +140,23 @@ function reconcile(
   return unlockState;
 }
 
+function isNonEmptyExactControl(value: string | null | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isExactControlIdentityValid(aggregate: SuccessfulPerformanceAggregate): boolean {
+  return (
+    aggregate.scope === 'exact_control' &&
+    aggregate.mode != null &&
+    isNonEmptyExactControl(aggregate.exactControl) &&
+    aggregate.color !== 'combined'
+  );
+}
+
+function isBroadModeIdentityValid(aggregate: SuccessfulPerformanceAggregate): boolean {
+  return aggregate.scope === 'mode' && aggregate.mode != null && aggregate.color !== 'combined';
+}
+
 /**
  * Resolve a full presentational view model from an authoritative aggregate and a
  * unlock policy. The percentage is suppressed unless BOTH:
@@ -159,13 +176,13 @@ export function resolveSuccessfulPerformanceView(
   if (policy.kind === 'exact_control') {
     threshold = EXACT_CONTROL_UNLOCK_THRESHOLD;
     progressCount = isValidGameCount(aggregate.eligibleGames) ? aggregate.eligibleGames : null;
-    if (!aggregate.mode) {
+    if (!isExactControlIdentityValid(aggregate)) {
       unlockState = 'invalid';
     } else {
       unlockState = resolveExactControlUnlockState({
-        mode: aggregate.mode,
+        mode: aggregate.mode as RatingModeName,
         color: aggregate.color,
-        exactControl: aggregate.exactControl ?? '',
+        exactControl: aggregate.exactControl as string,
         eligibleGames: aggregate.eligibleGames,
         sourceStatus: aggregate.sourceStatus,
       });
@@ -173,11 +190,11 @@ export function resolveSuccessfulPerformanceView(
   } else if (policy.kind === 'broad_mode') {
     threshold = BROAD_MODE_UNLOCK_THRESHOLD;
     progressCount = isValidGameCount(aggregate.eligibleGames) ? aggregate.eligibleGames : null;
-    if (!aggregate.mode) {
+    if (!isBroadModeIdentityValid(aggregate)) {
       unlockState = 'invalid';
     } else {
       unlockState = resolveBroadModeUnlockState({
-        mode: aggregate.mode,
+        mode: aggregate.mode as RatingModeName,
         color: aggregate.color,
         eligibleGames: aggregate.eligibleGames,
         sourceStatus: aggregate.sourceStatus,
