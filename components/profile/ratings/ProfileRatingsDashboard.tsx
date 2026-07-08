@@ -6,6 +6,12 @@ import { visibleTimeControlsForMode } from '@/lib/acclTimeControls';
 import { acclOverallRankLabelForLane } from '@/lib/profile/acclOverallRank';
 import { loadProfileRatingDashboardData } from '@/lib/loadProfileRatingDashboard';
 import {
+  broadModeUnlockPolicyForMode,
+  loadOwnSuccessfulPerformance,
+  type OwnSuccessfulPerformanceResult,
+} from '@/lib/profile/loadOwnSuccessfulPerformance';
+import { resolveSuccessfulPerformanceView } from '@/lib/profile/successfulPerformanceUnlock';
+import {
   subtracksForMode,
   topLevelRatingCardsFromP1,
   type TopLevelRatingCardModel,
@@ -17,6 +23,7 @@ import { RatingCard } from '@/components/profile/ratings/RatingCard';
 import { RatingSubtrackGrid } from '@/components/profile/ratings/RatingSubtrackGrid';
 import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/RatingFamilyComparisonPanel';
 import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
+import { SuccessfulPerformanceCard } from '@/components/profile/ratings/SuccessfulPerformanceCard';
 
 type Props = {
   p1: PublicP1Read | null | undefined;
@@ -48,6 +55,31 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
     badgeByTrack: {},
     gamesCountByTrack: {},
   });
+  const [successfulPerformance, setSuccessfulPerformance] =
+    useState<OwnSuccessfulPerformanceResult | null>(null);
+  const [successfulPerformanceLoading, setSuccessfulPerformanceLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isSelf) {
+      setSuccessfulPerformance(null);
+      setSuccessfulPerformanceLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSuccessfulPerformanceLoading(true);
+    setSuccessfulPerformance(null);
+
+    void loadOwnSuccessfulPerformance(supabase).then((result) => {
+      if (cancelled) return;
+      setSuccessfulPerformance(result);
+      setSuccessfulPerformanceLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSelf]);
 
   useEffect(() => {
     if (!profileUserId) return;
@@ -105,6 +137,31 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
 
   const historyPoints = dashboard.historyByTrack[selectedDetail] ?? [];
   const hasHistory = historyPoints.length > 0;
+
+  const selectedMode = activeCard?.mode ?? null;
+
+  const broadModeSuccessfulPerformanceViews = useMemo(() => {
+    if (!selectedMode || successfulPerformance?.status !== 'loaded') {
+      return null;
+    }
+    const data = successfulPerformance;
+    const policy = broadModeUnlockPolicyForMode(
+      selectedMode,
+      data.exactControlUnlocksByMode[selectedMode],
+    );
+    const aggregates = data.broadModeAggregates[selectedMode];
+    return {
+      white: resolveSuccessfulPerformanceView(aggregates.white, policy),
+      black: resolveSuccessfulPerformanceView(aggregates.black, policy),
+    };
+  }, [selectedMode, successfulPerformance]);
+
+  const battlefieldSuccessfulPerformanceView = useMemo(() => {
+    if (successfulPerformance?.status !== 'loaded') return null;
+    return resolveSuccessfulPerformanceView(successfulPerformance.battlefieldLifetime, {
+      kind: 'no_threshold',
+    });
+  }, [successfulPerformance]);
 
   function selectTop(card: TopLevelRatingCardModel) {
     setSelectedTop(card.id);
@@ -170,6 +227,59 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
           historyByTrack={dashboard.historyByTrack}
           canLinkFinishedGames
         />
+      ) : null}
+
+      {isSelf ? (
+        <section
+          className="space-y-3"
+          aria-labelledby="profile-successful-performance-heading"
+          data-testid="profile-successful-performance"
+        >
+          <h2
+            id="profile-successful-performance-heading"
+            className="text-sm font-semibold text-white"
+          >
+            Successful Performance
+          </h2>
+
+          {successfulPerformanceLoading ? (
+            <p className="m-0 text-xs text-gray-500" data-testid="sp-loading">
+              Loading Successful Performance…
+            </p>
+          ) : null}
+
+          {!successfulPerformanceLoading && successfulPerformance?.status === 'unavailable' ? (
+            <p className="m-0 text-xs text-gray-500" data-testid="sp-unavailable">
+              Successful Performance is not available right now.
+            </p>
+          ) : null}
+
+          {!successfulPerformanceLoading && successfulPerformance?.status === 'invalid' ? (
+            <p className="m-0 text-xs text-amber-300/90" data-testid="sp-invalid">
+              Successful Performance data could not be verified.
+            </p>
+          ) : null}
+
+          {!successfulPerformanceLoading &&
+          successfulPerformance?.status === 'loaded' &&
+          broadModeSuccessfulPerformanceViews ? (
+            <div
+              className="grid gap-2 sm:grid-cols-2"
+              data-testid="profile-successful-performance-broad-mode"
+            >
+              <SuccessfulPerformanceCard view={broadModeSuccessfulPerformanceViews.white} />
+              <SuccessfulPerformanceCard view={broadModeSuccessfulPerformanceViews.black} />
+            </div>
+          ) : null}
+
+          {!successfulPerformanceLoading &&
+          successfulPerformance?.status === 'loaded' &&
+          battlefieldSuccessfulPerformanceView ? (
+            <div data-testid="profile-successful-performance-battlefield">
+              <SuccessfulPerformanceCard view={battlefieldSuccessfulPerformanceView} />
+            </div>
+          ) : null}
+        </section>
       ) : null}
     </section>
   );

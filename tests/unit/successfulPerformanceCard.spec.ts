@@ -164,12 +164,23 @@ test.describe('SuccessfulPerformanceCard — no live Profile wiring (regression 
     expect(card).toContain('model.showPercentage');
   });
 
-  test('ProfileRatingsDashboard does not import or reference SuccessfulPerformance', () => {
+  test('ProfileRatingsDashboard uses authorized self-only Successful Performance wiring', () => {
     const dashboard = readFileSync(
       join(root, 'components', 'profile', 'ratings', 'ProfileRatingsDashboard.tsx'),
       'utf8',
     );
-    expect(dashboard.toLowerCase()).not.toContain('successfulperformance');
+    expect(dashboard).toContain('loadOwnSuccessfulPerformance');
+    expect(dashboard).toContain('SuccessfulPerformanceCard');
+    expect(dashboard).toContain('if (!isSelf)');
+    expect(dashboard).toContain('setSuccessfulPerformance(null)');
+    expect(dashboard).not.toContain('exact_control');
+    expect(dashboard).not.toContain('tournament-successful-performance');
+    expect(dashboard).not.toContain("from('games')");
+    expect(dashboard).not.toContain("from('player_rating_history_ledger')");
+    const spEffectStart = dashboard.indexOf('void loadOwnSuccessfulPerformance(supabase)');
+    const spEffectEnd = dashboard.indexOf('}, [isSelf]);', spEffectStart);
+    const spEffect = dashboard.slice(spEffectStart, spEffectEnd);
+    expect(spEffect).not.toContain('loadProfileRatingDashboardData');
   });
 
   test('no live profile route or component imports the card', () => {
@@ -220,6 +231,7 @@ test.describe('successfulPerformance — purity / capped-read regression guards'
   const removedCountToken = ['sample', 'Count'].join('');
   const allEightFiles = [
     ...productionFiles,
+    join(root, 'lib', 'profile', 'loadOwnSuccessfulPerformance.ts'),
     join(root, 'tests', 'unit', 'successfulPerformanceScoring.spec.ts'),
     join(root, 'tests', 'unit', 'successfulPerformanceUnlock.spec.ts'),
     join(root, 'tests', 'unit', 'successfulPerformanceCard.spec.ts'),
@@ -233,4 +245,27 @@ test.describe('successfulPerformance — purity / capped-read regression guards'
       );
     });
   }
+});
+
+test.describe('loadOwnSuccessfulPerformance — forbidden capped-source guard', () => {
+  const root = process.cwd();
+  const FORBIDDEN = [
+    'loadProfileRatingDashboard',
+    'profileRatingHistoryBuild',
+    'ratingHistoryLedgerBuild',
+    'profileRatingTrackGameCounts',
+    "from('games')",
+    "from('player_rating_history_ledger')",
+  ];
+
+  test('loader does not use capped dashboard or local game sources', () => {
+    const loader = readFileSync(
+      join(root, 'lib', 'profile', 'loadOwnSuccessfulPerformance.ts'),
+      'utf8',
+    );
+    for (const needle of FORBIDDEN) {
+      expect(loader, `${needle} must not appear in loader`).not.toContain(needle);
+    }
+    expect(loader).toContain("rpc('get_own_successful_performance')");
+  });
 });
