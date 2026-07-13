@@ -128,6 +128,36 @@ export function filterPublicVisibleOpenSeats<T extends PublicOpenSeatLobbyRow>(
   });
 }
 
+const EMPTY_PLAT_MODE_COUNTS: Record<PlatMode, number> = {
+  bullet: 0,
+  blitz: 0,
+  rapid: 0,
+  daily: 0,
+};
+
+/** Hub mode totals: rated + unrated visible seats per PLAT bucket (shared public contract). */
+export function countPublicVisibleOpenSeatsByPlatMode(
+  openCandidates: PublicOpenSeatLobbyRow[],
+  seatedForBusy: PublicOpenSeatSeatedRow[],
+): Record<PlatMode, number> {
+  const visible = filterPublicVisibleOpenSeats(openCandidates, seatedForBusy);
+  const counts = { ...EMPTY_PLAT_MODE_COUNTS };
+  for (const row of visible) {
+    const mode = platBucketForOpenSeat(row.tempo, row.live_time_control);
+    if (mode) counts[mode] += 1;
+  }
+  return counts;
+}
+
+/** Mode-room total for parity checks (all clocks, both lanes). */
+export function countPublicVisibleOpenSeatsForMode(
+  openCandidates: PublicOpenSeatLobbyRow[],
+  seatedForBusy: PublicOpenSeatSeatedRow[],
+  mode: PlatMode,
+): number {
+  return filterPublicVisibleOpenSeats(openCandidates, seatedForBusy, mode).length;
+}
+
 /** Count visible rows for selected clock + lane (parity with Open Games list). */
 export function countVisiblePublicOpenSeatsForSlice(
   rows: PublicOpenSeatLobbyRow[],
