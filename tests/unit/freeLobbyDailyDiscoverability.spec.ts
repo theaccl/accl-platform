@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { CANONICAL_CARDI_BOT_USER_ID } from '@/lib/bot/botIdentity';
 import { rowIndicatesDailyFreePlayPacing, rowIndicatesLiveFreePlayPacing } from '@/lib/freePlayLiveSession';
 import {
+  countPublicVisibleOpenSeatsByPlatMode,
   filterPublicVisibleOpenSeats,
   isPublicUnmatchedDailyOpenSeatRow,
   isPublicUnmatchedLiveOpenSeatRow,
@@ -15,7 +16,6 @@ import {
   countOpenSeatsByClockAndLane,
   formatModeRoomOpenClockTile,
 } from '@/lib/lobbyModeClockActivity';
-import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 
 function daily1dRated(id: string, host: string) {
   return {
@@ -89,11 +89,8 @@ test.describe('freeLobbyDailyDiscoverability', () => {
       daily1dRated('r', 'u1'),
       daily1dUnrated('u', 'u2'),
     ]);
-    const visible = filterPublicVisibleOpenSeats(openCandidates, seatedForBusy);
-    const dailyRows = visible.filter(
-      (r) => platBucketForOpenSeat(r.tempo, r.live_time_control) === 'daily',
-    );
-    expect(dailyRows).toHaveLength(2);
+    const hubCounts = countPublicVisibleOpenSeatsByPlatMode(openCandidates, seatedForBusy);
+    expect(hubCounts.daily).toBe(2);
 
     const ratedOnly = filterPublicVisibleOpenSeats(openCandidates, seatedForBusy, 'daily').filter(
       (r) => r.rated === true,

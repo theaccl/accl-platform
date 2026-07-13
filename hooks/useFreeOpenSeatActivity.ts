@@ -3,8 +3,10 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { FreePlayLobbyGamesRealtimeContext } from '@/components/free/FreePlayLobbyGamesRealtimeProvider';
+import { fetchPublicOpenSeatLobbyInventory } from '@/lib/fetchPublicOpenSeatLobbyInventory';
+import { applyHubInventoryResult } from '@/lib/freeLobbyOpenSeatListController';
+import { countPublicVisibleOpenSeatsByPlatMode } from '@/lib/freeLobbyOpenSeatFilters';
 import type { PlatMode } from '@/lib/freePlayModeTimeControl';
-import { platBucketForOpenSeat } from '@/lib/platOpenSeatBucket';
 import { supabase } from '@/lib/supabaseClient';
 
 const empty: Record<PlatMode, boolean> = {
@@ -44,6 +46,11 @@ export function useFreeOpenSeatActivity(): {
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
   const lastNotifyAtRef = useRef(0);
+  const hasGoodInventoryRef = useRef(false);
+  const countsRef = useRef(counts);
+  countsRef.current = counts;
+  const mountedRef = useRef(true);
+  const refetchRef = useRef<() => Promise<void>>(async () => undefined);
 
   const refetch = useCallback(async () => {
     if (inFlightRef.current) {
@@ -51,43 +58,51 @@ export function useFreeOpenSeatActivity(): {
       return;
     }
     inFlightRef.current = true;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-      inFlightRef.current = false;
-      return;
-    }
-    const { data, error } = await supabase
-      .from('games')
-      .select('tempo,live_time_control')
-      .eq('play_context', 'free')
-      .is('tournament_id', null)
-      .eq('status', 'active')
-      .is('black_player_id', null);
-    const next = { ...emptyCounts };
-    if (!error && data?.length) {
-      for (const row of data as { tempo: string | null; live_time_control: string | null }[]) {
-        const m = platBucketForOpenSeat(row.tempo, row.live_time_control);
-        if (m) next[m] += 1;
+    try {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
       }
-    }
-    setCounts(next);
-    setLoading(false);
-    if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-      // eslint-disable-next-line no-console
-      console.debug('[free-open-seat-activity] refetch', { totalRows: data?.length ?? 0, next });
-    }
-    inFlightRef.current = false;
-    if (pendingRef.current) {
-      pendingRef.current = false;
-      void refetch();
+      const { inventory, error } = await fetchPublicOpenSeatLobbyInventory(supabase);
+      if (!mountedRef.current) return;
+
+      const next = applyHubInventoryResult({
+        inventory,
+        error,
+        priorCounts: countsRef.current,
+        hasGoodInventory: hasGoodInventoryRef.current,
+        countFn: countPublicVisibleOpenSeatsByPlatMode,
+      });
+      setCounts(next.counts);
+      hasGoodInventoryRef.current = next.hasGoodInventory;
+      setLoading(next.loading);
+
+      if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
+        // eslint-disable-next-line no-console
+        console.debug('[free-open-seat-activity] refetch', {
+          error,
+          openCandidates: inventory?.openCandidates.length ?? 0,
+          next: next.counts,
+          loading: next.loading,
+        });
+      }
+    } finally {
+      inFlightRef.current = false;
+      if (pendingRef.current) {
+        pendingRef.current = false;
+        void refetchRef.current();
+      }
     }
   }, []);
 
-  const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
 
   useEffect(() => {
+    mountedRef.current = true;
     setLoading(true);
     void refetchRef.current();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [refetch]);
 
   useEffect(() => {
