@@ -87,6 +87,14 @@ export function createPresenceHeartbeatController(
   let interactionPending = false;
   let interactionEpoch = 0;
   let retryDelayMs = PRESENCE_HEARTBEAT_INTERVAL_MS;
+  // Incremented on every stop() so an in-flight request can detect that the
+  // controller it belongs to has been torn down and must not schedule any
+  // follow-up work (Codex P2 #2).
+  let controllerGeneration = 0;
+  // Set when a hidden advisory heartbeat could not be sent because a request
+  // was already in flight; the latest hidden state is delivered once the
+  // in-flight request settles (Codex P2 #1).
+  let pendingHiddenSend = false;
 
   const clearIntervalSafe = () => {
     if (intervalId != null) {
@@ -126,8 +134,10 @@ export function createPresenceHeartbeatController(
     fromInteraction: boolean,
     sendOpts: SendHeartbeatOptions = {},
   ) => {
+    if (!started) return;
     if (inFlight) return;
     inFlight = true;
+    const generation = controllerGeneration;
     const capturedEpoch = interactionEpoch;
     const interaction = fromInteraction || interactionPending;
     const payload: PresenceHeartbeatRequest = {
@@ -135,6 +145,11 @@ export function createPresenceHeartbeatController(
       visibility: options.getVisibility(),
       interaction,
     };
+
+    // True only while this request still belongs to a live controller. Once
+    // stop() runs (or a fresh start()/stop() cycle bumps the generation), no
+    // retry or follow-up scheduling is allowed from this in-flight request.
+    const isCurrent = () => started && generation === controllerGeneration;
 
     let needsInteractionFollowUp = false;
 
@@ -147,17 +162,26 @@ export function createPresenceHeartbeatController(
           needsInteractionFollowUp = true;
         }
         resetRetryDelay();
-      } else if (mayRetry(sendOpts.allowRetry)) {
+      } else if (isCurrent() && mayRetry(sendOpts.allowRetry)) {
         scheduleRetry();
       }
     } catch {
-      if (mayRetry(sendOpts.allowRetry)) {
+      if (isCurrent() && mayRetry(sendOpts.allowRetry)) {
         scheduleRetry();
       }
     } finally {
       inFlight = false;
-      if (needsInteractionFollowUp) {
+      if (isCurrent() && needsInteractionFollowUp) {
         void sendHeartbeat(false);
+      } else if (isCurrent() && pendingHiddenSend) {
+        // A hidden transition arrived while this request was in flight. Deliver
+        // the latest hidden state exactly once (no retry), and only if the tab
+        // is still hidden so we never send stale hidden state after a return to
+        // visible.
+        pendingHiddenSend = false;
+        if (options.getVisibility() === 'hidden') {
+          void sendHeartbeat(false, { allowRetry: false });
+        }
       }
     }
   };
@@ -175,9 +199,18 @@ export function createPresenceHeartbeatController(
     if (visibility === 'hidden') {
       clearIntervalSafe();
       clearRetry();
+      if (inFlight) {
+        // Cannot send now; remember to deliver the hidden advisory heartbeat
+        // once the in-flight request settles (Codex P2 #1).
+        pendingHiddenSend = true;
+        return;
+      }
       void sendHeartbeat(false, { allowRetry: false });
       return;
     }
+    // Returning to visible cancels any queued hidden send so stale hidden state
+    // is never delivered.
+    pendingHiddenSend = false;
     void sendHeartbeat(false);
     restartVisibleInterval();
   };
@@ -214,6 +247,10 @@ export function createPresenceHeartbeatController(
     },
     stop() {
       started = false;
+      // Invalidate any in-flight request so its settle handler cannot schedule
+      // a retry or follow-up after teardown (Codex P2 #2).
+      controllerGeneration += 1;
+      pendingHiddenSend = false;
       clearIntervalSafe();
       clearRetry();
       if (interactionDebounceId != null) {

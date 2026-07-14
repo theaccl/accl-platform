@@ -315,4 +315,142 @@ test.describe('presenceHeartbeatController', () => {
     expect(provider).toContain('usePresenceHeartbeat');
     expect(provider).not.toMatch(/setState\([^)]*heartbeat/i);
   });
+
+  test('Codex P2 #1: hidden transition during in-flight send delivers one hidden heartbeat afterward', async () => {
+    let visibility: 'visible' | 'hidden' = 'visible';
+    const gate1 = deferred<{ ok: true; serverTime: string }>();
+    const sent: SentPayload[] = [];
+    const timeouts: Array<{ fn: () => void; delay: number }> = [];
+    let sendCount = 0;
+
+    const controller = createPresenceHeartbeatController({
+      tabPresenceId: TAB_ID,
+      getVisibility: () => visibility,
+      setTimeoutFn: (fn, delay) => {
+        timeouts.push({ fn, delay: delay ?? 0 });
+        return timeouts.length;
+      },
+      clearTimeoutFn: () => {},
+      setIntervalFn: () => 1,
+      clearIntervalFn: () => {},
+      send: async (payload) => {
+        sent.push(payload);
+        sendCount += 1;
+        if (sendCount === 1) return gate1.promise;
+        return { ok: true, serverTime: 'ok' };
+      },
+    });
+
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.visibility).toBe('visible');
+
+    // Visibility flips to hidden while the first request is still in flight.
+    visibility = 'hidden';
+    controller.onVisibilityChange();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The hidden send is queued (inFlight), so it is not lost nor sent yet.
+    expect(sent).toHaveLength(1);
+
+    // In-flight request completes; the queued hidden heartbeat is delivered once.
+    gate1.resolve({ ok: true, serverTime: 'first' });
+    await gate1.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(2);
+    expect(sent.at(-1)?.visibility).toBe('hidden');
+
+    // No hidden retry loop: firing any scheduled timers produces no new sends.
+    for (const t of timeouts.splice(0)) t.fn();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(2);
+  });
+
+  test('Codex P2 #1: return to visible before queued hidden send suppresses stale hidden state', async () => {
+    let visibility: 'visible' | 'hidden' = 'visible';
+    const gate1 = deferred<{ ok: true; serverTime: string }>();
+    const sent: SentPayload[] = [];
+    let sendCount = 0;
+
+    const controller = createPresenceHeartbeatController({
+      tabPresenceId: TAB_ID,
+      getVisibility: () => visibility,
+      setTimeoutFn: (fn, delay) => setTimeout(fn, delay ?? 0),
+      setIntervalFn: () => 1,
+      clearIntervalFn: () => {},
+      send: async (payload) => {
+        sent.push(payload);
+        sendCount += 1;
+        if (sendCount === 1) return gate1.promise;
+        return { ok: true, serverTime: 'ok' };
+      },
+    });
+
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+
+    // Hidden while in flight → hidden send is queued.
+    visibility = 'hidden';
+    controller.onVisibilityChange();
+    // Back to visible before the in-flight request settles → queue is cancelled.
+    visibility = 'visible';
+    controller.onVisibilityChange();
+
+    gate1.resolve({ ok: true, serverTime: 'first' });
+    await gate1.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Stale hidden state is never delivered.
+    expect(sent.some((p) => p.visibility === 'hidden')).toBe(false);
+  });
+
+  test('Codex P2 #2: stop during in-flight failure schedules no retry or follow-up', async () => {
+    const gate1 = deferred<{ ok: false; status: number }>();
+    const sent: SentPayload[] = [];
+    const timeouts: Array<{ fn: () => void; delay: number }> = [];
+    let sendCount = 0;
+
+    const controller = createPresenceHeartbeatController({
+      tabPresenceId: TAB_ID,
+      getVisibility: () => 'visible',
+      setTimeoutFn: (fn, delay) => {
+        timeouts.push({ fn, delay: delay ?? 0 });
+        return timeouts.length;
+      },
+      clearTimeoutFn: () => {},
+      setIntervalFn: () => 1,
+      clearIntervalFn: () => {},
+      send: async (payload) => {
+        sent.push(payload);
+        sendCount += 1;
+        if (sendCount === 1) return gate1.promise;
+        return { ok: false, status: 503 };
+      },
+    });
+
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+
+    // Stop while the request is in flight.
+    controller.stop();
+
+    // The in-flight request now fails, after stop() already cleared timers.
+    gate1.resolve({ ok: false, status: 503 });
+    await gate1.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // No retry timer scheduled and no follow-up heartbeat sent.
+    expect(timeouts).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+
+    // Advancing beyond any retry window produces no further sends.
+    for (const t of timeouts.splice(0)) t.fn();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+  });
 });
