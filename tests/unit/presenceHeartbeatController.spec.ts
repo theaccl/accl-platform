@@ -407,6 +407,73 @@ test.describe('presenceHeartbeatController', () => {
     expect(sent.some((p) => p.visibility === 'hidden')).toBe(false);
   });
 
+  test('Codex P2 note: interaction follow-up covering hidden state does not double-send queued hidden heartbeat', async () => {
+    let visibility: 'visible' | 'hidden' = 'visible';
+    const gate1 = deferred<{ ok: true; serverTime: string }>();
+    const sent: SentPayload[] = [];
+    const timeouts: Array<{ fn: () => void; delay: number }> = [];
+    let sendCount = 0;
+
+    const controller = createPresenceHeartbeatController({
+      tabPresenceId: TAB_ID,
+      getVisibility: () => visibility,
+      setTimeoutFn: (fn, delay) => {
+        timeouts.push({ fn, delay: delay ?? 0 });
+        return timeouts.length;
+      },
+      clearTimeoutFn: () => {},
+      setIntervalFn: () => 1,
+      clearIntervalFn: () => {},
+      send: async (payload) => {
+        sent.push(payload);
+        sendCount += 1;
+        if (sendCount === 1) return gate1.promise;
+        return { ok: true, serverTime: 'ok' };
+      },
+    });
+
+    // 1. A visible non-interaction heartbeat is in flight.
+    controller.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.visibility).toBe('visible');
+    expect(sent[0]?.interaction).toBe(false);
+
+    // 2. A meaningful interaction becomes pending while that request is in flight.
+    controller.onMeaningfulInteraction();
+    // Fire the interaction debounce timer; the send is suppressed because a
+    // request is still in flight, so the interaction stays pending.
+    for (const t of timeouts.splice(0)) t.fn();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+    expect(controller.getInteractionPending()).toBe(true);
+
+    // 3. Visibility changes to hidden before the request settles.
+    visibility = 'hidden';
+    controller.onVisibilityChange();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(1);
+
+    // 4. The original request settles.
+    gate1.resolve({ ok: true, serverTime: 'first' });
+    await gate1.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // 5. The interaction follow-up sends exactly one heartbeat with visibility
+    //    hidden and interaction true.
+    // 6. No additional queued hidden heartbeat is sent for the same transition.
+    expect(sent).toHaveLength(2);
+    expect(sent.at(-1)?.visibility).toBe('hidden');
+    expect(sent.at(-1)?.interaction).toBe(true);
+    expect(controller.getInteractionPending()).toBe(false);
+
+    // 7. Advancing timers does not create a hidden retry loop.
+    for (const t of timeouts.splice(0)) t.fn();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(2);
+  });
+
   test('Codex P2 #2: stop during in-flight failure schedules no retry or follow-up', async () => {
     const gate1 = deferred<{ ok: false; status: number }>();
     const sent: SentPayload[] = [];
