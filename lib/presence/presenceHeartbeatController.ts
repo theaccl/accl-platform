@@ -172,6 +172,12 @@ export function createPresenceHeartbeatController(
     } finally {
       inFlight = false;
       if (isCurrent() && needsInteractionFollowUp) {
+        // The interaction follow-up sends the current visibility, so it already
+        // delivers the latest hidden state when the tab is hidden. Clear any
+        // queued hidden advisory first so the follow-up's own settle handler
+        // does not double-send a second hidden heartbeat for the same
+        // transition (Codex P2 note, PR #23).
+        pendingHiddenSend = false;
         void sendHeartbeat(false);
       } else if (isCurrent() && pendingHiddenSend) {
         // A hidden transition arrived while this request was in flight. Deliver
