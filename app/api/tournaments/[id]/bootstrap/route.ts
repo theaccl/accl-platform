@@ -26,12 +26,13 @@ function json(body: unknown, status = 200): Response {
  * Host/moderator bracket bootstrap — same persistence path as internal ops bootstrap.
  * Live tournaments: attendance gate + optional launch countdown before spawn.
  */
-export async function POST(request: Request, context: { params: { id: string } }): Promise<Response> {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   const guard = guardRequest(request, 'tournaments');
   if (!guard.ok) return guard.response;
 
   try {
-    const tournamentId = String(context.params?.id ?? '').trim();
+    const params = await context.params;
+const tournamentId = String(params?.id ?? '').trim();
     if (!UUID_RE.test(tournamentId)) {
       return json({ ok: false, ...tournamentApiErrorPayload('INVALID_TOURNAMENT_ID') }, 400);
     }

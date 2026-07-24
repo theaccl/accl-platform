@@ -25,13 +25,13 @@ function json(body: unknown, status = 200): Response {
  */
 export async function POST(
   _request: Request,
-  context: { params: Promise<{ id: string }> | { id: string } },
+    context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const guard = guardRequest(_request, 'tournaments');
   if (!guard.ok) return guard.response;
 
   try {
-    const params = await Promise.resolve(context.params);
+        const params = await context.params;
     const gameId = String(params?.id ?? '').trim();
     if (!gameId) return json({ ok: false, error: 'invalid_game_id' }, 400);
 
