@@ -39,12 +39,13 @@ function serializeAllowed(s: Extract<TournamentSnapshotResult, { access: 'allowe
 /**
  * Trusted tournament detail snapshot (service-backed). Does not widen client RLS.
  */
-export async function GET(request: Request, context: { params: { id: string } }): Promise<Response> {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   const guard = guardRequest(request, 'tournaments');
   if (!guard.ok) return guard.response;
 
   try {
-    const id = String(context.params?.id ?? '').trim();
+    const params = await context.params;
+const id = String(params?.id ?? '').trim();
     if (!isTournamentSnapshotId(id)) {
       auditApiLog('tournament_snapshot', { result: 'bad_request', reason: 'invalid_id' });
       return json({ ok: false, ...tournamentApiErrorPayload('INVALID_TOURNAMENT_ID') }, 400);

@@ -18,13 +18,14 @@ function json(body: unknown, status = 200): Response {
 /** Participant presence: explicit check-in + page heartbeat (pre-launch only). */
 export async function POST(
   request: Request,
-  context: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const guard = guardRequest(request, 'tournaments');
   if (!guard.ok) return guard.response;
 
   try {
-    const tournamentId = String(context.params?.id ?? '').trim();
+    const params = await context.params;
+const tournamentId = String(params?.id ?? '').trim();
     if (!UUID_RE.test(tournamentId)) {
       return json({ ok: false, error: 'Invalid tournament id.' }, 400);
     }

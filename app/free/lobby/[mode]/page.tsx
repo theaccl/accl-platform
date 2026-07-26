@@ -1,23 +1,33 @@
-import NavigationBar from '@/components/NavigationBar';
-import { FreeLobbyModeRoomContent } from '@/components/free/FreeLobbyModeRoomContent';
-import { FreePlayLobbyClient } from '@/components/FreePlayLobbyClient';
-import { getSupabaseUserFromCookies } from '@/lib/auth/getSupabaseUserFromCookies';
-import { PLAT_MODE_ORDER, type PlatMode } from '@/lib/freePlayModeTimeControl';
-import { buildLoginRedirect } from '@/lib/nexus/nexusRouteHelpers';
-import { notFound, redirect } from 'next/navigation';
+import NavigationBar from "@/components/NavigationBar";
+import { FreeLobbyModeRoomContent } from "@/components/free/FreeLobbyModeRoomContent";
+import { FreePlayLobbyClient } from "@/components/FreePlayLobbyClient";
+import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
+import {
+  PLAT_MODE_ORDER,
+  type PlatMode,
+} from "@/lib/freePlayModeTimeControl";
+import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
+import { notFound, redirect } from "next/navigation";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const fetchCache = 'force-no-store';
+export const fetchCache = "force-no-store";
 
 const VALID = new Set<string>(PLAT_MODE_ORDER);
 
-export default async function FreeLobbyModePage({ params }: { params: { mode: string } }) {
+export default async function FreeLobbyModePage({
+  params,
+}: {
+  params: Promise<{ mode: string }>;
+}) {
   const user = await getSupabaseUserFromCookies();
-  const raw = String(params.mode ?? '').toLowerCase();
+  const { mode } = await params;
+  const raw = String(mode ?? "").toLowerCase();
+
   if (!VALID.has(raw)) {
     notFound();
   }
+
   if (!user) {
     redirect(buildLoginRedirect(`/free/lobby/${raw}`));
   }

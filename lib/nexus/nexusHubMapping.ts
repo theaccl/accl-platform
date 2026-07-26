@@ -108,16 +108,17 @@ export function shouldHighlightResultTier(tier: string | undefined): boolean {
 export function formatRelativeTimeUtc(iso: string, nowMs: number = Date.now()): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "—";
-  let diffSec = Math.round((t - nowMs) / 1000);
+
+  const diffSec = Math.round((t - nowMs) / 1000);
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   const abs = Math.abs(diffSec);
+
   if (abs < 60) return rtf.format(Math.round(diffSec / 60) || -1, "minute");
   if (abs < 3600) return rtf.format(Math.round(diffSec / 60), "minute");
   if (abs < 86400) return rtf.format(Math.round(diffSec / 3600), "hour");
   if (abs < 86400 * 7) return rtf.format(Math.round(diffSec / 86400), "day");
   return rtf.format(Math.round(diffSec / (86400 * 7)), "week");
 }
-
 export function mapWinnersToRecentRows(winners: NexusWinner[], max = 8, nowMs?: number): NexusRecentResultRow[] {
   const now = nowMs ?? Date.now();
   const rows = winners
