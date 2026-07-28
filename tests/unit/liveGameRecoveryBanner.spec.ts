@@ -59,7 +59,7 @@ test.describe('live-game recovery banner — presentation', () => {
   });
 
   test('finished live row is excluded from banner candidates', () => {
-    const rows = [row({ id: 'done', status: 'finished', end_reason: 'draw_agreement' })];
+    const rows = [row({ id: 'done', status: 'finished' })];
     expect(selectSeatedLiveRecoveryRows(rows, 'u1')).toEqual([]);
   });
 

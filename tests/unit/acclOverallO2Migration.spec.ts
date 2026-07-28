@@ -21,7 +21,7 @@ function o2ImplementationSql(): string {
 
 function countHelperParameters(sql: string): number {
   const match = sql.match(
-    /create or replace function public\.rating_history_ledger_insert_row\s*\(([\s\S]*?)\)\s*returns uuid/is,
+    /create or replace function public\.rating_history_ledger_insert_row\s*\(([\s\S]*?)\)\s*returns uuid/i,
   );
   if (!match) return 0;
   return match[1]

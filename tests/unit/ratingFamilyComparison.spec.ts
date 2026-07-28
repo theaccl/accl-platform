@@ -56,7 +56,7 @@ test.describe('rating family comparison (unit)', () => {
   });
 
   test('does not include accl alias track', () => {
-    expect(MAJOR_FAMILY_COMPARISON_SERIES.some((s) => s.trackId === 'accl')).toBe(false);
+    expect(MAJOR_FAMILY_COMPARISON_SERIES.map((s) => String(s.trackId)).includes('accl')).toBe(false);
   });
 
   test('point counts equal input ledger events without synthesis', () => {

@@ -148,10 +148,10 @@ test.describe('successfulPerformanceRuntimeVerification (static script guards)',
   test('readiness doc documents Path B branch predictions', () => {
     const doc = readReadiness();
     expect(doc).toContain('Expected Path B local branches');
-    expect(doc).toMatch(/no_first_move.*branch=rpc_exclusion/s);
-    expect(doc).toMatch(/malformed result.*branch=rpc_exclusion/s);
-    expect(doc).toMatch(/invalid `play_context`.*branch=rpc_exclusion/s);
-    expect(doc).toMatch(/missing white player.*branch=constraint_rejection/s);
+    expect(doc).toMatch(/no_first_move[\s\S]*branch=rpc_exclusion/);
+    expect(doc).toMatch(/malformed result[\s\S]*branch=rpc_exclusion/);
+    expect(doc).toMatch(/invalid `play_context`[\s\S]*branch=rpc_exclusion/);
+    expect(doc).toMatch(/missing white player[\s\S]*branch=constraint_rejection/);
     expect(doc).toContain('Production catalog differences');
   });
 });

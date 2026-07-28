@@ -45,7 +45,8 @@ async function provisionVerificationProfile(
     email_confirm: true,
   });
   expect(error).toBeNull();
-  const userId = data!.user.id;
+  const userId = data?.user?.id;
+  if (!userId) throw new Error('Verification user creation returned no user id');
 
   const { data: existing } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
   if (existing?.id) return String(existing.id);
