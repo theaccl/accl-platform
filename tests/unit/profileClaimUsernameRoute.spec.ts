@@ -50,7 +50,7 @@ function createClaimUsernameMockSupabase(config: MockConfig) {
       data: { user: { id, user_metadata: {} } },
       error: null,
     }),
-    updateUserById: async (_id: string, _patch: unknown) => ({ data: { user: {} }, error: null }),
+    updateUserById: async () => ({ data: { user: {} }, error: null }),
   };
 
   const client = {
@@ -59,13 +59,13 @@ function createClaimUsernameMockSupabase(config: MockConfig) {
       const state: { eq: Record<string, unknown>; is?: { column: string; value: unknown } } = { eq: {} };
 
       const api = {
-        select: (_cols: string) => api,
+        select: () => api,
         eq: (column: string, value: unknown) => {
           state.eq[column] = value;
           if (column === 'id') eqUserIds.push(String(value));
           return api;
         },
-        neq: (_column: string, _value: unknown) => api,
+        neq: () => api,
         is: (column: string, value: unknown) => {
           state.is = { column, value };
           return api;
@@ -82,7 +82,7 @@ function createClaimUsernameMockSupabase(config: MockConfig) {
               updateFilters.push({ column, value, op: 'is' });
               return chain;
             },
-            select: (_cols: string) => chain,
+            select: () => chain,
             maybeSingle: async () => {
               if (config.update.kind === 'error') {
                 return { data: null, error: { code: config.update.code, message: config.update.message } };

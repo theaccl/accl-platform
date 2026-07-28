@@ -5,7 +5,6 @@ import {
   buildPublicOpenSeatLobbyInventory,
   chunkUniqueHostIds,
   fetchPublicOpenSeatLobbyInventory,
-  fetchSeatedRowsForHosts,
   mergePaginatedRowsById,
   PUBLIC_OPEN_SEAT_HOST_CHUNK_SIZE,
   PUBLIC_OPEN_SEAT_PAGE_SIZE,
@@ -79,7 +78,7 @@ function createPaginatedGamesClient(args: {
         } = {};
 
         const api = {
-          eq: (_c: string, _v: unknown) => api,
+          eq: () => api,
           is: (col: string, val: unknown) => {
             if (col === 'black_player_id' && val === null) state.blackNull = true;
             return api;

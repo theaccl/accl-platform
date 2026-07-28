@@ -39,7 +39,7 @@ function createOnboardingStatusMockSupabase(config: MockConfig) {
     from: (table: string) => {
       expect(table).toBe('profiles');
       return {
-        select: (_cols: string) => ({
+        select: () => ({
           eq: (column: string, value: unknown) => {
             expect(column).toBe('id');
             eqUserIds.push(String(value));

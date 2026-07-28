@@ -31,7 +31,7 @@ function createMockClient(config: {
     from: (table: string) => {
       expect(table).toBe('profiles');
       return {
-        select: (_cols: string) => ({
+        select: () => ({
           eq: (column: string, value: string) => {
             expect(column).toBe('id');
             eqFilters.push(value);
