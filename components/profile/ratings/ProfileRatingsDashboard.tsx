@@ -136,7 +136,6 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
   }, [subtracks, selectedDetail, activeCard]);
 
   const historyPoints = dashboard.historyByTrack[selectedDetail] ?? [];
-  const hasHistory = historyPoints.length > 0;
 
   const selectedMode = activeCard?.mode ?? null;
 
