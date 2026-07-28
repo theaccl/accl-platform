@@ -1922,7 +1922,6 @@ export default function GamePage() {
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const startedAt = Date.now();
 
-    const tempo = normalizeGameTempo(game!.tempo);
     const gameOver = gameOverFieldsAfterMove(nextFen, game!);
     const moveDurationMs = Date.now() - startedAt;
     const { data: sessionData } = await supabase.auth.getSession();
