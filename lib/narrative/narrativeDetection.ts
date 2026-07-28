@@ -41,11 +41,6 @@ export type ChampionRow = {
   settled_at: string;
 };
 
-function rankOf(standings: NexusStanding[], userId: string): number | null {
-  const s = standings.find((r) => r.user_id === userId);
-  return s ? s.rank : null;
-}
-
 function isTournamentWinnerRow(w: NexusWinner): boolean {
   return w.tier === "Tournament" || w.payout_category === "tournament_win";
 }

@@ -2,10 +2,7 @@
  * Pure helpers for Stage 2 major-family comparison (no synthetic points).
  */
 
-import {
-  buildMajorFamilySeriesData,
-  type MajorFamilySeriesData,
-} from '@/lib/profileRatingChartLevels';
+import type { MajorFamilySeriesData } from '@/lib/profileRatingChartLevels';
 import { filterPointsByLane, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 

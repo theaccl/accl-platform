@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { coercePlatTimeForMode, type PlatMode } from '@/lib/freePlayModeTimeControl';
+import { coercePlatTimeForMode } from '@/lib/freePlayModeTimeControl';
 import {
   type FreePlayQueueTargetSlot,
   freePlayUserBlockedForTargetSlot,

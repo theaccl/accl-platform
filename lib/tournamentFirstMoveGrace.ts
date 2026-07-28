@@ -61,6 +61,7 @@ export function firstMoveGraceExpired(
 export function firstMoveGraceAbsenteeSide(
   _row: Pick<FirstMoveGraceGameRow, 'turn'>,
 ): 'white' | 'black' {
+  void _row;
   return 'white';
 }
 
