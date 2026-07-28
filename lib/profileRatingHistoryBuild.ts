@@ -58,6 +58,7 @@ function resultForUser(
   whiteId: string | null,
   blackId: string | null,
 ): RatingHistoryResult {
+  void blackId;
   const isWhite = whiteId === userId;
   if (gameResult === 'draw' || gameResult === '1/2-1/2') return 'draw';
   if (gameResult === 'white_win') return isWhite ? 'win' : 'loss';

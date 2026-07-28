@@ -92,6 +92,7 @@ export function mergeAuthoritativeTrackGameCounts(
   playerId: string,
   _trackIds: string[],
 ): Record<string, number> {
+  void _trackIds;
   const counts: Record<string, number> = {};
   const modes: RatingMode[] = ['bullet', 'blitz', 'rapid', 'daily'];
 
