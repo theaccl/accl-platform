@@ -64,7 +64,7 @@ test.describe('Phase 1 — tournament standings + champion (integration)', () =>
     await applyTournamentEntrySeeds(
       supabase,
       tournamentId,
-      ids.map((userId, i) => ({ userId, seed: i + 1 })),
+      ids.map((userId, i) => ({ userId, seed: i + 1, ratingUsed: 1500, createdAtMs: i })),
     );
 
     const viewer = {
@@ -89,6 +89,8 @@ test.describe('Phase 1 — tournament standings + champion (integration)', () =>
     expect(active.matches.filter((m) => m.round === 1).every((m) => m.gameId)).toBe(true);
 
     const active2 = await buildTournamentSnapshot({ tournamentId, viewer });
+    expect(active2.access).toBe('allowed');
+    if (active2.access !== 'allowed') return;
     expect(JSON.stringify(active.matches)).toBe(JSON.stringify(active2.matches));
 
     const r1 = active.matches.filter((m) => m.round === 1);

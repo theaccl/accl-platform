@@ -100,12 +100,14 @@ test.describe('profile rating ticker lane tabs (unit)', () => {
         trackId: 'tournament' as const,
         label: 'Tournament',
         color: '#eab308',
+        legendTestId: 'major-family-legend-tournament',
         points: [point({ id: 't1', ratingTrackId: 'tournament' })],
       },
       {
         trackId: 'free_bullet' as const,
         label: 'Bullet',
         color: '#f472b6',
+        legendTestId: 'major-family-legend-bullet',
         points: [],
       },
     ];
