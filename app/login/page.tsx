@@ -7,7 +7,6 @@ import {
   detectEmailTypoSuggestion,
   formatTypoPrompt,
   isTypoGateBlocking,
-  normalizeEmailInput,
   validateEmailSyntax,
   type EmailTypoDecisionState,
   type EmailTypoSuggestion,
