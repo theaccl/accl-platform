@@ -18,7 +18,6 @@ import {
   type IntelligenceMode,
 } from '@/lib/analysis';
 import {
-  afterMoveTimingFields,
   gameTimingRuleSummaryLine,
   isCorrespondenceDeadlineActive,
   isLiveDailyClockTicking,
@@ -32,7 +31,6 @@ import { clearHostLiveOpenSeatFollow, registerHostLiveOpenSeatFollow } from '@/l
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 import { gameDisplayTempoLabel, gameModeBannerLabel } from '@/lib/gameDisplayLabel';
 import {
-  canonicalLiveTimeControlForInsert,
   clockBudgetMsForGame,
   correspondenceMoveDeadlineMs,
 } from '@/lib/gameTimeControl';
@@ -141,34 +139,6 @@ type GameRow = {
   move_count?: number | null;
 };
 
-type PublicFinishedGameSnapshot = {
-  game: Pick<
-    GameRow,
-    | 'id'
-    | 'status'
-    | 'white_player_id'
-    | 'black_player_id'
-    | 'winner_id'
-    | 'result'
-    | 'end_reason'
-    | 'finished_at'
-    | 'created_at'
-    | 'mode'
-    | 'fen'
-    | 'turn'
-    | 'tempo'
-    | 'live_time_control'
-    | 'rated'
-    | 'play_context'
-    | 'source_type'
-    | 'tournament_id'
-  >;
-  players: {
-    white: { id: string; username: string | null } | null;
-    black: { id: string; username: string | null } | null;
-  };
-  move_logs: MoveLogRow[];
-};
 
 type CurrentMoveGameRow = {
   id: string;
