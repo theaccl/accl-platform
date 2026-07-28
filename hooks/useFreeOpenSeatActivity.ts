@@ -77,7 +77,6 @@ export function useFreeOpenSeatActivity(): {
       setLoading(next.loading);
 
       if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console
         console.debug('[free-open-seat-activity] refetch', {
           error,
           openCandidates: inventory?.openCandidates.length ?? 0,
