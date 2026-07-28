@@ -9,7 +9,6 @@ import {
   provisioningBlockedReason,
 } from '@/lib/emailVerificationGate';
 import {
-  coercePlatTimeForMode,
   platSelectionToStoredGameFields,
   type PlatMode,
 } from '@/lib/freePlayModeTimeControl';
