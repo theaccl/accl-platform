@@ -8,7 +8,6 @@ import {
   type ClientNotificationItem,
 } from "@/lib/notifications/buildClientNotifications";
 import {
-  getReadNotificationIds,
   isNotificationUnread,
   markAllNotificationsRead,
   markNotificationRead,
@@ -39,7 +38,7 @@ export function NotificationsPageClient() {
   const [items, setItems] = useState<ClientNotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [readGeneration, setReadGeneration] = useState(0);
+  const [, setReadGeneration] = useState(0);
 
   const refreshReadUi = useCallback(() => setReadGeneration((n) => n + 1), []);
 
@@ -90,10 +89,7 @@ export function NotificationsPageClient() {
     })).filter((g) => g.rows.length > 0);
   }, [items]);
 
-  const unreadCount = useMemo(
-    () => items.filter((i) => isNotificationUnread(i.id)).length,
-    [items, readGeneration]
-  );
+  const unreadCount = items.filter((i) => isNotificationUnread(i.id)).length;
 
   const markAll = () => {
     markAllNotificationsRead(items.map((i) => i.id));
