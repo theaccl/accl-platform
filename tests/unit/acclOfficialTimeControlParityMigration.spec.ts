@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const MIGRATION = '20260619150000_accl_official_time_control_parity.sql';
@@ -27,7 +27,6 @@ test.describe('ACCL official time control parity migration (static)', () => {
   });
 
   test('no duplicate migration basename', () => {
-    const { readdirSync } = require('node:fs') as typeof import('node:fs');
     const names = readdirSync(join(process.cwd(), 'supabase', 'migrations')).filter((n) =>
       n.includes('accl_official_time_control_parity'),
     );
