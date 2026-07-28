@@ -33,7 +33,7 @@ export default function ProfileActionSlot({ isSelf, profileUserId, username }: P
       ) : (
         <div className="flex flex-wrap items-center gap-3" data-testid="profile-visitor-actions">
           <AddFriendButton profileUserId={profileUserId} />
-          <DirectChallengeButton userId={profileUserId} username={username} />
+          <DirectChallengeButton username={username} />
         </div>
       )}
     </section>
