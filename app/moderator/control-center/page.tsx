@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import NavigationBar from "@/components/NavigationBar";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
@@ -122,7 +122,7 @@ export default function ModeratorControlCenterPage() {
     return "bg-gray-900/40 text-gray-300 border-gray-700";
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -173,11 +173,11 @@ export default function ModeratorControlCenterPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [nexusLimit, nexusOutputType, nexusStatus, nexusSubjectScope, nexusWindowHours]);
 
   useEffect(() => {
     void load();
-  }, [nexusOutputType, nexusSubjectScope, nexusStatus, nexusWindowHours, nexusLimit]);
+  }, [load]);
 
   async function runAction(payload: Record<string, unknown>) {
     if (!token) return;

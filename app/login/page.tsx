@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { performSignIn, performSignUp } from '@/app/login/authHandlers';
 import {
@@ -127,7 +127,7 @@ function LoginPageInner() {
     setMessage('');
   };
 
-  const showVerificationPending = (pendingEmail: string) => {
+  const showVerificationPending = useCallback((pendingEmail: string) => {
     const normalized = pendingEmail.trim();
     if (!normalized) return;
     storePendingVerificationEmail(normalized);
@@ -135,9 +135,9 @@ function LoginPageInner() {
     setShowEmailReview(false);
     setReviewEmail('');
     setMessage('');
-  };
+  }, []);
 
-  const routeAuthenticatedSession = async (
+  const routeAuthenticatedSession = useCallback(async (
     accessToken: string,
     user: EmailVerificationUser | null | undefined,
   ) => {
@@ -149,7 +149,7 @@ function LoginPageInner() {
       return;
     }
     router.replace(route.destination);
-  };
+  }, [nextParam, router, showVerificationPending]);
 
   const restartSignupWithDifferentEmail = () => {
     clearPendingVerificationEmail();
@@ -238,7 +238,7 @@ function LoginPageInner() {
       window.clearTimeout(showFormFallback);
       listener.subscription.unsubscribe();
     };
-  }, [router, nextParam, confirmationComplete]);
+  }, [confirmationComplete, routeAuthenticatedSession]);
 
   const switchMode = (targetMode: 'login' | 'signup') => {
     if (busy) return;

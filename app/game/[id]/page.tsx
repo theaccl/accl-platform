@@ -1674,9 +1674,7 @@ export default function GamePage() {
     gameId,
     loading,
     replayStep,
-    game?.id,
-    game?.status,
-    game?.tempo,
+    game,
     loadGameSnapshot,
   ]);
 
