@@ -66,12 +66,12 @@ function createFakeSupabaseForModeratorQueue() {
         }
         return { error: null };
       },
-      select: (_columns: string, _opts?: unknown) => api,
+      select: () => api,
       eq: (k: string, v: unknown) => {
         (state.eq as Record<string, unknown>)[k] = v;
         return api;
       },
-      order: (_k: string, _opts?: unknown) => api,
+      order: () => api,
       range: (fromN: number, toN: number) => {
         state.rangeFrom = fromN;
         state.rangeTo = toN;

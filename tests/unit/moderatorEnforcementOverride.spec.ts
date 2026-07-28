@@ -37,7 +37,7 @@ function createFakeSupabaseForEnforcement() {
         }
         return { error: null };
       },
-      select: (_columns: string) => api,
+      select: () => api,
       eq: (k: string, v: unknown) => {
         (state.eq as Record<string, unknown>)[k] = v;
         return api;

@@ -280,7 +280,7 @@ async function main() {
 
   const supabase = createClient(url, key, { auth: { persistSession: false } });
   const players = await resolveFourPlayerIds(supabase);
-  const [p1, p2, p3, p4] = players;
+  const [p1, p2] = players;
   ok(`using 4 entrants (seed order): ${players.map((id) => id.slice(0, 8)).join(', ')}…`);
 
   const { data: creator } = await supabase.from('profiles').select('id').limit(1).maybeSingle();

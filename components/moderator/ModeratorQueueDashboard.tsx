@@ -32,11 +32,13 @@ export function ModeratorQueueDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const { offset, limit } = pagination;
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const query = buildQueueQuery(filters, pagination);
+      const query = buildQueueQuery(filters, { ...pagination, offset, limit });
       const payload = await fetchModeratorQueueList(query);
       setItems(payload.items);
       setPagination(payload.pagination);
@@ -45,7 +47,7 @@ export function ModeratorQueueDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.offset, pagination.limit]);
+  }, [filters, limit, offset, pagination]);
 
   useEffect(() => {
     void load();

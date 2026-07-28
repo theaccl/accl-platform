@@ -187,7 +187,6 @@ export function settlePlayerBadgeState(input: {
   }
 
   if (borderBefore != null) {
-    const danger = demotionDangerThreshold(borderBefore);
     const enteredDanger =
       isInDemotionDanger(input.ratingAfter, borderBefore) &&
       !isInDemotionDanger(input.ratingBefore, borderBefore);

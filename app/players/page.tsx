@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useMemo, useState } from 'react';
 import { AppShellNav } from '@/components/AppShellNav';
@@ -178,9 +179,12 @@ export default function PlayersLookupPage() {
                       }}
                     >
                       {avatarUrl ? (
-                        <img
+                        <Image
                           src={avatarUrl}
                           alt={`${username} avatar`}
+                          width={44}
+                          height={44}
+                          unoptimized
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (

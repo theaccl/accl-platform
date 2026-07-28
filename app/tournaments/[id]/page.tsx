@@ -444,8 +444,6 @@ export default function TournamentDetailPage() {
                 isParticipant: Boolean(viewerMeta?.isParticipant),
                 launch: launchMeta,
               }}
-              matches={matchesList}
-              gameStatusById={gameStatusById}
               onReload={loadSnapshot}
             />
           ) : null}

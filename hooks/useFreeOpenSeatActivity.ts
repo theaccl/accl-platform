@@ -77,7 +77,6 @@ export function useFreeOpenSeatActivity(): {
       setLoading(next.loading);
 
       if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console
         console.debug('[free-open-seat-activity] refetch', {
           error,
           openCandidates: inventory?.openCandidates.length ?? 0,
@@ -107,7 +106,7 @@ export function useFreeOpenSeatActivity(): {
 
   useEffect(() => {
     if (!lobbyRt) return;
-    return lobbyRt.subscribe((_event) => {
+    return lobbyRt.subscribe(() => {
       const now = Date.now();
       if (now - lastNotifyAtRef.current < 1_500) return;
       lastNotifyAtRef.current = now;

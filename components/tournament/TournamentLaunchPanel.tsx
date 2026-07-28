@@ -8,7 +8,6 @@ import {
   TOURNAMENT_FIELD_READY_MESSAGE,
 } from '@/lib/tournamentSessionContinuity';
 import {
-  isLiveTournamentForLaunch,
   launchCountdownRemainingSec,
   LIVE_LAUNCH_COUNTDOWN_SEC,
 } from '@/lib/tournamentLaunchAttendance';
@@ -39,15 +38,6 @@ export type TournamentLaunchPanelMeta = {
 type Props = {
   currentUserId: string | null;
   meta: TournamentLaunchPanelMeta;
-  matches: Array<{
-    round_number: number;
-    match_number: number;
-    player1_id: string | null;
-    player2_id: string | null;
-    game_id: string | null;
-    winner_id: string | null;
-  }>;
-  gameStatusById: Record<string, string>;
   onReload: () => Promise<void>;
 };
 
@@ -56,8 +46,6 @@ const TOURNAMENT_STARTED_REDIRECT_MSG = 'Tournament started. Taking you to your 
 export function TournamentLaunchPanel({
   currentUserId,
   meta,
-  matches,
-  gameStatusById,
   onReload,
 }: Props) {
   const router = useRouter();

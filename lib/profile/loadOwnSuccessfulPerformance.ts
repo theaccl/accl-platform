@@ -79,19 +79,6 @@ function narrowSourceStatus(value: unknown): RpcSourceStatus | null {
   return null;
 }
 
-function isRatingModeName(value: unknown): value is RatingModeName {
-  return (
-    value === 'bullet' ||
-    value === 'blitz' ||
-    value === 'rapid' ||
-    value === 'daily'
-  );
-}
-
-function isBroadModeColor(value: unknown): value is SuccessfulPerformanceBroadModeColor {
-  return value === 'white' || value === 'black';
-}
-
 function isValidRpcCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }

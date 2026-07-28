@@ -224,7 +224,7 @@ export async function POST(request: Request): Promise<Response> {
   let supabase;
   try {
     supabase = createServiceRoleClient();
-  } catch (e) {
+  } catch {
     auditApiLog('submit_move', { result: 'service_config_error', user: shortId(userId) });
     return json(
       { error: 'service_unavailable', message: 'Service temporarily unavailable. Try again in a moment.' },

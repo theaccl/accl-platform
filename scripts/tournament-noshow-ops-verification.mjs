@@ -317,7 +317,7 @@ async function cleanupTournament(supabase, tournamentId, gameIds) {
 }
 
 async function verifyDrawDoesNotAdvance(supabase, players) {
-  const [p1, p2, p3, p4] = players;
+  const [, p2] = players;
   const { data: creator } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
   if (!creator?.id) fail('no profile for created_by');
 
@@ -371,7 +371,7 @@ async function verifyDrawDoesNotAdvance(supabase, players) {
 }
 
 async function verifyOperatorForfeitCompletes(supabase, players) {
-  const [p1, p2, p3, p4] = players;
+  const [p1, p2] = players;
   const { data: creator } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
   if (!creator?.id) fail('no profile for created_by');
 

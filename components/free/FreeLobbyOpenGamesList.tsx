@@ -106,7 +106,7 @@ export function FreeLobbyOpenGamesList({
       return;
     }
     router.push(`/game/${selected.id}?join=1`);
-  }, [router, selected]);
+  }, [mode, router, selected, selectedClock, selectedRated]);
 
   return (
     <section

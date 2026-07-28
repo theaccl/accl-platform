@@ -32,7 +32,7 @@ export function useFreeLobbyModeClockActivity(
 } {
   const { data: watchData, loading: watchLoading, error: watchError } =
     useFreePlayWatchList(viewerEcosystem);
-  const watchRows = watchData?.byMode[mode] ?? [];
+  const watchRows = useMemo(() => watchData?.byMode[mode] ?? [], [mode, watchData]);
   const [snap, setSnap] = useState<FreeLobbyModeClockOpenSnapshot>(() => ({
     openByClock: emptyClockLaneCountsForMode(mode),
     openLoading: true,

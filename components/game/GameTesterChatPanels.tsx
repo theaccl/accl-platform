@@ -12,9 +12,6 @@ import { supabase } from '@/lib/supabaseClient';
 
 const CHAT_BODY_MAX = 2000;
 
-/** Dev-only: detect duplicate realtime channel creation (Strict Mode / effect churn). */
-let gameChatChannelSeq = 0;
-
 /** Dev-only: where a chat load was triggered from (initial and tab focus; no network poll) */
 type GameChatLoadSource = 'initial' | 'visibilitychange';
 
@@ -347,7 +344,6 @@ function TesterSpectatorChatLane({ gameId, accessToken, viewerEcosystem }: LaneS
 
   useEffect(() => {
     const filter = `game_id=eq.${gameId}`;
-    ++gameChatChannelSeq;
     const channelName = `game-tester-chat-${gameId}-spectator-only`;
     const channel = supabase
       .channel(channelName)
@@ -515,7 +511,6 @@ function TesterPlayerGameChatLane({
 
   useEffect(() => {
     const filter = `game_id=eq.${gameId}`;
-    ++gameChatChannelSeq;
     const channelName = `game-tester-chat-${gameId}-player-only-${variant}`;
     const channel = supabase
       .channel(channelName)

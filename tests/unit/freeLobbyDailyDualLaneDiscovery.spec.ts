@@ -15,7 +15,6 @@ import {
   UNRATED_DAILY_QUEUE_CAP_MESSAGE,
 } from '@/lib/freePlayDailyConcurrency';
 import { openSeatMatchesPlatClock } from '@/lib/freePlayOpenSeatsFilter';
-import type { PlatMode } from '@/lib/freePlayModeTimeControl';
 
 function dailyRow(id: string, tc: string, rated: boolean) {
   return {

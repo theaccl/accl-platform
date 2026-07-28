@@ -1,11 +1,10 @@
 import Link from 'next/link';
 
 type Props = {
-  userId: string;
   username: string | null;
 };
 
-export default function DirectChallengeButton({ userId: _userId, username }: Props) {
+export default function DirectChallengeButton({ username }: Props) {
   const href = username ? `/free/create?opponent=${encodeURIComponent(username)}` : '/free/create';
 
   return (

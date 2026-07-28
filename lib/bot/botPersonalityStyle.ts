@@ -38,7 +38,7 @@ function sortedByScore(lines: BotCandidateLine[]): BotCandidateLine[] {
   return [...lines].filter((l) => l.move.trim().length > 0).sort((a, b) => (b.scoreCp ?? -99999) - (a.scoreCp ?? -99999));
 }
 
-function pickIndex(style: BotPersonalityStyle, sorted: BotCandidateLine[], difficulty: BotDifficultyLevel): number {
+function pickIndex(style: BotPersonalityStyle, sorted: BotCandidateLine[]): number {
   if (sorted.length === 0) return -1;
   if (style === 'chaos') {
     return Math.floor(Math.random() * sorted.length);
@@ -91,7 +91,7 @@ export function selectBotMoveForStyle(
     return { move: blunder.move, rationale: `humanized-inaccuracy-l${difficulty}` };
   }
 
-  const idx = pickIndex(style, sorted, difficulty);
+  const idx = pickIndex(style, sorted);
   if (idx < 0) return null;
   const pick = sorted[idx];
   return { move: pick.move, rationale: `${style}-l${difficulty}` };

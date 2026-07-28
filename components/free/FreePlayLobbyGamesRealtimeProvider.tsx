@@ -140,7 +140,6 @@ export function FreePlayLobbyGamesRealtimeProvider({ children }: { children: Rea
       s.flushesRun += 1;
       s.lastFlushAt = Date.now();
       if (process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console
         console.debug('[free-lobby-games-rt] flush', {
           listeners: listenersRef.current.size,
           flushesRun: s.flushesRun,
@@ -173,7 +172,6 @@ export function FreePlayLobbyGamesRealtimeProvider({ children }: { children: Rea
         const since = Date.now() - lastFlushWallMsRef.current;
         if (since < POLL_SUPPRESS_MS_AFTER_FLUSH) {
           if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-            // eslint-disable-next-line no-console
             console.debug('[free-lobby-games-rt] scheduleResync poll skipped (recent flush)', { sinceMs: since });
           }
           return;
@@ -186,7 +184,6 @@ export function FreePlayLobbyGamesRealtimeProvider({ children }: { children: Rea
       }
       s.pageVisible = document.visibilityState === 'visible';
       if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console
         console.debug('[free-lobby-games-rt] scheduleResync', kind);
       }
       if (lobbyGamesRtDebugEnabled() && typeof window !== 'undefined') {
@@ -270,18 +267,18 @@ export function FreePlayLobbyGamesRealtimeProvider({ children }: { children: Rea
         debugStateRef.current.channelStatus = status;
         void syncWindowDebug();
         if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-          // eslint-disable-next-line no-console
           console.debug('[free-lobby-games-rt] channel', status, {
             listeners: listenersRef.current.size,
           });
         }
       });
+    const debugState = debugStateRef.current;
     return () => {
       if (debounceRef.current != null) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
-      debugStateRef.current.channelStatus = 'closed';
+      debugState.channelStatus = 'closed';
       if (lobbyGamesRtDebugEnabled() && typeof window !== 'undefined') {
         (window as unknown as { __accl_freeLobbyGamesRt?: FreeLobbyGamesRtDebug }).__accl_freeLobbyGamesRt = undefined;
       }
@@ -327,7 +324,6 @@ export function FreePlayLobbyGamesRealtimeProvider({ children }: { children: Rea
 
   useEffect(() => {
     if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
-      // eslint-disable-next-line no-console
       console.debug('[free-lobby-games-rt] provider mounted');
     }
   }, []);

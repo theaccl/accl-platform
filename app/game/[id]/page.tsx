@@ -18,7 +18,6 @@ import {
   type IntelligenceMode,
 } from '@/lib/analysis';
 import {
-  afterMoveTimingFields,
   gameTimingRuleSummaryLine,
   isCorrespondenceDeadlineActive,
   isLiveDailyClockTicking,
@@ -32,7 +31,6 @@ import { clearHostLiveOpenSeatFollow, registerHostLiveOpenSeatFollow } from '@/l
 import { LIVE_CHALLENGE_ACCEPT_BLOCKED_MESSAGE } from '@/lib/liveChallengeAcceptGuard';
 import { gameDisplayTempoLabel, gameModeBannerLabel } from '@/lib/gameDisplayLabel';
 import {
-  canonicalLiveTimeControlForInsert,
   clockBudgetMsForGame,
   correspondenceMoveDeadlineMs,
 } from '@/lib/gameTimeControl';
@@ -92,17 +90,14 @@ import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
 import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
-const MOVE_LOG_LOAD_REASONS = [
-  'bootstrap',
-  'realtime_insert',
-  'post_move',
-  'timeout_finish',
-  'resign',
-  'abandon_open_seat',
-  'unknown',
-] as const;
-
-type MoveLogLoadReason = (typeof MOVE_LOG_LOAD_REASONS)[number];
+type MoveLogLoadReason =
+  | 'bootstrap'
+  | 'realtime_insert'
+  | 'post_move'
+  | 'timeout_finish'
+  | 'resign'
+  | 'abandon_open_seat'
+  | 'unknown';
 
 type GameRow = {
   id: string;
@@ -141,34 +136,6 @@ type GameRow = {
   move_count?: number | null;
 };
 
-type PublicFinishedGameSnapshot = {
-  game: Pick<
-    GameRow,
-    | 'id'
-    | 'status'
-    | 'white_player_id'
-    | 'black_player_id'
-    | 'winner_id'
-    | 'result'
-    | 'end_reason'
-    | 'finished_at'
-    | 'created_at'
-    | 'mode'
-    | 'fen'
-    | 'turn'
-    | 'tempo'
-    | 'live_time_control'
-    | 'rated'
-    | 'play_context'
-    | 'source_type'
-    | 'tournament_id'
-  >;
-  players: {
-    white: { id: string; username: string | null } | null;
-    black: { id: string; username: string | null } | null;
-  };
-  move_logs: MoveLogRow[];
-};
 
 type CurrentMoveGameRow = {
   id: string;
@@ -1707,9 +1674,7 @@ export default function GamePage() {
     gameId,
     loading,
     replayStep,
-    game?.id,
-    game?.status,
-    game?.tempo,
+    game,
     loadGameSnapshot,
   ]);
 
@@ -1952,7 +1917,6 @@ export default function GamePage() {
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const startedAt = Date.now();
 
-    const tempo = normalizeGameTempo(game!.tempo);
     const gameOver = gameOverFieldsAfterMove(nextFen, game!);
     const moveDurationMs = Date.now() - startedAt;
     const { data: sessionData } = await supabase.auth.getSession();

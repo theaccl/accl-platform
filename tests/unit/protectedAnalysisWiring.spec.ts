@@ -38,7 +38,7 @@ function createFakeServiceClient() {
         }
         return { error: null };
       },
-      select: (_columns: string) => api,
+      select: () => api,
       eq: (k: string, v: unknown) => {
         (state.eq as Record<string, unknown>)[k] = v;
         return api;
@@ -47,7 +47,7 @@ function createFakeServiceClient() {
         (state.gte as Record<string, unknown>)[k] = v;
         return api;
       },
-      order: (_k: string, _opts?: unknown) => api,
+      order: () => api,
       limit: async (n: number) => {
         if (table !== 'anti_cheat_events') return { data: [], error: null };
         const uid = String((state.eq as Record<string, unknown>).user_id ?? '');

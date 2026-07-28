@@ -12,10 +12,6 @@ export type SeasonMeta = {
   status: SeasonStatus;
 };
 
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
 /** ISO bounds for half-year in UTC. */
 function halfYearBounds(year: number, half: 1 | 2): { start: Date; end: Date } {
   if (half === 1) {
@@ -32,7 +28,6 @@ function halfYearBounds(year: number, half: 1 | 2): { start: Date; end: Date } {
 
 export function seasonIdForUtc(iso: string | Date): string {
   const d = typeof iso === "string" ? new Date(iso) : iso;
-  const t = d.getTime();
   const y = d.getUTCFullYear();
   const m = d.getUTCMonth();
   const half: 1 | 2 = m < 6 ? 1 : 2;

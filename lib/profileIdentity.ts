@@ -85,6 +85,7 @@ export function publicDisplayNameFromUserMetadata(
   _meta: Record<string, unknown>,
   _accountEmail: string | null | undefined = undefined,
 ): string {
+  void _accountEmail;
   return PUBLIC_DISPLAY_FALLBACK;
 }
 

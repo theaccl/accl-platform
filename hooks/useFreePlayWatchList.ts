@@ -61,7 +61,6 @@ export function useFreePlayWatchList(viewerEcosystem: 'adult' | 'k12' = 'adult')
         setData(j);
         if (lobbyGamesRtDebugEnabled() && process.env.NODE_ENV === 'development') {
           const n = (Object.keys(j.byMode) as PlatMode[]).reduce((a, m) => a + (j.byMode[m]?.length ?? 0), 0);
-          // eslint-disable-next-line no-console
           console.debug('[free-play-watch-list] refetch', { rowsTotal: n, seq: mySeq });
         }
       } catch {
@@ -113,7 +112,7 @@ export function useFreePlayWatchList(viewerEcosystem: 'adult' | 'k12' = 'adult')
 
   useEffect(() => {
     if (!lobbyRt) return;
-    return lobbyRt.subscribe((_event) => {
+    return lobbyRt.subscribe(() => {
       requestNotifyResync();
     });
   }, [lobbyRt, requestNotifyResync]);

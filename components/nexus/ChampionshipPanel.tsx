@@ -23,7 +23,7 @@ function stateLabel(l: LifecycleState, k12: boolean): string {
   }
 }
 
-function timelineSteps(current: LifecycleState): LifecycleState[] {
+function timelineSteps(): LifecycleState[] {
   return ["announce", "countdown", "live", "recap"];
 }
 
@@ -58,7 +58,7 @@ function ChampionshipPanel({
 
   if (!primary) return null;
 
-  const steps = timelineSteps(primary.lifecycle_state);
+  const steps = timelineSteps();
 
   const collapsed = (
     <div className="space-y-3">

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
 
 import { FLAG_PREFER_NOT_TO_SAY_LABEL, type FlagIdentityPresentation } from '@/lib/flagDisplay';
@@ -25,11 +26,12 @@ export default function ProfileFlagPill({ identity }: ProfileFlagPillProps) {
   return (
     <span className="inline-flex max-w-full items-center gap-2">
       {showIcon ? (
-        <img
+        <Image
           src={identity.iconUrl!}
           alt=""
           width={24}
           height={18}
+          unoptimized
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -95,11 +96,12 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
       >
         <span className="flex min-w-0 items-center gap-2 truncate">
           {triggerDisplay.iconUrl ? (
-            <img
+            <Image
               src={triggerDisplay.iconUrl}
               alt=""
               width={24}
               height={18}
+              unoptimized
               referrerPolicy="no-referrer"
               className="h-[18px] w-6 shrink-0 rounded-sm border border-slate-700/80 object-cover"
               aria-hidden
@@ -148,11 +150,12 @@ export default function CountryFlagCombobox({ id, value, onChange, disabled }: C
                   data-testid={o.code ? `edit-profile-flag-option-${o.code}` : 'edit-profile-flag-option-none'}
                 >
                   {o.iconUrl ? (
-                    <img
+                    <Image
                       src={o.iconUrl}
                       alt=""
                       width={24}
                       height={18}
+                      unoptimized
                       referrerPolicy="no-referrer"
                       className="h-[18px] w-6 shrink-0 rounded-sm border border-slate-700/80 object-cover"
                       aria-hidden

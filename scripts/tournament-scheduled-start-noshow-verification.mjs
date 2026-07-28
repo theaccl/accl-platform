@@ -30,7 +30,6 @@ function loadEnvLocal() {
 
 loadEnvLocal();
 
-const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const SCHEDULE_LEAD_SEC = Number(process.env.SCHEDULE_LEAD_SEC ?? 8);
 const GRACE_SEC = Number(process.env.NOSHOW_GRACE_SEC ?? 30);
 
@@ -185,8 +184,7 @@ async function main() {
 
   const supabase = createClient(url, key, { auth: { persistSession: false } });
   const players = await resolveFourPlayers(supabase);
-  const [p1, p2, p3, p4] = players;
-  const absentId = p4;
+  const absentId = players[3];
   ok(`players: ${players.map((id) => id.slice(0, 8)).join(', ')}… (absent simulation: ${absentId.slice(0, 8)}…)`);
 
   const hasStartsAt = await columnExists(supabase);
