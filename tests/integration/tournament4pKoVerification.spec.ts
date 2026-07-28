@@ -66,7 +66,7 @@ test.describe('Phase 1 — 4-player KO (integration)', () => {
   test('registration → bracket → R1 → final → champion', async () => {
     const supabase = serviceClient();
     const players = await resolveFourIds(supabase);
-    const [p1, p2, p3, p4] = players;
+    const [p1, p2] = players;
 
     const { data: creator } = await supabase.from('profiles').select('id').limit(1).single();
     expect(creator?.id).toBeTruthy();

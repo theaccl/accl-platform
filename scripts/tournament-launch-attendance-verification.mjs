@@ -60,10 +60,6 @@ function isBracketFull(entrantCount) {
   return n === target;
 }
 
-function isLiveTempo(tempo) {
-  return String(tempo ?? '').trim().toLowerCase() === 'live';
-}
-
 function isAsyncTempo(tempo) {
   const t = String(tempo ?? '').trim().toLowerCase();
   return t === 'daily' || t === 'correspondence';
