@@ -106,7 +106,7 @@ export function useFreeOpenSeatActivity(): {
 
   useEffect(() => {
     if (!lobbyRt) return;
-    return lobbyRt.subscribe((_event) => {
+    return lobbyRt.subscribe(() => {
       const now = Date.now();
       if (now - lastNotifyAtRef.current < 1_500) return;
       lastNotifyAtRef.current = now;

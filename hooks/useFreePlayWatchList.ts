@@ -112,7 +112,7 @@ export function useFreePlayWatchList(viewerEcosystem: 'adult' | 'k12' = 'adult')
 
   useEffect(() => {
     if (!lobbyRt) return;
-    return lobbyRt.subscribe((_event) => {
+    return lobbyRt.subscribe(() => {
       requestNotifyResync();
     });
   }, [lobbyRt, requestNotifyResync]);
