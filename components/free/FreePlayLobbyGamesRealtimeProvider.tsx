@@ -272,12 +272,13 @@ export function FreePlayLobbyGamesRealtimeProvider({ children }: { children: Rea
           });
         }
       });
+    const debugState = debugStateRef.current;
     return () => {
       if (debounceRef.current != null) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
-      debugStateRef.current.channelStatus = 'closed';
+      debugState.channelStatus = 'closed';
       if (lobbyGamesRtDebugEnabled() && typeof window !== 'undefined') {
         (window as unknown as { __accl_freeLobbyGamesRt?: FreeLobbyGamesRtDebug }).__accl_freeLobbyGamesRt = undefined;
       }
