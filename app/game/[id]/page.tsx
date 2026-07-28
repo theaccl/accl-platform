@@ -90,17 +90,14 @@ import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
 import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
-const MOVE_LOG_LOAD_REASONS = [
-  'bootstrap',
-  'realtime_insert',
-  'post_move',
-  'timeout_finish',
-  'resign',
-  'abandon_open_seat',
-  'unknown',
-] as const;
-
-type MoveLogLoadReason = (typeof MOVE_LOG_LOAD_REASONS)[number];
+type MoveLogLoadReason =
+  | 'bootstrap'
+  | 'realtime_insert'
+  | 'post_move'
+  | 'timeout_finish'
+  | 'resign'
+  | 'abandon_open_seat'
+  | 'unknown';
 
 type GameRow = {
   id: string;
