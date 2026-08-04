@@ -1,0 +1,41 @@
+[
+  {
+    "source_label": "ACCL-MANUAL-SEED",
+    "source_type": "manual",
+    "description": "ACCL-authored chess-fact and taxonomy metadata for staging validation.",
+    "license": "ACCL-authored chess-fact metadata",
+    "import_allowed": true,
+    "public_content_allowed": true,
+    "private_reference_only": false,
+    "usable_for_trainer": true,
+    "usable_for_repertoire": true,
+    "usable_for_live_competitive": false,
+    "usable_for_tournament": false
+  },
+  {
+    "source_label": "MCO-15",
+    "source_type": "private_reference",
+    "description": "Modern Chess Openings 15th Edition — private operator reference for taxonomy alignment only.",
+    "license": "copyrighted — rights not cleared for import",
+    "import_allowed": false,
+    "public_content_allowed": false,
+    "private_reference_only": true,
+    "usable_for_trainer": false,
+    "usable_for_repertoire": false,
+    "usable_for_live_competitive": false,
+    "usable_for_tournament": false
+  },
+  {
+    "source_label": "POLGAR-5334",
+    "source_type": "private_reference",
+    "description": "Polgar 5334 Problems — private operator reference for tactical taxonomy inspiration only.",
+    "license": "copyrighted — rights not cleared for import",
+    "import_allowed": false,
+    "public_content_allowed": false,
+    "private_reference_only": true,
+    "usable_for_trainer": false,
+    "usable_for_repertoire": false,
+    "usable_for_live_competitive": false,
+    "usable_for_tournament": false
+  }
+]

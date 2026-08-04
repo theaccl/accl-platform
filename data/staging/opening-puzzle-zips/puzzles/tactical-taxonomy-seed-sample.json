@@ -1,0 +1,69 @@
+{
+  "record_type": "tactical_taxonomy",
+  "schema_version": "1",
+  "source_type": "taxonomy_reference",
+  "source_label": "ACCL-MANUAL-SEED",
+  "license": "ACCL-authored taxonomy metadata",
+  "inspired_by_private_reference": ["POLGAR-5334"],
+  "import_allowed": false,
+  "positions_included": false,
+  "solutions_included": false,
+  "categories": [
+    {
+      "id": "mate_in_1",
+      "label": "Mate in 1",
+      "description": "Single-move checkmate pattern category for Trainer drill assignment."
+    },
+    {
+      "id": "mate_in_2",
+      "label": "Mate in 2",
+      "description": "Two-move forced mate pattern category."
+    },
+    {
+      "id": "mate_in_3",
+      "label": "Mate in 3",
+      "description": "Three-move forced mate pattern category."
+    },
+    {
+      "id": "combination",
+      "label": "Combination",
+      "description": "Multi-move forcing sequence with tactical payoff."
+    },
+    {
+      "id": "miniature_game",
+      "label": "Miniature Game",
+      "description": "Short decisive game pattern category."
+    },
+    {
+      "id": "simple_endgame",
+      "label": "Simple Endgame",
+      "description": "Basic endgame technique category."
+    },
+    {
+      "id": "tournament_combination",
+      "label": "Tournament Combination",
+      "description": "Competition-style combination category."
+    }
+  ],
+  "motif_tags": [
+    { "id": "pin", "label": "Pin" },
+    { "id": "skewer", "label": "Skewer" },
+    { "id": "fork", "label": "Fork" },
+    { "id": "back_rank_mate", "label": "Back Rank Mate" },
+    { "id": "deflection", "label": "Deflection" },
+    { "id": "decoy", "label": "Decoy" },
+    { "id": "discovered_attack", "label": "Discovered Attack" },
+    { "id": "overloaded_defender", "label": "Overloaded Defender" },
+    { "id": "clearance", "label": "Clearance" },
+    { "id": "attraction", "label": "Attraction" },
+    { "id": "mating_net", "label": "Mating Net" },
+    { "id": "promotion_tactic", "label": "Promotion Tactic" },
+    { "id": "perpetual_check", "label": "Perpetual Check" },
+    { "id": "stalemate_trick", "label": "Stalemate Trick" }
+  ],
+  "usable_for_trainer": true,
+  "usable_for_robo_drill": true,
+  "usable_for_live_competitive": false,
+  "usable_for_tournament": false,
+  "verification_status": "pending_dry_run"
+}
