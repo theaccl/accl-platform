@@ -44,3 +44,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# chess knowledge staging (local inputs — no copyrighted books in repo)
+/tmp/
+/data/staging/**/private/
+/data/staging/**/*.pdf
+/data/staging/**/*.zip
