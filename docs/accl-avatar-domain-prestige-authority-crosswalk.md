@@ -34,8 +34,51 @@ The following authority boundaries remain controlling:
 3. Official rating and status accents are earned automatically. They cannot be manually selected, purchased, or imitated.
 4. Purchased cosmetics cannot grant rating, prestige, badge authority, competitive advantage, or administrative authority.
 5. Earned prestige materials are never sold.
-6. Badge implementation remains governed by `docs/accl-badge-phase-1-consolidated-spec.md`, but that implementation must defer to the controlling avatar/prestige doctrine for shared visual-zone and prestige-material meaning.
+6. Badge implementation remains governed by `docs/accl-badge-phase-1-consolidated-spec.md`. The badge specification’s SQL-first material ordering (Iron through Obsidian) controls badge implementation only. It does not automatically control avatar/domain prestige materials, and the badge specification must not defer to the restored avatar/prestige doctrine for shared prestige-material meaning until a joint owner/PO lock explicitly reconciles the vocabularies.
 7. Rating runtime and display behavior remain governed by the current canonical rating and ticker documents; those documents do not replace avatar, package, carry-forward, or prestige-material doctrine.
+
+## Documentary reconciliations
+
+### Terminal title and uncapped rating
+
+The current canonical overall-rating doctrine in `docs/accl-stage1-canonical-overall-rating-doctrine.md` controls:
+
+- ACCL Sovereign Eternal begins at 3600+.
+- ACCL Overall remains uncapped.
+- “ACCL Sovereign Master” at 3000–3199 and “ACCL Mercury Sovereign” at 3200+ in the restored historical doctrine are presentation/material-tier labels only.
+- Those restored labels do not establish a rating ceiling or terminal competitive title.
+- Any remaining terminal-title mapping question remains pending the applicable PO lock.
+
+### Prestige-material vocabulary
+
+Two prestige-material vocabularies currently exist in separate documents:
+
+- Badge specification: Iron and Obsidian (SQL-first ordering Iron → Bronze → Silver → Gold → Platinum → Diamond → Obsidian).
+- Restored prestige doctrine: Forged Steel, Lava, and Mercury (Part IV locked pecking order).
+
+Neither vocabulary is cross-binding until a joint owner/PO lock explicitly reconciles them. The badge specification’s SQL-first ordering controls badge implementation only. It does not automatically control avatar/domain prestige materials. This crosswalk does not require the badge specification to defer to the restored doctrine for shared prestige-material meaning.
+
+### Zone-source separation
+
+Zone sources remain separate:
+
+- Badge zones derive from per-exact-clock `settlement_rating`.
+- Avatar/domain zones derive from ACCL Overall.
+- A player’s badge and avatar/domain surfaces may therefore display different zones concurrently without constituting a conflict.
+
+Restored-doctrine language about future badge/theme dual-tracker coordination is documentary and future-facing only. It does not override this zone-source separation and does not authorize badge runtime changes.
+
+### Internal restored-doctrine precedence
+
+Within the restored historical document only:
+
+- Part IV supersedes Part I §13 and §15 Gold-first illustrations.
+- Part IV §2 updates and supersedes Part II §24’s statement that the material mapping was not locked.
+- This internal precedence does not make the Part IV vocabulary binding upon the separate badge specification.
+
+### Superseded ceiling language
+
+Every “current summit,” “ceiling extension,” or equivalent finite-rating-ceiling concept in the restored doctrine—including Part III’s Mercury Sovereign summit framing and Part IV’s “Reserved for future ceiling extension” language—is superseded by the current uncapped ACCL Overall doctrine. Those restored passages remain historical documentary text; they do not establish a rating ceiling.
 
 ## Identity-layer separation
 
@@ -66,7 +109,7 @@ A cosmetic package may coordinate eligible surfaces, but it does not merge their
 - Purchased visuals cannot counterfeit earned materials or official status.
 - Badge implementation remains deferred until separately reviewed and authorized.
 
-## K–12 boundary
+## Guardian and catalog boundary
 
 K–12 restrictions override ownership, payment, membership, and progression:
 
@@ -75,6 +118,10 @@ K–12 restrictions override ownership, payment, membership, and progression:
 - guardian review where required;
 - no monetization pressure;
 - no adult-lane leakage.
+
+The documentary basis for the guardian-review boundary is `docs/doctrine/once-used-identity-recovery-doctrine.md` (including its K–12 and scholarship records / `guardian_review` treatment).
+
+Catalog age-gating mechanics remain open PO decisions under restored Part II §25 items 10–11. This crosswalk does not invent or lock exact age thresholds, verification workflows, or guardian-consent implementation.
 
 ## Accessibility boundary
 
@@ -93,6 +140,13 @@ The historical source branch remains preserved during review. It becomes eligibl
 ## Promotion boundary
 
 This crosswalk proposes documentary reconciliation only.
+
+- Documentation only
+- No runtime authority
+- No operational or production authority
+- No schema or migration authority
+- No payment implementation
+- No deployment authorization
 
 - Operational authority promoted: none
 - Production authority promoted: none
