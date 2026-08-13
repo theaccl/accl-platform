@@ -116,4 +116,17 @@ test.describe('clock integrity repair', () => {
     expect(page).toContain("const MOVE_HISTORY_UNAVAILABLE_PREFIX = 'Move history temporarily unavailable:';");
     expect(page).toContain("current.startsWith(MOVE_HISTORY_UNAVAILABLE_PREFIX) ? '' : current");
   });
+
+  test('keeps legacy last-move highlights on finished game records', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+    const replayState = readFileSync(join(process.cwd(), 'hooks', 'useReplayState.ts'), 'utf8');
+
+    expect(page).toMatch(
+      /useReplayState\([\s\S]*?game\?\.fen \?\? null,\s*game\?\.status !== 'finished'\s*\)/
+    );
+    expect(replayState).toContain('enforceAuthoritativeCoherence = true');
+    expect(replayState).toMatch(
+      /enforceAuthoritativeCoherence &&\s*authoritativeFen != null &&\s*!lastMoveMatchesAuthoritativePosition/
+    );
+  });
 });

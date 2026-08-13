@@ -58,7 +58,8 @@ function squareStylesForLastMove(m: MoveLogRow | undefined): Record<string, CSSP
 export function useReplayState(
   sanForDisplay: (m: MoveLogRow) => string,
   startFen: string,
-  authoritativeFen?: string | null
+  authoritativeFen?: string | null,
+  enforceAuthoritativeCoherence = true
 ) {
   const [moveLogs, setMoveLogs] = useState<MoveLogRow[]>([]);
   const [replayStep, setReplayStep] = useState<number | null>(null);
@@ -103,13 +104,14 @@ export function useReplayState(
     }
     const lastMove = moveLogs[moveLogs.length - 1];
     if (
+      enforceAuthoritativeCoherence &&
       authoritativeFen != null &&
       !lastMoveMatchesAuthoritativePosition(lastMove, authoritativeFen)
     ) {
       return {} as Record<string, CSSProperties>;
     }
     return squareStylesForLastMove(lastMove);
-  }, [authoritativeFen, moveLogs, replayStep]);
+  }, [authoritativeFen, enforceAuthoritativeCoherence, moveLogs, replayStep]);
 
   return {
     moveLogs,

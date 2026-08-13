@@ -794,7 +794,12 @@ export default function GamePage() {
     pairedRows,
     boardPosition: replayBoardPosition,
     lastMoveSquareStyles,
-  } = useReplayState(sanForDisplay, START_FEN, game?.fen ?? null);
+  } = useReplayState(
+    sanForDisplay,
+    START_FEN,
+    game?.fen ?? null,
+    game?.status !== 'finished'
+  );
 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [pgnExportCount, setPgnExportCount] = useState(0);
