@@ -77,6 +77,19 @@ test.describe('clock integrity repair', () => {
     expect(page).not.toContain('spectateRpcBootstrapMoveLogsHydratedKeyRef');
   });
 
+  test('sequences standalone and bundled move-history commits together', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toContain('const moveLogsRequestSequenceRef = useRef(0);');
+    expect(page).not.toContain('moveLogsInFlightRef');
+    expect(page).toMatch(
+      /const requestSequence = moveLogsRequestSequenceRef\.current \+ 1;[\s\S]*?if \(moveLogsRequestSequenceRef\.current !== requestSequence\) return;[\s\S]*?setMoveLogs/
+    );
+    expect(page).toContain('const moveLogsRequestSequence = includeMoveLogs');
+    expect(page).toContain('const moveLogsRequestIsCurrent = () =>');
+    expect(page.match(/moveLogsRequestIsCurrent\(\)/g)?.length).toBeGreaterThanOrEqual(6);
+  });
+
   test('keeps the two-second clock poll game-row only', () => {
     const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
 

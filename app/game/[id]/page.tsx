@@ -828,8 +828,8 @@ export default function GamePage() {
   const snapshotInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
   /** Prevent an older snapshot response from committing after a newer request has started. */
   const snapshotRequestSequenceRef = useRef(0);
-  /** Deduplicate overlapping `game_move_logs` fetches for the same game viewer context. */
-  const moveLogsInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  /** Sequence every move-history commit, including bundled snapshots and standalone refreshes. */
+  const moveLogsRequestSequenceRef = useRef(0);
   /** Prevents duplicate join RPC (e.g. React Strict Mode). */
   const joinOpenSeatInFlightRef = useRef(false);
 
@@ -842,7 +842,7 @@ export default function GamePage() {
     lastMoveCountRef.current = null;
     snapshotInFlightRef.current = null;
     snapshotRequestSequenceRef.current += 1;
-    moveLogsInFlightRef.current = null;
+    moveLogsRequestSequenceRef.current += 1;
   }, [gameId]);
 
   useEffect(() => {
@@ -1255,13 +1255,8 @@ export default function GamePage() {
         stack,
       });
     }
-    const moveLogsFetchKey = `${gameId}|${publicSpectate ? '1' : '0'}|${userId || 'anon'}`;
-    const mlWait = moveLogsInFlightRef.current;
-    if (mlWait && mlWait.key === moveLogsFetchKey) {
-      await mlWait.promise;
-      return;
-    }
-    const runMoveLogsFetch = async (): Promise<void> => {
+    const requestSequence = moveLogsRequestSequenceRef.current + 1;
+    moveLogsRequestSequenceRef.current = requestSequence;
     const started = Date.now();
     const { data } = await supabase
       .from('game_move_logs')
@@ -1282,6 +1277,7 @@ export default function GamePage() {
         gameLogsFetchAvgMs: Math.round((total / n) * 10) / 10,
       };
     }
+    if (moveLogsRequestSequenceRef.current !== requestSequence) return;
     setMoveLogs((data ?? []) as MoveLogRow[]);
     const gAfter = gameRef.current;
     const mcAfter =
@@ -1293,16 +1289,6 @@ export default function GamePage() {
     } else if ((data ?? []).length > 0) {
       lastMoveCountRef.current = (data ?? []).length;
     }
-    };
-    const mlOuter = runMoveLogsFetch();
-    moveLogsInFlightRef.current = { key: moveLogsFetchKey, promise: mlOuter };
-    try {
-      await mlOuter;
-    } finally {
-      if (moveLogsInFlightRef.current?.promise === mlOuter) {
-        moveLogsInFlightRef.current = null;
-      }
-    }
   }, [gameId, publicSpectate, userId, setMoveLogs]);
 
   const loadGameSnapshot = useCallback(
@@ -1312,7 +1298,11 @@ export default function GamePage() {
     ) => {
       if (!gameId) return;
       const uid = authUid !== undefined ? authUid : userId;
-      const includeMoveLogs = options?.includeMoveLogs !== false;
+      const usePublicRpc = shouldUsePublicSpectateRpc({
+        publicSpectateUrlFlag: publicSpectate,
+        userId: uid,
+      });
+      const includeMoveLogs = usePublicRpc || options?.includeMoveLogs !== false;
       const snapshotKey = `${gameId}|${publicSpectate ? 'pub' : 'priv'}|${uid || 'anon'}|${
         includeMoveLogs ? 'with-logs' : 'game-only'
       }`;
@@ -1336,9 +1326,16 @@ export default function GamePage() {
       const requestSequence = snapshotRequestSequenceRef.current + 1;
       snapshotRequestSequenceRef.current = requestSequence;
       const requestIsCurrent = () => snapshotRequestSequenceRef.current === requestSequence;
+      const moveLogsRequestSequence = includeMoveLogs
+        ? moveLogsRequestSequenceRef.current + 1
+        : null;
+      if (moveLogsRequestSequence !== null) {
+        moveLogsRequestSequenceRef.current = moveLogsRequestSequence;
+      }
+      const moveLogsRequestIsCurrent = () =>
+        moveLogsRequestSequence !== null &&
+        moveLogsRequestSequenceRef.current === moveLogsRequestSequence;
       const runSnapshot = async (): Promise<void> => {
-      const usePublicRpc = shouldUsePublicSpectateRpc({ publicSpectateUrlFlag: publicSpectate, userId: uid });
-
       if (usePublicRpc) {
         const { data, error } = await supabase.rpc('get_public_spectate_game_snapshot', {
           p_game_id: gameId,
@@ -1348,7 +1345,7 @@ export default function GamePage() {
         if (error) {
           setMessage(`Spectate unavailable: ${error.message}`);
           setGame(null);
-          setMoveLogs([]);
+          if (moveLogsRequestIsCurrent()) setMoveLogs([]);
           setGameAccess('spectate_unavailable');
           return;
         }
@@ -1372,7 +1369,7 @@ export default function GamePage() {
             setGameAccess('spectate_unavailable');
           }
           setGame(null);
-          setMoveLogs([]);
+          if (moveLogsRequestIsCurrent()) setMoveLogs([]);
           return;
         }
         const snap = data as Record<string, unknown>;
@@ -1380,14 +1377,14 @@ export default function GamePage() {
         if (!gamePayload) {
           setMessage('Spectate payload incomplete.');
           setGame(null);
-          setMoveLogs([]);
+          if (moveLogsRequestIsCurrent()) setMoveLogs([]);
           setGameAccess('spectate_unavailable');
           return;
         }
         setGame(gamePayload);
         const rpcMoveLogs = (Array.isArray(snap.move_logs) ? snap.move_logs : []) as MoveLogRow[];
-        setMoveLogs(rpcMoveLogs);
-        if (Array.isArray(snap.move_logs)) {
+        if (moveLogsRequestIsCurrent()) {
+          setMoveLogs(rpcMoveLogs);
           const mcLog =
             typeof gamePayload.move_count === 'number' && Number.isFinite(gamePayload.move_count)
               ? gamePayload.move_count
@@ -1443,7 +1440,7 @@ export default function GamePage() {
       if (error) {
         setMessage(error.message);
         setGame(null);
-        setMoveLogs([]);
+        if (moveLogsRequestIsCurrent()) setMoveLogs([]);
         if (error.code === 'PGRST116') {
           setGameAccess('not_found');
         } else {
@@ -1455,10 +1452,12 @@ export default function GamePage() {
       setGame(gameRow);
       setGameAccess('ok');
       if (moveLogsResult?.error) {
-        setMessage(`${MOVE_HISTORY_UNAVAILABLE_PREFIX} ${moveLogsResult.error.message}`);
+        if (moveLogsRequestIsCurrent()) {
+          setMessage(`${MOVE_HISTORY_UNAVAILABLE_PREFIX} ${moveLogsResult.error.message}`);
+        }
         return;
       }
-      if (moveLogsResult) {
+      if (moveLogsResult && moveLogsRequestIsCurrent()) {
         setMoveLogs((moveLogsResult.data ?? []) as MoveLogRow[]);
         setMessage((current) =>
           current.startsWith(MOVE_HISTORY_UNAVAILABLE_PREFIX) ? '' : current
