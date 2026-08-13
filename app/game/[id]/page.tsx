@@ -825,7 +825,11 @@ export default function GamePage() {
 
   const spectateGrowthTracked = useRef(false);
   /** Deduplicate overlapping `loadGameSnapshot` (poll + realtime + focus); keyed by game + auth + spectate flag. */
-  const snapshotInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const snapshotInFlightRef = useRef<{
+    key: string;
+    promise: Promise<void>;
+    trailingRequested: boolean;
+  } | null>(null);
   /** Prevent an older snapshot response from committing after a newer request has started. */
   const snapshotRequestSequenceRef = useRef(0);
   /** Sequence every move-history commit, including bundled snapshots and standalone refreshes. */
@@ -1308,6 +1312,7 @@ export default function GamePage() {
       }`;
       const snapshotWait = snapshotInFlightRef.current;
       if (snapshotWait && snapshotWait.key === snapshotKey) {
+        if (includeMoveLogs) snapshotWait.trailingRequested = true;
         await snapshotWait.promise;
         return;
       }
@@ -1323,6 +1328,9 @@ export default function GamePage() {
         await snapshotWait.promise;
         return;
       }
+      let rerunSnapshot = false;
+      do {
+      rerunSnapshot = false;
       const requestSequence = snapshotRequestSequenceRef.current + 1;
       snapshotRequestSequenceRef.current = requestSequence;
       const requestIsCurrent = () => snapshotRequestSequenceRef.current === requestSequence;
@@ -1470,14 +1478,21 @@ export default function GamePage() {
       }
       };
       const snapshotOuterPromise = runSnapshot();
-      snapshotInFlightRef.current = { key: snapshotKey, promise: snapshotOuterPromise };
+      const snapshotEntry = {
+        key: snapshotKey,
+        promise: snapshotOuterPromise,
+        trailingRequested: false,
+      };
+      snapshotInFlightRef.current = snapshotEntry;
       try {
         await snapshotOuterPromise;
       } finally {
-        if (snapshotInFlightRef.current?.promise === snapshotOuterPromise) {
+        if (snapshotInFlightRef.current === snapshotEntry) {
+          rerunSnapshot = snapshotEntry.trailingRequested;
           snapshotInFlightRef.current = null;
         }
       }
+      } while (rerunSnapshot);
     },
     [gameId, publicSpectate, userId, viewerEcosystem, setMoveLogs]
   );

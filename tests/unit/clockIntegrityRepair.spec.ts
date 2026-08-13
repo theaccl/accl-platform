@@ -132,6 +132,17 @@ test.describe('clock integrity repair', () => {
     );
   });
 
+  test('queues one trailing snapshot when a same-key refresh overlaps', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toMatch(
+      /snapshotWait && snapshotWait\.key === snapshotKey\) \{\s*if \(includeMoveLogs\) snapshotWait\.trailingRequested = true;\s*await snapshotWait\.promise;/
+    );
+    expect(page).toContain('trailingRequested: false');
+    expect(page).toContain('rerunSnapshot = snapshotEntry.trailingRequested;');
+    expect(page).toContain('} while (rerunSnapshot);');
+  });
+
   test('clears only the recovered move-history warning', () => {
     const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
 
