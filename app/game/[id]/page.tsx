@@ -1330,6 +1330,18 @@ export default function GamePage() {
         await snapshotWait.promise;
         return;
       }
+      // A lightweight game poll must not cancel a bundled game + history
+      // refresh. Waiting here preserves the incoming move's notation and
+      // highlight update while still allowing newer bundled refreshes to
+      // supersede older game-only polls.
+      if (
+        snapshotWait &&
+        !includeMoveLogs &&
+        snapshotWait.key.endsWith('|with-logs')
+      ) {
+        await snapshotWait.promise;
+        return;
+      }
       const requestSequence = snapshotRequestSequenceRef.current + 1;
       snapshotRequestSequenceRef.current = requestSequence;
       const requestIsCurrent = () => snapshotRequestSequenceRef.current === requestSequence;

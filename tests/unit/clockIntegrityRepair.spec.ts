@@ -94,6 +94,22 @@ test.describe('clock integrity repair', () => {
     expect(page.match(/if \(!requestIsCurrent\(\)\) return;/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
+  test('keeps game-only polls from cancelling an in-flight history refresh', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+    const historyPriorityIndex = page.indexOf(
+      "!includeMoveLogs &&\n        snapshotWait.key.endsWith('|with-logs')"
+    );
+    const sequenceAdvanceIndex = page.indexOf(
+      'const requestSequence = snapshotRequestSequenceRef.current + 1;'
+    );
+
+    expect(historyPriorityIndex).toBeGreaterThan(-1);
+    expect(sequenceAdvanceIndex).toBeGreaterThan(historyPriorityIndex);
+    expect(page.slice(historyPriorityIndex, sequenceAdvanceIndex)).toContain(
+      'await snapshotWait.promise;'
+    );
+  });
+
   test('clears only the recovered move-history warning', () => {
     const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
 
