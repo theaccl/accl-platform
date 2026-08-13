@@ -36,6 +36,15 @@ test.describe('clock integrity repair', () => {
     expect(terminalReasons).not.toContain("'draw_agreement'");
   });
 
+  test('uses the application daily fallback when the clock token is missing or invalid', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase', 'migrations', MIGRATION), 'utf8');
+
+    expect(sql).toContain("when lower(trim(g.tempo)) = 'daily'");
+    expect(sql).toContain("v_clock_token !~ '^([0-9]+d|[0-9]+\\+[0-9]+|[0-9]+m)$'");
+    expect(sql).toContain('then 30::bigint * 60000');
+    expect(sql).toContain('else public.clock_budget_ms_for_live_sweep(g.live_time_control)');
+  });
+
   test('keeps the privileged core function non-callable by runtime roles', () => {
     const sql = readFileSync(join(process.cwd(), 'supabase', 'migrations', MIGRATION), 'utf8');
 
@@ -65,5 +74,15 @@ test.describe('clock integrity repair', () => {
     expect(page).toMatch(
       /setInterval\(\(\) => \{\s*void loadGameSnapshot\(undefined, \{ includeMoveLogs: false \}\);\s*\}, 2000\)/
     );
+  });
+
+  test('keeps the authoritative game available when auxiliary move history fails', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+    const setGameIndex = page.indexOf('setGame(gameRow);');
+    const moveLogsErrorIndex = page.indexOf('if (moveLogsResult?.error)');
+
+    expect(setGameIndex).toBeGreaterThan(-1);
+    expect(moveLogsErrorIndex).toBeGreaterThan(setGameIndex);
+    expect(page).toContain('Move history temporarily unavailable:');
   });
 });

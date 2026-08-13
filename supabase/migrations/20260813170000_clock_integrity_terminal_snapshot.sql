@@ -30,6 +30,7 @@ declare
   v_black_clock_ms bigint;
   v_end_reason text;
   v_preserve_supplied_clocks boolean := false;
+  v_clock_token text;
 begin
   select * into g from public.games where id = p_game_id for update;
   if not found then
@@ -71,6 +72,7 @@ begin
   v_white_clock_ms := g.white_clock_ms;
   v_black_clock_ms := g.black_clock_ms;
   v_end_reason := lower(trim(coalesce(p_end_reason, '')));
+  v_clock_token := lower(trim(coalesce(g.live_time_control, '')));
   v_preserve_supplied_clocks := p_actor is null
     and v_end_reason in (
       'checkmate',
@@ -84,7 +86,12 @@ begin
      and g.last_move_at is not null
      and lower(trim(coalesce(g.turn, ''))) in ('white', 'black')
      and not v_preserve_supplied_clocks then
-    v_clock_base_ms := public.clock_budget_ms_for_live_sweep(g.live_time_control);
+    v_clock_base_ms := case
+      when lower(trim(g.tempo)) = 'daily'
+       and v_clock_token !~ '^([0-9]+d|[0-9]+\+[0-9]+|[0-9]+m)$'
+        then 30::bigint * 60000
+      else public.clock_budget_ms_for_live_sweep(g.live_time_control)
+    end;
     v_elapsed_ms := greatest(
       0,
       (extract(epoch from (v_finished_at - g.last_move_at)) * 1000)::bigint

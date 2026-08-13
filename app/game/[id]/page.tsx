@@ -1445,21 +1445,22 @@ export default function GamePage() {
         }
         return;
       }
+      const gameRow = data as GameRow;
+      setGame(gameRow);
+      setGameAccess('ok');
+      spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
       if (moveLogsResult?.error) {
-        setMessage(moveLogsResult.error.message);
+        setMessage(`Move history temporarily unavailable: ${moveLogsResult.error.message}`);
         return;
       }
-      setGame(data as GameRow);
       if (moveLogsResult) {
         setMoveLogs((moveLogsResult.data ?? []) as MoveLogRow[]);
         const coherentMoveCount =
-          typeof (data as GameRow).move_count === 'number' && Number.isFinite((data as GameRow).move_count)
-            ? Number((data as GameRow).move_count)
+          typeof gameRow.move_count === 'number' && Number.isFinite(gameRow.move_count)
+            ? Number(gameRow.move_count)
             : (moveLogsResult.data ?? []).length;
         lastMoveCountRef.current = coherentMoveCount;
       }
-      setGameAccess('ok');
-      spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
       };
       const snapshotOuterPromise = runSnapshot();
       snapshotInFlightRef.current = { key: snapshotKey, promise: snapshotOuterPromise };
