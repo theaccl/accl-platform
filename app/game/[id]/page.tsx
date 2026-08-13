@@ -792,7 +792,7 @@ export default function GamePage() {
     pairedRows,
     boardPosition: replayBoardPosition,
     lastMoveSquareStyles,
-  } = useReplayState(sanForDisplay, START_FEN);
+  } = useReplayState(sanForDisplay, START_FEN, game?.fen ?? null);
 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [pgnExportCount, setPgnExportCount] = useState(0);
@@ -1401,7 +1401,15 @@ export default function GamePage() {
       }
 
       const started = Date.now();
-      const { data, error } = await supabase.from('games').select('*').eq('id', gameId).single();
+      const [gameResult, moveLogsResult] = await Promise.all([
+        supabase.from('games').select('*').eq('id', gameId).single(),
+        supabase
+          .from('game_move_logs')
+          .select('san, fen_before, fen_after, created_at, from_sq, to_sq')
+          .eq('game_id', gameId)
+          .order('created_at', { ascending: true }),
+      ]);
+      const { data, error } = gameResult;
       if (typeof window !== 'undefined') {
         const w = window as Window & {
           __accl_debug?: Record<string, unknown>;
@@ -1427,7 +1435,17 @@ export default function GamePage() {
         }
         return;
       }
+      if (moveLogsResult.error) {
+        setMessage(moveLogsResult.error.message);
+        return;
+      }
       setGame(data as GameRow);
+      setMoveLogs((moveLogsResult.data ?? []) as MoveLogRow[]);
+      const coherentMoveCount =
+        typeof (data as GameRow).move_count === 'number' && Number.isFinite((data as GameRow).move_count)
+          ? Number((data as GameRow).move_count)
+          : (moveLogsResult.data ?? []).length;
+      lastMoveCountRef.current = coherentMoveCount;
       setGameAccess('ok');
       spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
       };
@@ -1610,7 +1628,7 @@ export default function GamePage() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         () => {
-          scheduleRefresh({ snapshot: true, logs: false });
+          scheduleRefresh({ snapshot: true, logs: false, debounceMs: 0 });
         }
       )
       .on(
@@ -1618,8 +1636,9 @@ export default function GamePage() {
         { event: 'INSERT', schema: 'public', table: 'game_move_logs', filter: `game_id=eq.${gameId}` },
         () => {
           scheduleRefresh({
-            snapshot: false,
-            logs: true,
+            snapshot: true,
+            logs: false,
+            debounceMs: 0,
             moveLogsReason: 'realtime_insert',
           });
         }
