@@ -20,6 +20,22 @@ test.describe('clock integrity repair', () => {
     expect(sql.trimEnd().toLowerCase()).toMatch(/commit;\s*$/);
   });
 
+  test('preserves clocks supplied by trusted atomic terminal moves', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase', 'migrations', MIGRATION), 'utf8');
+    const terminalReasons = sql.match(/v_end_reason in \(([\s\S]*?)\);/i)?.[1] ?? '';
+
+    expect(sql).toContain('v_preserve_supplied_clocks := p_actor is null');
+    expect(sql).toContain('and not v_preserve_supplied_clocks then');
+    expect(terminalReasons).toContain("'checkmate'");
+    expect(terminalReasons).toContain("'stalemate'");
+    expect(terminalReasons).toContain("'insufficient_material'");
+    expect(terminalReasons).toContain("'threefold_repetition'");
+    expect(terminalReasons).toContain("'fifty_move_rule'");
+    expect(terminalReasons).not.toContain("'resign'");
+    expect(terminalReasons).not.toContain("'timeout'");
+    expect(terminalReasons).not.toContain("'draw_agreement'");
+  });
+
   test('keeps the privileged core function non-callable by runtime roles', () => {
     const sql = readFileSync(join(process.cwd(), 'supabase', 'migrations', MIGRATION), 'utf8');
 

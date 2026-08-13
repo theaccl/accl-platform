@@ -28,6 +28,8 @@ declare
   v_clock_base_ms bigint;
   v_white_clock_ms bigint;
   v_black_clock_ms bigint;
+  v_end_reason text;
+  v_preserve_supplied_clocks boolean := false;
 begin
   select * into g from public.games where id = p_game_id for update;
   if not found then
@@ -68,10 +70,20 @@ begin
   v_finished_at := clock_timestamp();
   v_white_clock_ms := g.white_clock_ms;
   v_black_clock_ms := g.black_clock_ms;
+  v_end_reason := lower(trim(coalesce(p_end_reason, '')));
+  v_preserve_supplied_clocks := p_actor is null
+    and v_end_reason in (
+      'checkmate',
+      'stalemate',
+      'insufficient_material',
+      'threefold_repetition',
+      'fifty_move_rule'
+    );
 
   if lower(trim(coalesce(g.tempo, ''))) in ('live', 'daily')
      and g.last_move_at is not null
-     and lower(trim(coalesce(g.turn, ''))) in ('white', 'black') then
+     and lower(trim(coalesce(g.turn, ''))) in ('white', 'black')
+     and not v_preserve_supplied_clocks then
     v_clock_base_ms := public.clock_budget_ms_for_live_sweep(g.live_time_control);
     v_elapsed_ms := greatest(
       0,
@@ -106,7 +118,7 @@ end;
 $finish_game_core$;
 
 comment on function public.finish_game_core(uuid, text, text, uuid) is
-  'Shared guarded finish transition. Snapshots the effective active-side clock atomically for live/daily games.';
+  'Shared guarded finish transition. Snapshots the effective active-side clock for non-move finishes and preserves clocks supplied by trusted atomic terminal moves.';
 
 revoke all on function public.finish_game_core(uuid, text, text, uuid) from public;
 revoke all on function public.finish_game_core(uuid, text, text, uuid) from anon;
