@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { useMemo, useState } from 'react';
 import { Chess } from 'chess.js';
 import type { Square } from 'chess.js';
+import { lastMoveMatchesAuthoritativePosition } from '@/lib/coherentGamePresentation';
 
 export type MoveLogRow = {
   san: string;
@@ -56,7 +57,9 @@ function squareStylesForLastMove(m: MoveLogRow | undefined): Record<string, CSSP
 
 export function useReplayState(
   sanForDisplay: (m: MoveLogRow) => string,
-  startFen: string
+  startFen: string,
+  authoritativeFen?: string | null,
+  enforceAuthoritativeCoherence = true
 ) {
   const [moveLogs, setMoveLogs] = useState<MoveLogRow[]>([]);
   const [replayStep, setReplayStep] = useState<number | null>(null);
@@ -99,8 +102,16 @@ export function useReplayState(
       }
       return squareStylesForLastMove(moveLogs[idx]);
     }
-    return squareStylesForLastMove(moveLogs[moveLogs.length - 1]);
-  }, [moveLogs, replayStep]);
+    const lastMove = moveLogs[moveLogs.length - 1];
+    if (
+      enforceAuthoritativeCoherence &&
+      authoritativeFen != null &&
+      !lastMoveMatchesAuthoritativePosition(lastMove, authoritativeFen)
+    ) {
+      return {} as Record<string, CSSProperties>;
+    }
+    return squareStylesForLastMove(lastMove);
+  }, [authoritativeFen, enforceAuthoritativeCoherence, moveLogs, replayStep]);
 
   return {
     moveLogs,
