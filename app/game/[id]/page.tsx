@@ -91,7 +91,6 @@ import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
 
 type MoveLogLoadReason =
-  | 'bootstrap'
   | 'realtime_insert'
   | 'post_move'
   | 'timeout_finish'
@@ -831,8 +830,6 @@ export default function GamePage() {
   const snapshotRequestSequenceRef = useRef(0);
   /** Deduplicate overlapping `game_move_logs` fetches for the same game viewer context. */
   const moveLogsInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
-  /** When public spectate RPC returned `snap.move_logs` as an array; matches bootstrap key to skip redundant `loadMoveLogs('bootstrap')`. */
-  const spectateRpcBootstrapMoveLogsHydratedKeyRef = useRef<string | null>(null);
   /** Prevents duplicate join RPC (e.g. React Strict Mode). */
   const joinOpenSeatInFlightRef = useRef(false);
 
@@ -843,7 +840,6 @@ export default function GamePage() {
   useEffect(() => {
     liveTimeoutInFlightRef.current = false;
     lastMoveCountRef.current = null;
-    spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
     snapshotInFlightRef.current = null;
     snapshotRequestSequenceRef.current += 1;
     moveLogsInFlightRef.current = null;
@@ -1216,16 +1212,6 @@ export default function GamePage() {
   const loadMoveLogs = useCallback(async (reason: MoveLogLoadReason) => {
     if (!gameId) return;
     if (!publicSpectate && !userId) return;
-    if (reason === 'bootstrap') {
-      const usePublicRpc = shouldUsePublicSpectateRpc({
-        publicSpectateUrlFlag: publicSpectate,
-        userId: userId || null,
-      });
-      const bootstrapKey = `${gameId}|${userId || 'anon'}|${publicSpectate ? 'public' : 'private'}`;
-      if (usePublicRpc && spectateRpcBootstrapMoveLogsHydratedKeyRef.current === bootstrapKey) {
-        return;
-      }
-    }
     /** Always-on counters + trace (runs even when move-count guard returns early). */
     if (typeof window !== 'undefined') {
       const w = window as Window & { __accl_debug?: Record<string, unknown> };
@@ -1247,7 +1233,7 @@ export default function GamePage() {
     }
     /** When game row may lag the new log row (INSERT / local submit), never coalesce on move_count. */
     const moveCountStaleOk =
-      reason === 'bootstrap' || reason === 'post_move' || reason === 'realtime_insert';
+      reason === 'post_move' || reason === 'realtime_insert';
     if (!moveCountStaleOk) {
       const g = gameRef.current;
       const mc =
@@ -1360,7 +1346,6 @@ export default function GamePage() {
         });
         if (!requestIsCurrent()) return;
         if (error) {
-          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
           setMessage(`Spectate unavailable: ${error.message}`);
           setGame(null);
           setMoveLogs([]);
@@ -1388,13 +1373,11 @@ export default function GamePage() {
           }
           setGame(null);
           setMoveLogs([]);
-          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
           return;
         }
         const snap = data as Record<string, unknown>;
         const gamePayload = snap.game as GameRow | undefined;
         if (!gamePayload) {
-          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
           setMessage('Spectate payload incomplete.');
           setGame(null);
           setMoveLogs([]);
@@ -1414,11 +1397,6 @@ export default function GamePage() {
           } else if (rpcMoveLogs.length > 0) {
             lastMoveCountRef.current = rpcMoveLogs.length;
           }
-          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = `${gameId}|${uid || 'anon'}|${
-            publicSpectate ? 'public' : 'private'
-          }`;
-        } else {
-          spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
         }
         const labels = snap.spectate_labels as { white?: string; black?: string } | undefined;
         if (labels && typeof labels === 'object') {
@@ -1476,7 +1454,6 @@ export default function GamePage() {
       const gameRow = data as GameRow;
       setGame(gameRow);
       setGameAccess('ok');
-      spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
       if (moveLogsResult?.error) {
         setMessage(`${MOVE_HISTORY_UNAVAILABLE_PREFIX} ${moveLogsResult.error.message}`);
         return;
@@ -1622,16 +1599,6 @@ export default function GamePage() {
   }, [userId]);
 
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const logsBootstrapKeyRef = useRef('');
-
-  useEffect(() => {
-    if (!gameId) return;
-    if (!userId && !publicSpectate) return;
-    const key = `${gameId}|${userId || 'anon'}|${publicSpectate ? 'public' : 'private'}`;
-    if (logsBootstrapKeyRef.current === key) return;
-    logsBootstrapKeyRef.current = key;
-    void loadMoveLogs('bootstrap');
-  }, [gameId, userId, publicSpectate, loadMoveLogs]);
 
   /** Stable scrollbar gutter + reduced document scroll-anchoring on game routes (desktop + mobile). */
   useEffect(() => {

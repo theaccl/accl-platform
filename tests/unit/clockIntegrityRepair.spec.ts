@@ -68,6 +68,15 @@ test.describe('clock integrity repair', () => {
     expect(page).not.toMatch(/event: 'INSERT'[\s\S]{0,300}snapshot:\s*false/);
   });
 
+  test('loads initial move history only through the sequenced snapshot', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toContain('await loadGameSnapshot(uid);');
+    expect(page).not.toContain("loadMoveLogs('bootstrap')");
+    expect(page).not.toContain('logsBootstrapKeyRef');
+    expect(page).not.toContain('spectateRpcBootstrapMoveLogsHydratedKeyRef');
+  });
+
   test('keeps the two-second clock poll game-row only', () => {
     const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
 
