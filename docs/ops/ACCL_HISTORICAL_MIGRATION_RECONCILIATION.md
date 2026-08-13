@@ -256,3 +256,18 @@ Audit evidence:
 **PHASE 5 COMPLETE — OPTION B RECORDED.**
 
 This file is a documentation-only reconciliation record. Phase 5 made zero production changes, ran zero SQL, changed no migration files, changed no Supabase migration-history rows, and performed no commit or push.
+
+## 14. Phase 6 repair-feasibility closure
+
+**Decision date:** 2026-08-10
+**Verdict:** **R1 REPAIR TECHNICALLY FEASIBLE BUT NOT OPERATIONALLY JUSTIFIED — PRESERVE OPTION B.**
+
+Phase 6 reassessed the six R1 candidates without changing production or migration history. Supabase's documented repair mechanism could truthfully insert those six ledger rows without executing their SQL bodies, but doing so would leave 43 historical R2–R6 gaps plus the two intentionally absent August named-file versions. Partial repair would not resolve duplicate-version ambiguity, absent R5 effects, forward-reconciled R2 versions, superseded R3 versions, or indeterminate R6 versions.
+
+Ordinary `supabase db push` may refuse because older local-only versions precede the newest recorded remote migration. Using `--include-all` would explicitly include the remaining historical gaps and risk replaying unsafe or intentionally omitted bodies. Therefore the standing prohibitions on bare production `db push` and production `--include-all` remain necessary after any six-row repair.
+
+No paid empirical environment was authorized. Account-specific cost discovery reported **$10 per month** for a disposable project and **$0.01344 per hour** for a development branch; neither was created. The existing `accl-br1-path-b-disposable` environment was read-only inspected and rejected as a production-shaped test fixture because its 125-row ledger already recorded all six R1 versions, included staging-only duplicate surrogates, and stopped at `20260621150000`.
+
+**Phase 6 final disposition:** do not repair the six R1 rows. Keep them as documented historical-execution candidates in this record, preserve the production ledger as-is, and require a new owner decision if material evidence or deployment strategy changes.
+
+**Zero-change attestation:** Phase 6 made no production writes, ran no migration repair, `db push`, `db reset`, or `--include-all`, installed no CLI, created no Supabase project or branch, changed no migration file, and made no repository commit or push.
