@@ -36,9 +36,18 @@ test.describe('clock integrity repair', () => {
   test('bundles private game and move-log reconciliation on incoming move events', () => {
     const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
 
+    expect(page).toContain("includeMoveLogs ? 'with-logs' : 'game-only'");
     expect(page).toContain('const [gameResult, moveLogsResult] = await Promise.all([');
     expect(page).toContain("event: 'INSERT', schema: 'public', table: 'game_move_logs'");
     expect(page).toMatch(/snapshot:\s*true,\s*logs:\s*false,\s*debounceMs:\s*0/);
     expect(page).not.toMatch(/event: 'INSERT'[\s\S]{0,300}snapshot:\s*false/);
+  });
+
+  test('keeps the two-second clock poll game-row only', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toMatch(
+      /setInterval\(\(\) => \{\s*void loadGameSnapshot\(undefined, \{ includeMoveLogs: false \}\);\s*\}, 2000\)/
+    );
   });
 });

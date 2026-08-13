@@ -1310,10 +1310,16 @@ export default function GamePage() {
   }, [gameId, publicSpectate, userId, setMoveLogs]);
 
   const loadGameSnapshot = useCallback(
-    async (authUid?: string | null) => {
+    async (
+      authUid?: string | null,
+      options?: { includeMoveLogs?: boolean }
+    ) => {
       if (!gameId) return;
       const uid = authUid !== undefined ? authUid : userId;
-      const snapshotKey = `${gameId}|${publicSpectate ? 'pub' : 'priv'}|${uid || 'anon'}`;
+      const includeMoveLogs = options?.includeMoveLogs !== false;
+      const snapshotKey = `${gameId}|${publicSpectate ? 'pub' : 'priv'}|${uid || 'anon'}|${
+        includeMoveLogs ? 'with-logs' : 'game-only'
+      }`;
       const snapshotWait = snapshotInFlightRef.current;
       if (snapshotWait && snapshotWait.key === snapshotKey) {
         await snapshotWait.promise;
@@ -1401,13 +1407,17 @@ export default function GamePage() {
       }
 
       const started = Date.now();
+      const gameQuery = supabase.from('games').select('*').eq('id', gameId).single();
+      const moveLogsQuery = includeMoveLogs
+        ? supabase
+            .from('game_move_logs')
+            .select('san, fen_before, fen_after, created_at, from_sq, to_sq')
+            .eq('game_id', gameId)
+            .order('created_at', { ascending: true })
+        : null;
       const [gameResult, moveLogsResult] = await Promise.all([
-        supabase.from('games').select('*').eq('id', gameId).single(),
-        supabase
-          .from('game_move_logs')
-          .select('san, fen_before, fen_after, created_at, from_sq, to_sq')
-          .eq('game_id', gameId)
-          .order('created_at', { ascending: true }),
+        gameQuery,
+        moveLogsQuery,
       ]);
       const { data, error } = gameResult;
       if (typeof window !== 'undefined') {
@@ -1435,17 +1445,19 @@ export default function GamePage() {
         }
         return;
       }
-      if (moveLogsResult.error) {
+      if (moveLogsResult?.error) {
         setMessage(moveLogsResult.error.message);
         return;
       }
       setGame(data as GameRow);
-      setMoveLogs((moveLogsResult.data ?? []) as MoveLogRow[]);
-      const coherentMoveCount =
-        typeof (data as GameRow).move_count === 'number' && Number.isFinite((data as GameRow).move_count)
-          ? Number((data as GameRow).move_count)
-          : (moveLogsResult.data ?? []).length;
-      lastMoveCountRef.current = coherentMoveCount;
+      if (moveLogsResult) {
+        setMoveLogs((moveLogsResult.data ?? []) as MoveLogRow[]);
+        const coherentMoveCount =
+          typeof (data as GameRow).move_count === 'number' && Number.isFinite((data as GameRow).move_count)
+            ? Number((data as GameRow).move_count)
+            : (moveLogsResult.data ?? []).length;
+        lastMoveCountRef.current = coherentMoveCount;
+      }
       setGameAccess('ok');
       spectateRpcBootstrapMoveLogsHydratedKeyRef.current = null;
       };
@@ -1686,7 +1698,7 @@ export default function GamePage() {
     if (tempo !== 'live' && tempo !== 'daily') return;
 
     const t = window.setInterval(() => {
-      void loadGameSnapshot();
+      void loadGameSnapshot(undefined, { includeMoveLogs: false });
     }, 2000);
     return () => window.clearInterval(t);
   }, [
