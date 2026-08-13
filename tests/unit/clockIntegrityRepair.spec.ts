@@ -85,4 +85,19 @@ test.describe('clock integrity repair', () => {
     expect(moveLogsErrorIndex).toBeGreaterThan(setGameIndex);
     expect(page).toContain('Move history temporarily unavailable:');
   });
+
+  test('prevents stale snapshot responses from overwriting newer state', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toContain('const snapshotRequestSequenceRef = useRef(0);');
+    expect(page).toContain('snapshotRequestSequenceRef.current = requestSequence;');
+    expect(page.match(/if \(!requestIsCurrent\(\)\) return;/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('clears only the recovered move-history warning', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toContain("const MOVE_HISTORY_UNAVAILABLE_PREFIX = 'Move history temporarily unavailable:';");
+    expect(page).toContain("current.startsWith(MOVE_HISTORY_UNAVAILABLE_PREFIX) ? '' : current");
+  });
 });
