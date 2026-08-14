@@ -1,6 +1,33 @@
 export const ALBERT_MAX_MESSAGE_LENGTH = 500;
 export const ALBERT_MAX_REPLY_LENGTH = 1_200;
-export const ALBERT_MODEL_ID = process.env.ALBERT_MODEL_ID?.trim() || 'openai/gpt-5.6-luna';
+export const ALBERT_DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-pro-0813';
+export const ALBERT_MODEL_ID = process.env.ALBERT_MODEL_ID?.trim() || ALBERT_DEFAULT_MODEL_ID;
+export const ALBERT_FALLBACK_MODEL_IDS = ['xai/grok-4.6'] as const;
+export const ALBERT_PRIMARY_TIMEOUT_MS = 4_000;
+export const ALBERT_FALLBACK_TIMEOUT_MS = 14_000;
+
+export type AlbertModelAttempt = {
+  modelId: string;
+  timeoutMs: number;
+};
+
+export function buildAlbertModelAttempts(): AlbertModelAttempt[] {
+  return [
+    { modelId: ALBERT_MODEL_ID, timeoutMs: ALBERT_PRIMARY_TIMEOUT_MS },
+    ...ALBERT_FALLBACK_MODEL_IDS.map((modelId) => ({
+      modelId,
+      timeoutMs: ALBERT_FALLBACK_TIMEOUT_MS,
+    })),
+  ];
+}
+
+export type AlbertGatewayFailureReason =
+  | 'authentication'
+  | 'payment_required'
+  | 'rate_limited'
+  | 'timeout'
+  | 'model_unavailable'
+  | 'provider_error';
 
 export type AlbertMessageValidation =
   | { ok: true; value: string }
@@ -37,6 +64,23 @@ export function buildAlbertSystemPrompt(): string {
 export function sanitizeAlbertReply(value: unknown): string {
   const reply = typeof value === 'string' ? value.replace(/\u0000/g, '').trim() : '';
   return reply.slice(0, ALBERT_MAX_REPLY_LENGTH);
+}
+
+export function classifyAlbertGatewayFailure(
+  error: unknown,
+  status: number | null,
+): AlbertGatewayFailureReason {
+  const detail = error instanceof Error ? `${error.name} ${error.message}`.toLowerCase() : '';
+  if (status === 401 || status === 403 || /auth|api.?key|credential|oidc|token|unauthorized/.test(detail)) {
+    return 'authentication';
+  }
+  if (status === 402 || /credit|budget|payment/.test(detail)) return 'payment_required';
+  if (status === 429 || /rate.?limit|too many requests/.test(detail)) return 'rate_limited';
+  if (status === 408 || status === 504 || /timeout|timed out|abort/.test(detail)) return 'timeout';
+  if (status === 404 || /model.+(not found|unavailable|unsupported)/.test(detail)) {
+    return 'model_unavailable';
+  }
+  return 'provider_error';
 }
 
 export function buildAlbertFallbackReply(message: string): string {

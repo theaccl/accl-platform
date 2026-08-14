@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 
-import { APICallError, generateText } from 'ai';
+import { APICallError, gateway, generateText } from 'ai';
 
 import {
   ALBERT_MODEL_ID,
   buildAlbertFallbackReply,
+  buildAlbertModelAttempts,
   buildAlbertSystemPrompt,
+  classifyAlbertGatewayFailure,
   sanitizeAlbertReply,
   validateAlbertMessage,
 } from '@/lib/albert/communication';
@@ -53,50 +55,72 @@ export async function POST(request: Request): Promise<Response> {
 
   const startedAt = Date.now();
   const gatewayUser = createHash('sha256').update(`albert:${user.id}`).digest('hex');
-  try {
-    const result = await generateText({
-      model: ALBERT_MODEL_ID,
-      system: buildAlbertSystemPrompt(),
-      prompt: validated.value,
-      maxOutputTokens: 220,
-      maxRetries: 1,
-      timeout: { totalMs: 15_000 },
-      providerOptions: {
-        gateway: {
-          user: gatewayUser,
-          tags: ['feature:albert', 'surface:nexus', 'authority:advisory-only'],
+  const failedAttempts: Array<{
+    model: string;
+    status: number | null;
+    reason: ReturnType<typeof classifyAlbertGatewayFailure>;
+    errorName: string;
+  }> = [];
+
+  for (const [attemptIndex, attempt] of buildAlbertModelAttempts().entries()) {
+    try {
+      const result = await generateText({
+        model: gateway(attempt.modelId),
+        system: buildAlbertSystemPrompt(),
+        prompt: validated.value,
+        maxOutputTokens: 220,
+        maxRetries: 0,
+        timeout: { totalMs: attempt.timeoutMs },
+        providerOptions: {
+          gateway: {
+            user: gatewayUser,
+            tags: ['feature:albert', 'surface:nexus', 'authority:advisory-only'],
+          },
         },
-      },
-    });
+      });
 
-    const reply = sanitizeAlbertReply(result.text);
-    if (!reply) throw new Error('empty_albert_reply');
+      const reply = sanitizeAlbertReply(result.text);
+      if (!reply) throw new Error('empty_albert_reply');
 
-    auditApiLog('albert_message', {
-      result: 'generated',
-      user: shortId(user.id),
-      model: ALBERT_MODEL_ID,
-      ms: Date.now() - startedAt,
-      input_tokens: result.usage.inputTokens,
-      output_tokens: result.usage.outputTokens,
-    });
+      auditApiLog('albert_message', {
+        result: 'generated',
+        user: shortId(user.id),
+        model: attempt.modelId,
+        attempt_count: attemptIndex + 1,
+        failover_reason: failedAttempts[0]?.reason ?? null,
+        ms: Date.now() - startedAt,
+        input_tokens: result.usage.inputTokens,
+        output_tokens: result.usage.outputTokens,
+      });
 
-    return json({ ok: true, reply, mode: 'generated', model: ALBERT_MODEL_ID });
-  } catch (error) {
-    const status = APICallError.isInstance(error) ? error.statusCode : null;
-    auditApiLog('albert_message', {
-      result: 'fallback',
-      user: shortId(user.id),
-      model: ALBERT_MODEL_ID,
-      provider_status: status,
-      ms: Date.now() - startedAt,
-    });
-
-    return json({
-      ok: true,
-      reply: buildAlbertFallbackReply(validated.value),
-      mode: 'fallback',
-      model: null,
-    });
+      return json({ ok: true, reply, mode: 'generated', model: attempt.modelId });
+    } catch (error) {
+      const status = APICallError.isInstance(error) ? (error.statusCode ?? null) : null;
+      failedAttempts.push({
+        model: attempt.modelId,
+        status,
+        reason: classifyAlbertGatewayFailure(error, status),
+        errorName: error instanceof Error ? error.name : 'unknown',
+      });
+    }
   }
+
+  const finalFailure = failedAttempts.at(-1);
+  auditApiLog('albert_message', {
+    result: 'fallback',
+    user: shortId(user.id),
+    model: finalFailure?.model ?? ALBERT_MODEL_ID,
+    attempt_count: failedAttempts.length,
+    provider_status: finalFailure?.status ?? null,
+    provider_error: finalFailure?.reason ?? 'provider_error',
+    error_name: finalFailure?.errorName ?? 'unknown',
+    ms: Date.now() - startedAt,
+  });
+
+  return json({
+    ok: true,
+    reply: buildAlbertFallbackReply(validated.value),
+    mode: 'fallback',
+    model: null,
+  });
 }

@@ -3,15 +3,22 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  ALBERT_DEFAULT_MODEL_ID,
+  ALBERT_FALLBACK_TIMEOUT_MS,
+  ALBERT_FALLBACK_MODEL_IDS,
   ALBERT_MAX_MESSAGE_LENGTH,
+  ALBERT_PRIMARY_TIMEOUT_MS,
   buildAlbertFallbackReply,
+  buildAlbertModelAttempts,
   buildAlbertSystemPrompt,
+  classifyAlbertGatewayFailure,
   sanitizeAlbertReply,
   validateAlbertMessage,
 } from '../../lib/albert/communication';
 
 const nexusPagePath = join(process.cwd(), 'app', 'nexus', 'page.tsx');
 const nexusLayoutPath = join(process.cwd(), 'components', 'nexus', 'NexusHubLayout.tsx');
+const albertRoutePath = join(process.cwd(), 'app', 'api', 'albert', 'message', 'route.ts');
 
 test.describe('Albert communication boundary', () => {
   test('accepts a trimmed bounded message', () => {
@@ -48,6 +55,29 @@ test.describe('Albert communication boundary', () => {
     expect(fallback).toContain('hi');
     expect(fallback).toContain('advisory assistant');
     expect(fallback).toContain('cannot alter games');
+  });
+
+  test('uses bounded explicit Gateway attempts with reserved fallback time', () => {
+    const route = readFileSync(albertRoutePath, 'utf8');
+
+    expect(route).toContain('model: gateway(attempt.modelId)');
+    expect(route).toContain('timeout: { totalMs: attempt.timeoutMs }');
+    expect(route).toContain('maxRetries: 0');
+    expect(ALBERT_DEFAULT_MODEL_ID).toBe('deepseek/deepseek-v4-pro-0813');
+    expect(ALBERT_FALLBACK_MODEL_IDS).toEqual(['xai/grok-4.6']);
+    expect(buildAlbertModelAttempts()).toEqual([
+      { modelId: ALBERT_DEFAULT_MODEL_ID, timeoutMs: ALBERT_PRIMARY_TIMEOUT_MS },
+      { modelId: 'xai/grok-4.6', timeoutMs: ALBERT_FALLBACK_TIMEOUT_MS },
+    ]);
+    expect(ALBERT_PRIMARY_TIMEOUT_MS).toBeLessThan(ALBERT_FALLBACK_TIMEOUT_MS);
+  });
+
+  test('classifies Gateway failures without exposing prompt content', () => {
+    expect(classifyAlbertGatewayFailure(new Error('OIDC token missing'), null)).toBe('authentication');
+    expect(classifyAlbertGatewayFailure(new Error('request failed'), 402)).toBe('payment_required');
+    expect(classifyAlbertGatewayFailure(new Error('request failed'), 429)).toBe('rate_limited');
+    expect(classifyAlbertGatewayFailure(new Error('request timed out'), null)).toBe('timeout');
+    expect(classifyAlbertGatewayFailure(new Error('model not found'), 404)).toBe('model_unavailable');
   });
 
   test('sanitizes empty and overlong provider output', () => {
