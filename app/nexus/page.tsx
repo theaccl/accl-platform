@@ -5,6 +5,7 @@ import NavigationBar from "@/components/NavigationBar";
 import NexusBfcacheAuthGuard from "@/components/nexus/NexusBfcacheAuthGuard";
 import NexusShell from "@/components/nexus/NexusShell";
 import { getSupabaseUserFromCookies } from "@/lib/auth/getSupabaseUserFromCookies";
+import { resolveUserNexusEcosystemFromAuthMetadata } from "@/lib/auth/resolveUserNexusEcosystem";
 import { getNexusHubData } from "@/lib/nexus/getNexusHubData";
 import { buildLoginRedirect } from "@/lib/nexus/nexusRouteHelpers";
 
@@ -24,6 +25,7 @@ export default async function NexusPage({
 
   const sp = await searchParams;
   const ecosystem: NexusEcosystem = String(sp?.ecosystem ?? "").toLowerCase() === "k12" ? "k12" : "adult";
+  const showAlbert = resolveUserNexusEcosystemFromAuthMetadata(user) === "adult";
   const data = await getNexusHubData(ecosystem);
   const nexusPendingMr = Number(data.nexusData.matchRequests.pendingCount) || 0;
 
@@ -40,7 +42,7 @@ export default async function NexusPage({
       />
       <NexusBfcacheAuthGuard />
       <NavigationBar variant="nexusShell" />
-      <NexusShell data={data} />
+      <NexusShell data={data} showAlbert={showAlbert} />
     </div>
   );
 }
