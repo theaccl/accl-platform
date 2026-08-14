@@ -12,9 +12,16 @@ import NexusStandingContext from "@/components/nexus/NexusStandingContext";
 import NexusSystemActivity from "@/components/nexus/NexusSystemActivity";
 import NexusTesterBugReportRow from "@/components/nexus/NexusTesterBugReportRow";
 import NexusIdentitySummary from "@/components/nexus/NexusIdentitySummary";
+import AlbertCommunicationPanel from "@/components/nexus/AlbertCommunicationPanel";
 
 /** P3.5 — hub: NEXUS header → Next actions → modules (no duplicate chrome rows under the title). */
-export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
+export default function NexusHubLayout({
+  data,
+  showAlbert,
+}: {
+  data: NexusHubPayload;
+  showAlbert: boolean;
+}) {
   return (
     <div className="flex min-w-0 flex-col gap-5 sm:gap-6 lg:gap-8">
       <NexusHeader meta={data.meta} />
@@ -22,6 +29,12 @@ export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
       <div className="min-w-0">
         <NexusActionCards cards={data.actionCards} />
       </div>
+
+      {showAlbert ? (
+        <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
+          <AlbertCommunicationPanel />
+        </div>
+      ) : null}
 
       <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
         <NexusPlayerSnapshotCard
