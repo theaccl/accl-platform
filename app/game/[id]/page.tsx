@@ -2630,6 +2630,13 @@ export default function GamePage() {
     !isSpectator &&
     isMyTurn;
 
+  /**
+   * react-chessboard 4.7 caches each piece's drag eligibility until its position or board id changes.
+   * A host board first mounts with no opponent, so every piece is initially non-draggable. Remount once
+   * when the second player sits down so the opening position receives live drag handlers immediately.
+   */
+  const boardDragSessionKey = `${game.id}:${bothPlayersSeated(game) ? 'seated' : 'waiting'}`;
+
   const boardInteractionMode = isPublicViewer
     ? 'public_readonly'
     : game.status === 'finished'
@@ -3738,6 +3745,7 @@ export default function GamePage() {
         >
         <div className="accl-game-board-canvas">
         <Chessboard
+          key={boardDragSessionKey}
           id="accl-e2e-board"
           position={boardPosition}
           boardOrientation={boardOrientation}

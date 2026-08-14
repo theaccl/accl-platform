@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { Chess, type Square } from 'chess.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { canPickPieceForMove, sideToMoveFromBoard } from '../../lib/boardInteraction';
 
@@ -10,6 +12,15 @@ function allSquares(): string[] {
 }
 
 test.describe('boardInteraction', () => {
+  test('remounts the live board when an open seat becomes a seated game', () => {
+    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+
+    expect(page).toContain(
+      "const boardDragSessionKey = `${game.id}:${bothPlayersSeated(game) ? 'seated' : 'waiting'}`;"
+    );
+    expect(page).toContain('key={boardDragSessionKey}');
+  });
+
   test('sideToMoveFromBoard tracks white then black', () => {
     const b = new Chess();
     expect(sideToMoveFromBoard(b)).toBe('white');
