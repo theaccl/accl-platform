@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 
-import { APICallError, generateText } from 'ai';
+import { APICallError, gateway, generateText } from 'ai';
 
 import {
+  ALBERT_FALLBACK_MODEL_IDS,
   ALBERT_MODEL_ID,
   buildAlbertFallbackReply,
   buildAlbertSystemPrompt,
+  classifyAlbertGatewayFailure,
   sanitizeAlbertReply,
   validateAlbertMessage,
 } from '@/lib/albert/communication';
@@ -55,7 +57,7 @@ export async function POST(request: Request): Promise<Response> {
   const gatewayUser = createHash('sha256').update(`albert:${user.id}`).digest('hex');
   try {
     const result = await generateText({
-      model: ALBERT_MODEL_ID,
+      model: gateway(ALBERT_MODEL_ID),
       system: buildAlbertSystemPrompt(),
       prompt: validated.value,
       maxOutputTokens: 220,
@@ -63,6 +65,7 @@ export async function POST(request: Request): Promise<Response> {
       timeout: { totalMs: 15_000 },
       providerOptions: {
         gateway: {
+          models: [...ALBERT_FALLBACK_MODEL_IDS],
           user: gatewayUser,
           tags: ['feature:albert', 'surface:nexus', 'authority:advisory-only'],
         },
@@ -83,12 +86,15 @@ export async function POST(request: Request): Promise<Response> {
 
     return json({ ok: true, reply, mode: 'generated', model: ALBERT_MODEL_ID });
   } catch (error) {
-    const status = APICallError.isInstance(error) ? error.statusCode : null;
+    const status = APICallError.isInstance(error) ? (error.statusCode ?? null) : null;
+    const failureReason = classifyAlbertGatewayFailure(error, status);
     auditApiLog('albert_message', {
       result: 'fallback',
       user: shortId(user.id),
       model: ALBERT_MODEL_ID,
       provider_status: status,
+      provider_error: failureReason,
+      error_name: error instanceof Error ? error.name : 'unknown',
       ms: Date.now() - startedAt,
     });
 

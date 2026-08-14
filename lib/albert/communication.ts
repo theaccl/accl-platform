@@ -1,6 +1,15 @@
 export const ALBERT_MAX_MESSAGE_LENGTH = 500;
 export const ALBERT_MAX_REPLY_LENGTH = 1_200;
 export const ALBERT_MODEL_ID = process.env.ALBERT_MODEL_ID?.trim() || 'openai/gpt-5.6-luna';
+export const ALBERT_FALLBACK_MODEL_IDS = ['openai/gpt-5.6-sol'] as const;
+
+export type AlbertGatewayFailureReason =
+  | 'authentication'
+  | 'payment_required'
+  | 'rate_limited'
+  | 'timeout'
+  | 'model_unavailable'
+  | 'provider_error';
 
 export type AlbertMessageValidation =
   | { ok: true; value: string }
@@ -37,6 +46,23 @@ export function buildAlbertSystemPrompt(): string {
 export function sanitizeAlbertReply(value: unknown): string {
   const reply = typeof value === 'string' ? value.replace(/\u0000/g, '').trim() : '';
   return reply.slice(0, ALBERT_MAX_REPLY_LENGTH);
+}
+
+export function classifyAlbertGatewayFailure(
+  error: unknown,
+  status: number | null,
+): AlbertGatewayFailureReason {
+  const detail = error instanceof Error ? `${error.name} ${error.message}`.toLowerCase() : '';
+  if (status === 401 || status === 403 || /auth|api.?key|credential|oidc|token|unauthorized/.test(detail)) {
+    return 'authentication';
+  }
+  if (status === 402 || /credit|budget|payment/.test(detail)) return 'payment_required';
+  if (status === 429 || /rate.?limit|too many requests/.test(detail)) return 'rate_limited';
+  if (status === 408 || status === 504 || /timeout|timed out|abort/.test(detail)) return 'timeout';
+  if (status === 404 || /model.+(not found|unavailable|unsupported)/.test(detail)) {
+    return 'model_unavailable';
+  }
+  return 'provider_error';
 }
 
 export function buildAlbertFallbackReply(message: string): string {
