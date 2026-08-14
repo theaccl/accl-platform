@@ -4,9 +4,12 @@ import { join } from 'node:path';
 
 import {
   ALBERT_DEFAULT_MODEL_ID,
+  ALBERT_FALLBACK_TIMEOUT_MS,
   ALBERT_FALLBACK_MODEL_IDS,
   ALBERT_MAX_MESSAGE_LENGTH,
+  ALBERT_PRIMARY_TIMEOUT_MS,
   buildAlbertFallbackReply,
+  buildAlbertModelAttempts,
   buildAlbertSystemPrompt,
   classifyAlbertGatewayFailure,
   sanitizeAlbertReply,
@@ -54,13 +57,19 @@ test.describe('Albert communication boundary', () => {
     expect(fallback).toContain('cannot alter games');
   });
 
-  test('uses the explicit Gateway provider with free-tier primary and fallback models', () => {
+  test('uses bounded explicit Gateway attempts with reserved fallback time', () => {
     const route = readFileSync(albertRoutePath, 'utf8');
 
-    expect(route).toContain('model: gateway(ALBERT_MODEL_ID)');
-    expect(route).toContain('models: [...ALBERT_FALLBACK_MODEL_IDS]');
+    expect(route).toContain('model: gateway(attempt.modelId)');
+    expect(route).toContain('timeout: { totalMs: attempt.timeoutMs }');
+    expect(route).toContain('maxRetries: 0');
     expect(ALBERT_DEFAULT_MODEL_ID).toBe('deepseek/deepseek-v4-pro-0813');
     expect(ALBERT_FALLBACK_MODEL_IDS).toEqual(['xai/grok-4.6']);
+    expect(buildAlbertModelAttempts()).toEqual([
+      { modelId: ALBERT_DEFAULT_MODEL_ID, timeoutMs: ALBERT_PRIMARY_TIMEOUT_MS },
+      { modelId: 'xai/grok-4.6', timeoutMs: ALBERT_FALLBACK_TIMEOUT_MS },
+    ]);
+    expect(ALBERT_PRIMARY_TIMEOUT_MS).toBeLessThan(ALBERT_FALLBACK_TIMEOUT_MS);
   });
 
   test('classifies Gateway failures without exposing prompt content', () => {

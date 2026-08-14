@@ -3,6 +3,23 @@ export const ALBERT_MAX_REPLY_LENGTH = 1_200;
 export const ALBERT_DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-pro-0813';
 export const ALBERT_MODEL_ID = process.env.ALBERT_MODEL_ID?.trim() || ALBERT_DEFAULT_MODEL_ID;
 export const ALBERT_FALLBACK_MODEL_IDS = ['xai/grok-4.6'] as const;
+export const ALBERT_PRIMARY_TIMEOUT_MS = 4_000;
+export const ALBERT_FALLBACK_TIMEOUT_MS = 14_000;
+
+export type AlbertModelAttempt = {
+  modelId: string;
+  timeoutMs: number;
+};
+
+export function buildAlbertModelAttempts(): AlbertModelAttempt[] {
+  return [
+    { modelId: ALBERT_MODEL_ID, timeoutMs: ALBERT_PRIMARY_TIMEOUT_MS },
+    ...ALBERT_FALLBACK_MODEL_IDS.map((modelId) => ({
+      modelId,
+      timeoutMs: ALBERT_FALLBACK_TIMEOUT_MS,
+    })),
+  ];
+}
 
 export type AlbertGatewayFailureReason =
   | 'authentication'
