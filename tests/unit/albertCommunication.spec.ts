@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  ALBERT_DEFAULT_MODEL_ID,
   ALBERT_FALLBACK_MODEL_IDS,
   ALBERT_MAX_MESSAGE_LENGTH,
   buildAlbertFallbackReply,
@@ -53,12 +54,13 @@ test.describe('Albert communication boundary', () => {
     expect(fallback).toContain('cannot alter games');
   });
 
-  test('uses the explicit Gateway provider with a current fallback model', () => {
+  test('uses the explicit Gateway provider with free-tier primary and fallback models', () => {
     const route = readFileSync(albertRoutePath, 'utf8');
 
     expect(route).toContain('model: gateway(ALBERT_MODEL_ID)');
     expect(route).toContain('models: [...ALBERT_FALLBACK_MODEL_IDS]');
-    expect(ALBERT_FALLBACK_MODEL_IDS).toEqual(['openai/gpt-5.6-sol']);
+    expect(ALBERT_DEFAULT_MODEL_ID).toBe('deepseek/deepseek-v4-pro-0813');
+    expect(ALBERT_FALLBACK_MODEL_IDS).toEqual(['xai/grok-4.6']);
   });
 
   test('classifies Gateway failures without exposing prompt content', () => {

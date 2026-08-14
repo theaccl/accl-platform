@@ -1,7 +1,8 @@
 export const ALBERT_MAX_MESSAGE_LENGTH = 500;
 export const ALBERT_MAX_REPLY_LENGTH = 1_200;
-export const ALBERT_MODEL_ID = process.env.ALBERT_MODEL_ID?.trim() || 'openai/gpt-5.6-luna';
-export const ALBERT_FALLBACK_MODEL_IDS = ['openai/gpt-5.6-sol'] as const;
+export const ALBERT_DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-pro-0813';
+export const ALBERT_MODEL_ID = process.env.ALBERT_MODEL_ID?.trim() || ALBERT_DEFAULT_MODEL_ID;
+export const ALBERT_FALLBACK_MODEL_IDS = ['xai/grok-4.6'] as const;
 
 export type AlbertGatewayFailureReason =
   | 'authentication'
