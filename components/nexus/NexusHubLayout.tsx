@@ -12,6 +12,7 @@ import NexusStandingContext from "@/components/nexus/NexusStandingContext";
 import NexusSystemActivity from "@/components/nexus/NexusSystemActivity";
 import NexusTesterBugReportRow from "@/components/nexus/NexusTesterBugReportRow";
 import NexusIdentitySummary from "@/components/nexus/NexusIdentitySummary";
+import AlbertCommunicationPanel from "@/components/nexus/AlbertCommunicationPanel";
 
 /** P3.5 — hub: NEXUS header → Next actions → modules (no duplicate chrome rows under the title). */
 export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
@@ -22,6 +23,12 @@ export default function NexusHubLayout({ data }: { data: NexusHubPayload }) {
       <div className="min-w-0">
         <NexusActionCards cards={data.actionCards} />
       </div>
+
+      {data.meta.ecosystem === "adult" ? (
+        <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
+          <AlbertCommunicationPanel />
+        </div>
+      ) : null}
 
       <div className="min-w-0 border-t border-white/[0.06] pt-5 sm:pt-6">
         <NexusPlayerSnapshotCard
