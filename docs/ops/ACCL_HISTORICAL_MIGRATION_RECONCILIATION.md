@@ -6,6 +6,7 @@
 **Branch:** `main`
 **Audited repository commit:** `3cb57a1f44ddf0da0efce06e5f78a31a3d8c7b9c`
 **Production mutation status:** none — documentation only
+**Later current-status update:** `20260625120000` is no longer a current R5. Phase 5–6 text below is retained as audit-time accounting; the post-R016 Case B application is recorded in §15.
 
 ## 1. Purpose and authority
 
@@ -126,10 +127,12 @@ These are candidates only for a future repair decision. Phase 5 does not authori
 
 ### R5 — material effect absent / not applied (2)
 
+Phase 5 counted two R5 versions. That count remains the audit-time accounting. The only version that is still a current R5 is `20260426120100`. `20260625120000` retains its Phase 5 snapshot in this table and is current-classified in §15.
+
 | Version | Local migration filename | Live evidence and disposition |
 | --- | --- | --- |
 | `20260426120100` | `20260426120100_match_requests_inbox_perf_indexes.sql` | Both intended match-request inbox indexes were absent. Treat as not applied. |
-| `20260625120000` | `20260625120000_rating_initialization_baseline_1000.sql` | Production still defaulted ratings to 1500; the audit found 106 zero-game rows at 1500, none at 1000, and all three migration-specific helpers absent. Treat as definitely not applied. |
+| `20260625120000` | `20260625120000_rating_initialization_baseline_1000.sql` | **Phase 5 snapshot (pre-R016; not incorrect when recorded):** Production still defaulted ratings to 1500; the audit found 106 zero-game rows at 1500, none at 1000, and all three migration-specific helpers absent. Treat as definitely not applied. **Current status (post-R016):** production effects applied and verified; out-of-band/Case B; `schema_migrations` row absent; do not execute again; history reconciliation pending separate Watcher authorization. See §15. |
 
 ### R6 — still indeterminate (15)
 
@@ -228,6 +231,8 @@ If a future owner separately opens a ledger-repair lane, the only current histor
 
 Even those six are candidates, not commands. A future lane must reassess operational coupling, CLI behavior, staging/clone results, production state, and owner approval at that time. Nothing in R2–R6 qualifies for automatic `migration repair --status applied`.
 
+Post-R016, `20260625120000` is no longer a current R5; see §15. That later Case B application does not add it to the R1 repair-candidate list above and does not authorize history repair.
+
 ## 12. Evidence anchors
 
 Repository evidence:
@@ -243,6 +248,8 @@ Repository evidence:
 - `docs/phase-locks/PHASE_1IB_BOT_MOVE_SHADOW_LOCK.md`
 - `supabase/OPERATOR_RUNBOOK.md`
 - `scripts/apply-supabase-migration.mjs`
+- `supabase/migrations/20260625120000_rating_initialization_baseline_1000.sql`
+- §15 Rating Initialization 1000 out-of-band/Case B production application (`ACCL-RI1000-016` / `ACCL-RI1000-R016`)
 
 Audit evidence:
 
@@ -271,3 +278,114 @@ No paid empirical environment was authorized. Account-specific cost discovery re
 **Phase 6 final disposition:** do not repair the six R1 rows. Keep them as documented historical-execution candidates in this record, preserve the production ledger as-is, and require a new owner decision if material evidence or deployment strategy changes.
 
 **Zero-change attestation:** Phase 6 made no production writes, ran no migration repair, `db push`, `db reset`, or `--include-all`, installed no CLI, created no Supabase project or branch, changed no migration file, and made no repository commit or push.
+
+## 15. Rating Initialization 1000 out-of-band/Case B production application
+
+**Record date:** 2026-08-14
+**Authorization:** `ACCL-RI1000-016`
+**Successful response:** `ACCL-RI1000-R016`
+**This documentation candidate:** `ACCL-RI1000-019`
+**Production mutation status of this section:** none — documentation only; this section does not authorize replay, repair, push, or deployment.
+
+This section records a later production event that occurred after the Phase 5 R5 snapshot. It does not rewrite Phase 5 or Phase 6 decisions. The Phase 5 R5 evidence for `20260625120000` remains a truthful pre-application snapshot.
+
+### Status
+
+- Production already contains this migration’s schema/data effects.
+- Application was out-of-band/Case B through Supabase MCP `execute_sql`.
+- Application occurred once. No retry occurred.
+- Immediate post-apply verification passed.
+- Version `20260625120000` remains intentionally absent from `supabase_migrations.schema_migrations`.
+- **Ledger absence does not mean the migration is unapplied or safe to apply.**
+- **Do not execute `20260625120000` again.**
+- **Do not use `db push --include-all`.**
+- **Do not use a blind migration sweep.**
+- Consult this section before any migration-history work.
+- History repair requires separate Watcher authorization and is not authorized by this record.
+- This record is evidence, not deployment authorization.
+
+### Production identity
+
+- project ref: `nlptviibefbzisyqswuv`
+- project name: `accl-platform`
+- region: `us-east-1`
+
+### Applied source identity
+
+Repository baseline used during application: `3cb57a1f44ddf0da0efce06e5f78a31a3d8c7b9c`
+
+This documentation candidate is authored from pinned commit: `f5d51ee80fb393fe7dbae237422a81bd280eaa4d`
+
+Migration: `supabase/migrations/20260625120000_rating_initialization_baseline_1000.sql`
+
+| Identity | Value |
+| --- | --- |
+| Git blob | `f8873a5aee0877769a1b2c46f6590fb95ea30afc` |
+| Raw LF bytes | `14517` |
+| Raw LF SHA-256 | `eaa9bab3203909aca0a8772d5f83f74ee8a6dd945e7c921f6c62670a972f6108` |
+| CRLF working-tree bytes | `14930` |
+| CRLF SHA-256 | `24ee872822a4de5021b005a736d2f7ef8f104f22312490e98728a4ce92683997` |
+| Wrapped payload bytes | `14976` |
+| Wrapped SHA-256 | `6e466d9fc627a9369c23b9c9c39e0d17c792a01d591874831f7a3d36c832e064` |
+| Wrapper prefix | `BEGIN;\nSET LOCAL lock_timeout = '5s';\n` |
+| Wrapper suffix | `\nCOMMIT;` |
+
+The wrapper suffix had no trailing newline.
+
+### Application evidence
+
+- channel: Supabase MCP `execute_sql`
+- MCP result: success, body `[]`
+- `COMMIT` inferred successful from successful execution of the explicit transaction payload
+- apply-agent evidence identifier: `92b55df6-d7d7-47d8-8f11-5f77802c586f`
+- reported evidence timestamp: `2026-08-10T17:23:41Z`
+
+That timestamp is the reported post-verification cleanup/provenance timestamp. It is not a fabricated exact SQL `COMMIT` timestamp.
+
+### Pre-apply aggregates
+
+These are the immediate pre-application counts. They are not player-identifying rows.
+
+- eligible / complete / partial: `3 / 3 / 0`
+- major-family `1000/0` rows: `0`
+- major-family total rows: `66`
+- major-family legacy `1500/0` rows: `51`
+- ledger rows: `206`
+- platform-bot users with ratings: `1`
+- badge rows / not-1500: `0 / 0`
+- mixed anomaly: `0`
+- ineligible-changed metric: `0`
+- rating default: `1500`
+- O2 sites `1500/0` versus `1000/0`: `6 / 0`
+
+### Post-apply aggregates
+
+- rating default: `1000`
+- seed buckets: `12/12` at `1000/0`
+- O2 sites `1000/0` versus `1500/0`: `6 / 0`
+- corrected accounts: `3`
+- corrected major-family rows: `18`
+- major-family total rows: `66`, unchanged
+- major-family legacy `1500/0` rows: `33`
+- ledger rows: `206`, unchanged
+- platform-bot aggregate: `1`, unchanged
+- badge not-1500: `0`, unchanged
+- trigger binding: present
+- history entry `20260625120000`: absent
+
+### Product scope
+
+- New accounts now seed all 12 rating buckets at `1000/0`.
+- Only the six official major families were corrected for eligible existing zero-game accounts.
+- Players with games, tournament entries, rating-ledger activity, positive games played, mixed/non-legacy major-family states, or platform bots were not included.
+- Non-major legacy buckets were not backfilled.
+- Badge settlement remains separate at `1500`.
+- No rating-ledger history was fabricated.
+
+### Verification caveat
+
+`ineligible_accounts_whose_ratings_changed_must_be_zero` was valid only during the immediate controlled post-apply window. It is not a durable production-health invariant and must not be reused later as one.
+
+### Repair and replay boundary
+
+This section does not add `20260625120000` to the six Phase 6 R1 repair candidates. It does not authorize `migration repair --status applied`, named-file replay, `db push`, or `--include-all`. History reconciliation remains a separate Watcher-authorized lane.
