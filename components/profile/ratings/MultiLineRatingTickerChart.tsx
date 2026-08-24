@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { MajorFamilySeriesData } from '@/lib/profileRatingChartLevels';
+import { frontMostId, sortItemsByDominance } from '@/lib/profile/ratingLineDominanceOrder';
 import { pointsAtExactTimestamp } from '@/lib/profileRatingFamilyComparison';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
@@ -10,14 +11,15 @@ import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 type Props = {
   series: MajorFamilySeriesData[];
   visibleTrackIds: ReadonlySet<string>;
+  dominanceOrder: readonly string[];
   canLinkFinishedGames: boolean;
   expanded?: boolean;
 };
 
-const CHART_W = 560;
-const CHART_H = 180;
-const CHART_H_EXPANDED = 240;
-const PAD = 20;
+export const MULTI_LINE_CHART_W = 560;
+export const MULTI_LINE_CHART_H = 180;
+export const MULTI_LINE_CHART_H_EXPANDED = 240;
+export const MULTI_LINE_CHART_PAD = 20;
 
 type PlottedPoint = {
   trackId: string;
@@ -33,13 +35,38 @@ function parseTime(iso: string): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
+function pickNearestPoint(
+  pts: PlottedPoint[],
+  clientX: number,
+  clientY: number,
+  svg: SVGSVGElement,
+): PlottedPoint | null {
+  if (pts.length === 0) return null;
+  const rect = svg.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return pts[0] ?? null;
+  const viewH = Number(svg.viewBox.baseVal.height) || MULTI_LINE_CHART_H;
+  const x = ((clientX - rect.left) / rect.width) * MULTI_LINE_CHART_W;
+  const y = ((clientY - rect.top) / rect.height) * viewH;
+  let best = pts[0]!;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const pt of pts) {
+    const dist = (pt.x - x) ** 2 + (pt.y - y) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = pt;
+    }
+  }
+  return best;
+}
+
 export function MultiLineRatingTickerChart({
   series,
   visibleTrackIds,
+  dominanceOrder,
   canLinkFinishedGames,
   expanded = false,
 }: Props) {
-  const chartH = expanded ? CHART_H_EXPANDED : CHART_H;
+  const chartH = expanded ? MULTI_LINE_CHART_H_EXPANDED : MULTI_LINE_CHART_H;
   const [active, setActive] = useState<{ trackId: string; pointId: string } | null>(null);
   const [hoverAt, setHoverAt] = useState<string | null>(null);
 
@@ -63,13 +90,13 @@ export function MultiLineRatingTickerChart({
 
     const toX = (iso: string) => {
       const t = parseTime(iso);
-      if (!Number.isFinite(t)) return CHART_W / 2;
-      if (times.length === 1 || minT === maxT) return CHART_W / 2;
-      return PAD + ((t - minT) / tSpan) * (CHART_W - PAD * 2);
+      if (!Number.isFinite(t)) return MULTI_LINE_CHART_W / 2;
+      if (times.length === 1 || minT === maxT) return MULTI_LINE_CHART_W / 2;
+      return MULTI_LINE_CHART_PAD + ((t - minT) / tSpan) * (MULTI_LINE_CHART_W - MULTI_LINE_CHART_PAD * 2);
     };
     const toY = (r: number) => {
       const yT = (r - yMin) / (yMax - yMin);
-      return chartH - PAD - yT * (chartH - PAD * 2);
+      return chartH - MULTI_LINE_CHART_PAD - yT * (chartH - MULTI_LINE_CHART_PAD * 2);
     };
 
     const items: PlottedPoint[] = allPoints.map((ap) => ({
@@ -81,6 +108,17 @@ export function MultiLineRatingTickerChart({
     return { items, yMin, yMax };
   }, [series, visibleTrackIds, chartH]);
 
+  const visibleSeries = useMemo(() => {
+    const visible = series.filter((s) => visibleTrackIds.has(s.trackId));
+    return sortItemsByDominance(visible, dominanceOrder, (s) => s.trackId);
+  }, [series, visibleTrackIds, dominanceOrder]);
+
+  const paintedSeries = useMemo(
+    () => visibleSeries.filter((s) => plotted.items.some((p) => p.trackId === s.trackId)),
+    [visibleSeries, plotted.items],
+  );
+  const dominantCategory = paintedSeries[paintedSeries.length - 1]?.trackId ?? frontMostId(dominanceOrder);
+
   const activePoint = useMemo(() => {
     if (!active) return null;
     return plotted.items.find((p) => p.trackId === active.trackId && p.point.id === active.pointId) ?? null;
@@ -88,72 +126,106 @@ export function MultiLineRatingTickerChart({
 
   const hoverRows = useMemo(() => {
     if (!hoverAt) return [];
-    return pointsAtExactTimestamp(series, hoverAt, visibleTrackIds);
-  }, [hoverAt, series, visibleTrackIds]);
+    const rows = pointsAtExactTimestamp(series, hoverAt, visibleTrackIds);
+    return sortItemsByDominance(rows, dominanceOrder, (row) => row.trackId);
+  }, [hoverAt, series, visibleTrackIds, dominanceOrder]);
 
   if (plotted.items.length === 0) {
     return null;
   }
 
-  const visibleSeries = series.filter((s) => visibleTrackIds.has(s.trackId));
-
   return (
-    <div data-testid="multi-line-rating-chart" className="space-y-2">
+    <div
+      data-testid="multi-line-rating-chart"
+      data-dominance-order={visibleSeries.map((s) => s.trackId).join(' ') || 'none'}
+      data-dominant-category={dominantCategory ?? 'none'}
+      data-hero="false"
+      className="space-y-2"
+    >
       <div className="relative">
         <svg
-          viewBox={`0 0 ${CHART_W} ${chartH}`}
+          viewBox={`0 0 ${MULTI_LINE_CHART_W} ${chartH}`}
           className="w-full max-w-full rounded-lg border border-[#2f3f54] bg-[#0b121c]"
           role="img"
           aria-label="Major rating families comparison chart"
+          data-testid="multi-line-rating-chart-svg"
           onMouseLeave={() => setHoverAt(null)}
         >
-          {visibleSeries.map((s) => {
+          {visibleSeries.map((s, index) => {
             const pts = plotted.items.filter((p) => p.trackId === s.trackId);
             if (pts.length === 0) return null;
             const polyline =
               pts.length === 1
                 ? `${pts[0].x},${pts[0].y} ${pts[0].x},${pts[0].y}`
                 : pts.map((p) => `${p.x},${p.y}`).join(' ');
+            const isDominant = s.trackId === dominantCategory;
+            const activateNearest = (clientX: number, clientY: number, svg: SVGSVGElement | null) => {
+              if (!svg) return;
+              const nearest = pickNearestPoint(pts, clientX, clientY, svg);
+              if (!nearest) return;
+              setActive({ trackId: nearest.trackId, pointId: nearest.point.id });
+              setHoverAt(nearest.point.occurredAt);
+            };
             return (
-              <polyline
+              <g
                 key={s.trackId}
-                data-testid={`multi-line-series-${s.trackId}`}
-                fill="none"
-                stroke={s.color}
-                strokeWidth="2"
-                strokeOpacity={0.9}
-                points={polyline}
-              />
-            );
-          })}
-
-          {plotted.items.map((p) => {
-            const isActive =
-              active?.trackId === p.trackId && active?.pointId === p.point.id;
-            const isHover = hoverAt === p.point.occurredAt;
-            return (
-              <circle
-                key={`${p.trackId}:${p.point.id}`}
-                cx={p.x}
-                cy={p.y}
-                r={isActive ? 6 : 4}
-                fill={p.color}
-                stroke={isActive || isHover ? '#ffffff' : p.color}
-                strokeWidth={isActive || isHover ? 2 : 1}
-                className="cursor-pointer"
-                data-testid={`multi-line-point-${p.trackId}`}
-                data-point-id={p.point.id}
-                onClick={() => setActive({ trackId: p.trackId, pointId: p.point.id })}
-                onMouseEnter={() => setHoverAt(p.point.occurredAt)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    setActive({ trackId: p.trackId, pointId: p.point.id });
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={`${p.label} rating ${p.point.ratingAfter}`}
-              />
+                data-testid={`multi-line-series-group-${s.trackId}`}
+                data-dominance-rank={index}
+                data-dominant={isDominant ? 'true' : 'false'}
+              >
+                <polyline
+                  data-testid={`multi-line-series-${s.trackId}`}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={isDominant ? 2.75 : 2}
+                  strokeOpacity={0.95}
+                  points={polyline}
+                  pointerEvents="none"
+                />
+                <polyline
+                  data-testid={`multi-line-series-hit-${s.trackId}`}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth="16"
+                  points={polyline}
+                  pointerEvents="stroke"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    activateNearest(event.clientX, event.clientY, event.currentTarget.ownerSVGElement);
+                  }}
+                />
+                {pts.map((p) => {
+                  const isActive =
+                    active?.trackId === p.trackId && active?.pointId === p.point.id;
+                  const isHover = hoverAt === p.point.occurredAt;
+                  return (
+                    <circle
+                      key={`${p.trackId}:${p.point.id}`}
+                      cx={p.x}
+                      cy={p.y}
+                      r={isActive ? 6 : 4}
+                      fill={p.color}
+                      stroke={isActive || isHover ? '#ffffff' : p.color}
+                      strokeWidth={isActive || isHover ? 2 : 1}
+                      className="cursor-pointer"
+                      data-testid={`multi-line-point-${p.trackId}`}
+                      data-point-id={p.point.id}
+                      data-rating-after={p.point.ratingAfter}
+                      data-occurred-at={p.point.occurredAt}
+                      onClick={() => setActive({ trackId: p.trackId, pointId: p.point.id })}
+                      onMouseEnter={() => setHoverAt(p.point.occurredAt)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          setActive({ trackId: p.trackId, pointId: p.point.id });
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${p.label} rating ${p.point.ratingAfter}`}
+                    />
+                  );
+                })}
+              </g>
             );
           })}
         </svg>

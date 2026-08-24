@@ -58,13 +58,16 @@ test.describe('profile rating ticker lane tabs (unit)', () => {
     expect(drawer).toContain('lanePoints');
   });
 
-  test('comparison drawer inherits inline lane and filters multi-line chart', () => {
-    const drawer = src('components/profile/ratings/ExpandedRatingComparisonDrawer.tsx');
+  test('comparison expand reuses landscape drawer lane controls instead of a second overlay', () => {
+    const panel = src('components/profile/ratings/RatingFamilyComparisonPanel.tsx');
+    const drawer = src('components/profile/ratings/ExpandedRatingTickerDrawer.tsx');
+    expect(panel).toContain('ExpandedRatingTickerDrawer');
+    expect(panel).toContain('onLaneChange={setLane}');
+    expect(panel).not.toContain('ExpandedRatingComparisonDrawer');
     expect(drawer).toContain('RatingLaneTabs');
-    expect(drawer).toContain('filterMajorFamilySeriesByLane');
-    expect(drawer).toContain('baseSeries');
+    expect(drawer).toContain('filterPointsByLane');
     expect(drawer).toContain('onLaneChange');
-    expect(drawer).toContain('comparison-lane-empty');
+    expect(drawer).toContain('testIdPrefix="rating"');
   });
 
   test('inline comparison panel still uses shared lane tabs unchanged', () => {
@@ -74,7 +77,7 @@ test.describe('profile rating ticker lane tabs (unit)', () => {
     expect(panel).toContain("testIdPrefix=\"comparison\"");
     expect(panel).toContain('toggleTrack');
     expect(panel).toContain('visibleTrackIds');
-    expect(panel).toContain('baseSeries={baseSeries}');
+    expect(panel).toContain('historyByTrack={historyByTrack}');
     expect(panel).toContain('onLaneChange={setLane}');
   });
 

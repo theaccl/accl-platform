@@ -1,18 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   MAJOR_FAMILY_COMPARISON_SERIES,
   buildMajorFamilySeriesData,
   type MajorFamilyTrackId,
 } from '@/lib/profileRatingChartLevels';
 import {
+  applyActivationToggle,
+  frontMostId,
+  initialDominanceOrder,
+} from '@/lib/profile/ratingLineDominanceOrder';
+import {
   filterMajorFamilySeriesByLane,
   majorFamilySeriesHasAnyPoints,
 } from '@/lib/profileRatingFamilyComparison';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
-import { ExpandedRatingComparisonDrawer } from '@/components/profile/ratings/ExpandedRatingComparisonDrawer';
+import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
 import { RATING_LANE_EMPTY } from '@/components/profile/ratings/ratingTickerEmptyStates';
@@ -25,25 +30,24 @@ type Props = {
   canLinkFinishedGames: boolean;
 };
 
-function initialVisibleSet(): Set<MajorFamilyTrackId> {
-  return new Set(MAJOR_FAMILY_COMPARISON_SERIES.map((s) => s.trackId));
+function initialComparisonDominance(): MajorFamilyTrackId[] {
+  return initialDominanceOrder(MAJOR_FAMILY_COMPARISON_SERIES.map((s) => s.trackId));
 }
 
 export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGames }: Props) {
   const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
-  const [hidden, setHidden] = useState<Set<MajorFamilyTrackId>>(new Set());
+  const [dominanceOrder, setDominanceOrder] = useState<MajorFamilyTrackId[]>(initialComparisonDominance);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const baseSeries = useMemo(() => buildMajorFamilySeriesData(historyByTrack), [historyByTrack]);
   const laneSeries = useMemo(() => filterMajorFamilySeriesByLane(baseSeries, lane), [baseSeries, lane]);
-  const visibleTrackIds = useMemo(() => {
-    const vis = initialVisibleSet();
-    for (const id of hidden) vis.delete(id);
-    return vis;
-  }, [hidden]);
+  const visibleTrackIds = useMemo(() => new Set(dominanceOrder), [dominanceOrder]);
 
   const anyLanePoints = majorFamilySeriesHasAnyPoints(laneSeries);
   const anyBasePoints = majorFamilySeriesHasAnyPoints(baseSeries);
+  const canExpandLandscape =
+    anyBasePoints || Object.values(historyByTrack).some((pts) => (pts?.length ?? 0) > 0);
   const renderedPointCount = useMemo(
     () =>
       laneSeries
@@ -53,22 +57,19 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
   );
 
   function toggleTrack(trackId: MajorFamilyTrackId) {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(trackId)) next.delete(trackId);
-      else next.add(trackId);
-      return next;
-    });
+    setDominanceOrder((prev) => applyActivationToggle(prev, trackId, !prev.includes(trackId)));
   }
 
   return (
     <div
       data-testid="rating-family-comparison-panel"
+      data-dominance-order={dominanceOrder.join(' ') || 'none'}
+      data-dominant-category={frontMostId(dominanceOrder) ?? 'none'}
       className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4"
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="m-0 text-sm font-semibold text-white">Compare major ratings</h3>
-        {anyLanePoints && renderedPointCount > 0 ? (
+        {canExpandLandscape ? (
           <button
             type="button"
             className="shrink-0 rounded-md border border-[#3d5168] px-2 py-1 text-xs text-gray-300 sm:hidden"
@@ -145,18 +146,21 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         <MultiLineRatingTickerChart
           series={laneSeries}
           visibleTrackIds={visibleTrackIds}
+          dominanceOrder={dominanceOrder}
           canLinkFinishedGames={canLinkFinishedGames}
         />
       )}
 
-      <ExpandedRatingComparisonDrawer
+      <ExpandedRatingTickerDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        baseSeries={baseSeries}
+        onClose={closeDrawer}
+        trackLabel="Free"
+        currentRating={null}
+        points={[]}
         lane={lane}
         onLaneChange={setLane}
-        visibleTrackIds={visibleTrackIds}
         canLinkFinishedGames={canLinkFinishedGames}
+        historyByTrack={historyByTrack}
       />
     </div>
   );

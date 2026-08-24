@@ -189,7 +189,10 @@ test.describe('profile rating ticker gap-fill', () => {
 
   test('mobile expanded drawer is profile-scoped', () => {
     const drawer = src('components/profile/ratings/ExpandedRatingTickerDrawer.tsx');
+    const panel = src('components/profile/ratings/RatingTrackDetailPanel.tsx');
     expect(drawer).toContain('expanded-rating-ticker-drawer');
-    expect(drawer).toContain('sm:hidden');
+    expect(panel).toContain('rating-ticker-expand-mobile');
+    expect(panel).toContain('sm:hidden');
+    expect(drawer).not.toContain('sm:hidden');
   });
 });

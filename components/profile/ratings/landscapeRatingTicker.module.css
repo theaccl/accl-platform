@@ -1,0 +1,261 @@
+.frame {
+  overflow: hidden;
+}
+
+.familyPager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.familyDotButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.familyDot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--accl-accent-crimson, #9e3434);
+  opacity: 0.42;
+  box-shadow: none;
+  transform: scale(1);
+}
+
+.familyDot[data-active='true'] {
+  width: 0.62rem;
+  height: 0.62rem;
+  background: var(--accl-accent-crimson-bright, #ef4444);
+  opacity: 1;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accl-accent-crimson-bright, #ef4444) 50%, transparent);
+  transform: scale(1.15);
+}
+
+.familyDotButton:focus-visible {
+  outline: 2px solid var(--accl-accent-crimson-bright, #ef4444);
+  outline-offset: 1px;
+  border-radius: 999px;
+}
+
+.bodyScroll {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.familyViewport {
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.familyTrack {
+  display: flex;
+  width: 300%;
+  min-height: 100%;
+  transition: transform 220ms ease;
+}
+
+.familyTrack[data-reduced-motion='true'] {
+  transition: none;
+}
+
+.familyPanel {
+  display: flex;
+  width: 33.3333%;
+  min-width: 0;
+  height: auto;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: visible;
+}
+
+.chartSlot {
+  flex-shrink: 0;
+}
+
+.familyUnavailable {
+  display: flex;
+  min-height: 11rem;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  border-radius: 0.5rem;
+  border: 1px dashed #2f3f54;
+  background: #0b121c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .familyTrack {
+    transition: none;
+  }
+}
+
+.heroGlow,
+.heroCore,
+.quietGlow,
+.quietCore {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.heroGlow,
+.heroCore {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: landscapeTickerDraw 1.2s ease-out forwards;
+}
+
+.quietGlow,
+.quietCore {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: landscapeTickerDraw 0.48s ease-out forwards;
+}
+
+.settledGlow,
+.settledCore {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+}
+
+.heroHead {
+  offset-rotate: 0deg;
+  animation: landscapeTickerHead 1.2s ease-out forwards;
+}
+
+.spark {
+  offset-rotate: 0deg;
+  animation: landscapeTickerSpark 1.2s ease-out forwards;
+}
+
+.bloom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: landscapeTickerBloom 0.5s ease-out 1.1s both;
+}
+
+.perimeter {
+  fill: none;
+  animation: landscapeTickerPerimeter 0.7s ease-out 1.15s both;
+}
+
+.singleBloom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: landscapeTickerBloom 0.55s ease-out both;
+}
+
+@keyframes landscapeTickerDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes landscapeTickerHead {
+  from {
+    offset-distance: 0%;
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes landscapeTickerSpark {
+  from {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  80% {
+    opacity: 0.35;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes landscapeTickerBloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  40% {
+    opacity: 0.9;
+    transform: scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes landscapeTickerPerimeter {
+  0% {
+    opacity: 0;
+    stroke-width: 1.5;
+  }
+  35% {
+    opacity: 0.85;
+    stroke-width: 3;
+  }
+  100% {
+    opacity: 0;
+    stroke-width: 1.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroGlow,
+  .heroCore,
+  .quietGlow,
+  .quietCore,
+  .heroHead,
+  .spark,
+  .bloom,
+  .perimeter,
+  .singleBloom {
+    animation: none !important;
+  }
+
+  .heroGlow,
+  .heroCore,
+  .quietGlow,
+  .quietCore {
+    stroke-dashoffset: 0;
+  }
+
+  .heroHead,
+  .spark,
+  .bloom,
+  .perimeter,
+  .singleBloom {
+    opacity: 0;
+  }
+}

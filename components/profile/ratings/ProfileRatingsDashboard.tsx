@@ -219,6 +219,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
         badge={dashboard.badgeByTrack[selectedDetail]}
         isSelf={isSelf}
         canLinkFinishedGames={isSelf}
+        historyByTrack={dashboard.historyByTrack}
       />
 
       {isSelf ? (
