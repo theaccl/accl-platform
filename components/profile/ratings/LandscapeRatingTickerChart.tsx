@@ -196,10 +196,10 @@ export function LandscapeRatingTickerChart({
   }
 
   return (
-    <div className="space-y-2">
+    <div className={`${styles.chartWrap} space-y-2`}>
       <div
         ref={frameRef}
-        className={`${styles.frame} relative h-[min(48dvh,18rem)] w-full min-h-[11rem] landscape:h-[min(44dvh,14.5rem)]`}
+        className={`${styles.frame} relative w-full`}
         data-testid="landscape-ticker-chart"
         data-line-count={lineCount}
         data-active-reveal={activeReveal?.id ?? 'none'}
@@ -212,7 +212,7 @@ export function LandscapeRatingTickerChart({
       >
         <svg
           viewBox={`0 0 ${size.width} ${size.height}`}
-          className="h-full w-full rounded-lg border border-[#2f3f54] bg-[#0b121c]"
+          className={`${styles.svgRoot} h-full w-full rounded-lg border border-[#2f3f54] bg-[#0b121c]`}
           role="group"
           aria-label={chartLabel}
           preserveAspectRatio="none"
@@ -296,8 +296,10 @@ export function LandscapeRatingTickerChart({
               </text>
             </>
           ) : null}
+        </svg>
 
-          {plotted.map((row) => {
+        <div className={styles.seriesStack} data-testid="landscape-ticker-series-stack">
+          {plotted.map((row, paintIndex) => {
             if (!row.path) return null;
             const { series: s, path } = row;
             const hero = s.phase === 'hero' && dramatic && path.plotted.length > 1;
@@ -315,10 +317,10 @@ export function LandscapeRatingTickerChart({
                 : styles.settledCore;
             const last = path.plotted[path.plotted.length - 1];
             const frontMost = plotted[plotted.length - 1]?.series.id === s.id;
-            const pickNearest = (clientX: number, clientY: number) => {
-              const svg = frameRef.current?.querySelector('svg');
-              if (!svg) return;
-              const rect = svg.getBoundingClientRect();
+            const strokeLayerKey = `${s.id}-${s.phase}-${s.revealSerial ?? 'settled'}`;
+            const pickNearest = (clientX: number, clientY: number, svgEl: SVGSVGElement | null) => {
+              if (!svgEl) return;
+              const rect = svgEl.getBoundingClientRect();
               const x = ((clientX - rect.left) / rect.width) * size.width;
               const y = ((clientY - rect.top) / rect.height) * size.height;
               let best = path.plotted[0];
@@ -339,27 +341,38 @@ export function LandscapeRatingTickerChart({
               });
             };
             return (
-              <g
+              <svg
                 key={s.id}
+                viewBox={`0 0 ${size.width} ${size.height}`}
+                preserveAspectRatio="none"
+                className={styles.seriesSvg}
+                style={{ zIndex: paintIndex + 1 }}
+                overflow="visible"
+                aria-hidden="true"
                 data-testid={`landscape-ticker-path-${s.id}`}
                 data-reveal-phase={s.phase}
                 data-reveal-serial={s.revealSerial ?? 'none'}
-                data-dominance-rank={s.dominanceRank ?? plotted.findIndex((row) => row.series.id === s.id)}
+                data-dominance-rank={s.dominanceRank ?? paintIndex}
+                data-paint-index={paintIndex}
                 data-dominant={frontMost ? 'true' : 'false'}
               >
                 <path
+                  key={`glow-${strokeLayerKey}`}
                   d={path.d}
                   pathLength={1}
                   className={glowClass}
+                  pointerEvents="none"
                   data-ticker-anim={hero ? 'hero-glow' : quiet ? 'quiet-glow' : 'settled-glow'}
                   stroke={s.color}
                   strokeWidth={hero || quiet ? 7 : 5}
                   opacity={0.28}
                 />
                 <path
+                  key={`core-${strokeLayerKey}`}
                   d={path.d}
                   pathLength={1}
                   className={coreClass}
+                  pointerEvents="none"
                   data-ticker-anim={hero ? 'hero-core' : quiet ? 'quiet-core' : 'settled-core'}
                   stroke={s.color}
                   strokeWidth={2.25}
@@ -374,7 +387,11 @@ export function LandscapeRatingTickerChart({
                   data-testid={`landscape-ticker-hit-${s.id}`}
                   onClick={(event) => {
                     event.stopPropagation();
-                    pickNearest(event.clientX, event.clientY);
+                    pickNearest(
+                      event.clientX,
+                      event.clientY,
+                      event.currentTarget.ownerSVGElement,
+                    );
                   }}
                 />
                 {heroMotion ? (
@@ -384,6 +401,7 @@ export function LandscapeRatingTickerChart({
                       fill="#fff"
                       stroke={s.color}
                       strokeWidth="2"
+                      pointerEvents="none"
                       className={styles.heroHead}
                       style={{ offsetPath: `path('${path.d}')` }}
                       data-testid={`landscape-ticker-head-${s.id}`}
@@ -394,6 +412,7 @@ export function LandscapeRatingTickerChart({
                         r={i % 2 === 0 ? 1.6 : 1.2}
                         fill={s.color}
                         opacity={0}
+                        pointerEvents="none"
                         className={styles.spark}
                         style={{
                           offsetPath: `path('${path.d}')`,
@@ -411,6 +430,7 @@ export function LandscapeRatingTickerChart({
                     r="11"
                     fill={s.color}
                     opacity={0}
+                    pointerEvents="none"
                     className={
                       path.plotted.length === 1 ? styles.singleBloom : styles.bloom
                     }
@@ -435,6 +455,7 @@ export function LandscapeRatingTickerChart({
                       stroke={style.stroke}
                       strokeWidth="1"
                       className="cursor-pointer"
+                      pointerEvents="auto"
                       data-marker-kind={style.kind}
                       data-testid={`landscape-ticker-marker-${s.id}-${pt.point.id}`}
                       role="img"
@@ -452,10 +473,10 @@ export function LandscapeRatingTickerChart({
                     />
                   );
                 })}
-              </g>
+              </svg>
             );
           })}
-        </svg>
+        </div>
 
         {visibleSeries.length === 0 ? (
           <p
@@ -480,7 +501,7 @@ export function LandscapeRatingTickerChart({
         <div
           data-testid="landscape-ticker-point-detail"
           data-marker-kind={chartPointMarkerForPoint(active.point)}
-          className="rounded-lg border border-[#2f3f54] bg-[#0f1723] px-3 py-2 text-sm text-gray-200"
+          className={`${styles.pointDetail} rounded-lg border border-[#2f3f54] bg-[#0f1723] px-3 py-2 text-sm text-gray-200`}
         >
           <p className="m-0 flex items-center gap-2">
             <span

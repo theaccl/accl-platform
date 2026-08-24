@@ -45,6 +45,16 @@ import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 const RATING_ARROW = '\u2192';
 const META_DOT = '\u00B7';
 
+function readVisualViewportBox() {
+  const visual = window.visualViewport;
+  return {
+    offsetTop: Math.round(visual?.offsetTop ?? 0),
+    offsetLeft: Math.round(visual?.offsetLeft ?? 0),
+    width: Math.round(visual?.width ?? window.innerWidth),
+    height: Math.round(visual?.height ?? window.innerHeight),
+  };
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -95,6 +105,22 @@ function LandscapeTickerOverlay({
   const reducedMotion = usePrefersReducedMotion();
   const [session, setSession] = useState(() => createLandscapeTickerSession());
   const [family, setFamily] = useState<LandscapeTickerFamilyId>(LANDSCAPE_TICKER_DEFAULT_FAMILY);
+  const [viewportBox, setViewportBox] = useState(readVisualViewportBox);
+
+  useEffect(() => {
+    const apply = () => {
+      setViewportBox(readVisualViewportBox());
+    };
+    apply();
+    window.visualViewport?.addEventListener('resize', apply);
+    window.visualViewport?.addEventListener('scroll', apply);
+    window.addEventListener('resize', apply);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', apply);
+      window.visualViewport?.removeEventListener('scroll', apply);
+      window.removeEventListener('resize', apply);
+    };
+  }, []);
 
   useEffect(() => {
     const root = dialogRef.current;
@@ -221,11 +247,24 @@ function LandscapeTickerOverlay({
     selectedLabels.length === 0
       ? 'No rating categories selected. The plotting area is empty.'
       : `Selected categories: ${selectedLabels.join(', ')}. Use the chart and arrow keys to move between points, or the event list for finished games.`;
+  const landscapeFit =
+    viewportBox.height > 0 &&
+    viewportBox.height <= 500 &&
+    viewportBox.width >= viewportBox.height;
 
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-[400] flex max-h-[100dvh] max-w-[100dvw] flex-col overflow-hidden bg-[#070b10]/95 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
+      className={`${styles.overlay} fixed inset-0 z-[400] flex max-h-[100dvh] max-w-[100dvw] flex-col overflow-hidden bg-[#070b10]/95 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]`}
+      style={{
+        top: viewportBox.offsetTop,
+        left: viewportBox.offsetLeft,
+        width: viewportBox.width,
+        height: viewportBox.height,
+        right: 'auto',
+        bottom: 'auto',
+        ['--ticker-vvh' as string]: `${viewportBox.height}px`,
+      }}
       data-testid="expanded-rating-ticker-drawer"
       data-landscape-ticker="true"
       data-compact-point-count={points.length}
@@ -239,18 +278,22 @@ function LandscapeTickerOverlay({
       data-family-transition={reducedMotion ? 'none' : 'slide'}
       data-dominance-order={dominanceBackToFront.join(' ') || 'none'}
       data-dominant-category={dominantCategory ?? 'none'}
+      data-landscape-fit={landscapeFit ? 'true' : 'false'}
       role="dialog"
       aria-modal="true"
       aria-labelledby="landscape-ticker-title"
       tabIndex={-1}
     >
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[#2f3f54] px-4 py-3">
+      <header className={`${styles.header} flex shrink-0 items-center justify-between gap-2 border-b border-[#2f3f54] px-4 py-3 landscape:py-1.5`}>
         <div className="min-w-0 flex-1">
           <h3 id="landscape-ticker-title" className="m-0 truncate text-sm font-semibold text-white">
             {heading}
           </h3>
           {family === 'free' && typeof currentRating === 'number' ? (
-            <p className="m-0 mt-0.5 text-xs tabular-nums text-gray-400">
+            <p
+              hidden={landscapeFit}
+              className={`${styles.currentRating} m-0 mt-0.5 text-xs tabular-nums text-gray-400`}
+            >
               Current {currentRating}
             </p>
           ) : null}
@@ -271,7 +314,8 @@ function LandscapeTickerOverlay({
         data-testid="landscape-ticker-body-scroll"
       >
         <p
-          className="m-0 shrink-0 text-xs text-gray-400 landscape:hidden"
+          hidden={landscapeFit}
+          className={`${styles.orientationHint} m-0 shrink-0 text-xs text-gray-400 landscape:hidden`}
           data-testid="landscape-ticker-orientation-hint"
         >
           Rotate your device sideways for the full ticker. Portrait remains usable.
@@ -303,7 +347,7 @@ function LandscapeTickerOverlay({
                   {item.id === 'free' ? (
                     <>
                       <div
-                        className="flex shrink-0 flex-wrap gap-1 overflow-x-auto pb-1"
+                        className={styles.categoryControls}
                         data-testid="landscape-ticker-category-controls"
                         role="group"
                         aria-label="Rating categories"
@@ -344,14 +388,20 @@ function LandscapeTickerOverlay({
                         })}
                       </div>
 
-                      <RatingLaneTabs
-                        lane={lane}
-                        onLaneChange={handleLaneChange}
-                        testIdPrefix="rating"
-                        ariaLabel="Rating history window"
-                      />
+                      <div className={styles.laneTabs}>
+                        <RatingLaneTabs
+                          lane={lane}
+                          onLaneChange={handleLaneChange}
+                          testIdPrefix="rating"
+                          ariaLabel="Rating history window"
+                        />
+                      </div>
 
-                      <p className="m-0 shrink-0 text-xs text-gray-400" data-testid="landscape-ticker-series-summary">
+                      <p
+                        hidden={landscapeFit}
+                        className={`${styles.seriesSummary} m-0 shrink-0 text-xs text-gray-400`}
+                        data-testid="landscape-ticker-series-summary"
+                      >
                         {summary}
                       </p>
 
@@ -371,7 +421,8 @@ function LandscapeTickerOverlay({
                       ) : null}
 
                       <ol
-                        className="m-0 max-h-28 shrink-0 list-none space-y-2 overflow-y-auto p-0 landscape:max-h-24"
+                        hidden={landscapeFit}
+                        className={`${styles.eventList} m-0 list-none space-y-2 p-0 landscape:max-h-24`}
                         data-testid="rating-ticker-point-list"
                         aria-label="Rating events for selected categories"
                       >

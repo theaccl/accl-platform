@@ -61,7 +61,12 @@ async function ownerAtSeriesCrossing(
       }
       const x = markers[0].cx + frac * (markers[1].cx - markers[0].cx);
       const y = markers[0].cy + frac * (markers[1].cy - markers[0].cy);
-      const svg = document.querySelector<SVGSVGElement>('[data-testid="landscape-ticker-chart-focus"]');
+      const layer = document.querySelector(`[data-testid="landscape-ticker-path-${id}"]`);
+      const svg =
+        layer instanceof SVGSVGElement
+          ? layer
+          : (layer?.closest('svg') ??
+            document.querySelector<SVGSVGElement>('[data-testid="landscape-ticker-chart-focus"]'));
       const ctm = svg?.getScreenCTM();
       if (!svg || !ctm) {
         return { owner: null, dominant: null, reason: 'missing-svg', rapidCount, dailyCount };
@@ -156,7 +161,8 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
 
     await page.clock.fastForward(1800);
     await expect(drawer).toHaveAttribute('data-active-reveal', 'none');
-    await expect(page.getByTestId('rating-ticker-point-list')).toBeVisible();
+    await expect(page.getByTestId('rating-ticker-point-list')).toBeAttached();
+    await expect(page.getByTestId('rating-ticker-point-list')).not.toBeVisible();
     await expect(page.getByTestId('landscape-ticker-chart')).toHaveAttribute(
       'data-hero-pulse-serial',
       'none',
@@ -211,7 +217,8 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
     await page.clock.fastForward(50);
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.getByTestId('landscape-ticker-category-bullet').click();
-    await expect(page.getByTestId('rating-ticker-point-list')).toBeVisible();
+    await expect(page.getByTestId('rating-ticker-point-list')).toBeAttached();
+    await expect(page.getByTestId('rating-ticker-point-list')).not.toBeVisible();
     await expect(page.getByTestId('rating-ticker-point-list').locator('li')).toHaveCount(3);
     await page.clock.fastForward(400);
     const drawer = page.getByTestId('expanded-rating-ticker-drawer');
@@ -403,7 +410,8 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
     await page.keyboard.press('ArrowRight');
     await expect(page.getByTestId('landscape-ticker-point-detail')).toBeVisible();
     await expect(page.getByTestId('landscape-ticker-finished-link')).toBeVisible();
-    await expect(page.getByTestId('landscape-ticker-list-finished-link').first()).toBeVisible();
+    await expect(page.getByTestId('landscape-ticker-list-finished-link').first()).toBeAttached();
+    await expect(page.getByTestId('landscape-ticker-list-finished-link').first()).not.toBeVisible();
 
     await page.evaluate(() => {
       (
@@ -645,11 +653,14 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.clock.fastForward(1800);
     const delta = page.getByTestId('landscape-ticker-event-delta').first();
-    await expect(delta).toHaveText('1511 \u2192 1528 (+17)');
-    const deltaText = await delta.innerText();
+    await expect(delta).toBeAttached();
+    const deltaText = await delta.evaluate((el) => el.textContent ?? '');
+    expect(deltaText).toContain('1511');
+    expect(deltaText).toContain('\u2192');
+    expect(deltaText).toContain('1528');
     expect(deltaText).not.toContain('\u00E2');
     expect(deltaText).not.toContain('â');
-    const meta = await page.getByTestId('landscape-ticker-event-meta').first().innerText();
+    const meta = await page.getByTestId('landscape-ticker-event-meta').first().evaluate((el) => el.textContent ?? '');
     expect(meta).toContain('\u00B7');
     expect(meta).not.toContain('Â');
     expect(meta).not.toContain('â');
@@ -871,6 +882,21 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
     await page.clock.fastForward(50);
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.clock.fastForward(1800);
+    const hiddenDelta = await page
+      .getByTestId('landscape-ticker-event-delta')
+      .first()
+      .evaluate((el) => el.textContent ?? '');
+    expect(hiddenDelta).toContain('1511 \u2192 1528 (+17)');
+    const hiddenMeta = await page
+      .getByTestId('landscape-ticker-event-meta')
+      .first()
+      .evaluate((el) => el.textContent ?? '');
+    expect(hiddenMeta).toContain('\u00B7');
+    expect(hiddenMeta).not.toContain('â');
+    expect(hiddenMeta).not.toContain('Â');
+
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.clock.fastForward(50);
     await expect(page.getByTestId('landscape-ticker-event-delta').first()).toHaveText(
       '1511 \u2192 1528 (+17)',
     );

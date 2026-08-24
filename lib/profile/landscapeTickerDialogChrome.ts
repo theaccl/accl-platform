@@ -23,6 +23,9 @@ function focusableIn(root: HTMLElement): HTMLElement[] {
 
 function isVisible(el: HTMLElement): boolean {
   if (el.closest('[inert]')) return false;
+  if (el.closest('[hidden]') || el.hasAttribute('hidden')) return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
   return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
 }
 
@@ -119,7 +122,13 @@ export function attachLandscapeTickerDialogChrome(
   const previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const previousOverflow = document.body.style.overflow;
+  const previousHtmlOverflow = document.documentElement.style.overflow;
+  const previousBodyOverscroll = document.body.style.overscrollBehavior;
+  const previousHtmlOverscroll = document.documentElement.style.overscrollBehavior;
   document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overscrollBehavior = 'none';
+  document.documentElement.style.overscrollBehavior = 'none';
   document.body.dataset.landscapeTickerScrollLock = 'true';
   dialog.dataset.capturedFocusOnce = previousFocus?.id || previousFocus?.tagName || 'unknown';
 
@@ -171,6 +180,9 @@ export function attachLandscapeTickerDialogChrome(
     document.removeEventListener('pointerdown', onPointerDown, true);
     for (const snap of inertSnapshots) restoreInertSnapshot(snap);
     document.body.style.overflow = previousOverflow;
+    document.documentElement.style.overflow = previousHtmlOverflow;
+    document.body.style.overscrollBehavior = previousBodyOverscroll;
+    document.documentElement.style.overscrollBehavior = previousHtmlOverscroll;
     delete document.body.dataset.landscapeTickerScrollLock;
     previousFocus?.focus?.();
   };

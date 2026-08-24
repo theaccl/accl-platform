@@ -1,5 +1,64 @@
+.overlay {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.svgRoot {
+  display: block;
+}
+
+.seriesStack {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.seriesSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.seriesSvg :global([data-testid^='landscape-ticker-hit-']) {
+  pointer-events: stroke;
+}
+
+.seriesSvg :global([data-testid^='landscape-ticker-marker-']) {
+  pointer-events: auto;
+}
+
 .frame {
+  position: relative;
   overflow: hidden;
+  min-height: 11rem;
+  height: min(48dvh, 18rem);
+}
+
+.eventList {
+  max-height: 7rem;
+  overflow-y: auto;
+}
+
+.pointDetail {
+  position: relative;
+}
+
+.header {
+  flex-shrink: 0;
+}
+
+.currentRating {
+  display: block;
+}
+
+.laneTabs {
+  flex-shrink: 0;
 }
 
 .familyPager {
@@ -83,6 +142,20 @@
 
 .chartSlot {
   flex-shrink: 0;
+  min-height: 0;
+}
+
+.chartWrap {
+  position: relative;
+}
+
+.categoryControls {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .familyUnavailable {
@@ -102,6 +175,88 @@
 @media (prefers-reduced-motion: reduce) {
   .familyTrack {
     transition: none;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .overlay {
+    height: var(--ticker-vvh, 100svh);
+    max-height: var(--ticker-vvh, 100svh);
+  }
+
+  .header {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .currentRating {
+    display: none;
+  }
+
+  .bodyScroll {
+    overflow: hidden;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+    gap: 0.3rem;
+  }
+
+  .familyTrack {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .familyPanel {
+    gap: 0.3rem;
+    overflow: hidden;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .familyViewport {
+    overflow: hidden;
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+
+  .categoryControls {
+    overflow-x: hidden;
+    padding-bottom: 0;
+    gap: 0.2rem;
+  }
+
+  .chartWrap {
+    height: 100%;
+  }
+
+  .chartSlot {
+    position: relative;
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+
+  .frame {
+    height: 100%;
+    min-height: 7.75rem;
+  }
+
+  .eventList,
+  .seriesSummary {
+    display: none;
+  }
+
+  .orientationHint {
+    display: none;
+  }
+
+  .pointDetail {
+    position: absolute;
+    left: 0.35rem;
+    right: 0.35rem;
+    bottom: 0.35rem;
+    z-index: 6;
+    max-height: 4.25rem;
+    overflow: auto;
+    margin: 0;
   }
 }
 
