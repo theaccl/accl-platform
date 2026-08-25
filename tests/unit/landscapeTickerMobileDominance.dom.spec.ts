@@ -62,19 +62,6 @@ async function ownerAtSeriesCrossing(
   return probeSeriesCrossing(page, seriesId, u);
 }
 
-async function captureCrossingClip(
-  page: Page,
-  dest: string,
-  seriesId: 'free_blitz' | 'free_rapid' | 'free_day',
-  u: number,
-) {
-  const hit = await ownerAtSeriesCrossing(page, seriesId, u);
-  expect(hit.reason).toBe('ok');
-  const x = Math.max(0, Math.round((hit.screenX as number) - 24));
-  const y = Math.max(0, Math.round((hit.screenY as number) - 24));
-  await page.screenshot({ path: dest, clip: { x, y, width: 48, height: 48 }, scale: 'css' });
-}
-
 async function paintOrder(page: Page): Promise<string[]> {
   return page.locator('[data-testid^="landscape-ticker-path-"]').evaluateAll((nodes) =>
     nodes.map((n) => (n.getAttribute('data-testid') ?? '').replace('landscape-ticker-path-', '')),
@@ -408,22 +395,10 @@ test.describe('mobile real-data dominance and landscape fit', () => {
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.clock.fastForward(1800);
     await page.screenshot({ path: shot('m03-blitz-above-rapid-crossing-360x800.png'), fullPage: true });
-    await captureCrossingClip(
-      page,
-      shot('m03-blitz-above-rapid-crossing-clip.png'),
-      'free_blitz',
-      BLITZ_RAPID_CROSS_U,
-    );
 
     await page.getByTestId('landscape-ticker-category-daily').click();
     await page.clock.fastForward(1800);
     await page.screenshot({ path: shot('m04-daily-front-crossing-360x800.png'), fullPage: true });
-    await captureCrossingClip(
-      page,
-      shot('m04-daily-front-crossing-clip.png'),
-      'free_day',
-      DAILY_RAPID_FIRST_CROSS_U,
-    );
 
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.screenshot({ path: shot('m05-blitz-deselected-360x800.png'), fullPage: true });
@@ -431,12 +406,6 @@ test.describe('mobile real-data dominance and landscape fit', () => {
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.clock.fastForward(500);
     await page.screenshot({ path: shot('m06-blitz-reselected-front-360x800.png'), fullPage: true });
-    await captureCrossingClip(
-      page,
-      shot('m06-blitz-reselected-front-clip.png'),
-      'free_blitz',
-      BLITZ_RAPID_CROSS_U,
-    );
 
     await page.setViewportSize({ width: 800, height: 360 });
     await page.clock.fastForward(50);

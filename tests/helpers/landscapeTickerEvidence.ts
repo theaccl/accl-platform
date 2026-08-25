@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,8 @@ import {
 } from './pngRgba';
 
 /**
- * Independent antialiasing budget for a 2.25px core stroke plus glow on a dark chart.
+ * Independent antialiasing budget for mixed cores on a dark chart:
+ * older settled ~2px, dominant settled ~2.75px with dark casing, plus glow.
  * Declared before sampling. Do not raise this to fit an observed mixed pixel.
  */
 export const CROSSING_PIXEL_TOLERANCE = 40;
@@ -41,6 +42,28 @@ export type CrossingImageBinding = {
   screenshotScale: 'css';
 };
 
+export type CaptureMode = 'live' | 'settled';
+
+export type AnimationSnapshot = {
+  playState: string;
+  currentTime: number | null;
+  duration: number | null;
+  targetTestId: string | null;
+};
+
+export type AnimationCaptureState = {
+  count: number;
+  items: AnimationSnapshot[];
+  invokedFinish: boolean;
+  pausedForCapture: boolean;
+  settlementMethod: 'animation.finish()' | 'none-live';
+  finishFailures: string[];
+  nonterminal: boolean;
+  clockAdvancedMs: number;
+  seekCurrentTimeMs: number | null;
+  soughtAnimationCount: number;
+};
+
 export type CrossingProof = {
   expected: Rgba;
   sampled: Rgba;
@@ -54,8 +77,11 @@ export type CrossingProof = {
   elementFromPointOwner: string | null;
   elementFromPointHitTestId: string | null;
   probe: CrossingProbe;
+  captureMode: CaptureMode;
+  animation: AnimationCaptureState;
   cssAnimationsFinished: boolean;
   sampleMethod: string;
+  coincidenceKind: 'exact-shared-vertex' | 'segment-crossing';
   image: CrossingImageBinding;
   viewport: {
     innerWidth: number;
@@ -68,6 +94,15 @@ export type CrossingProof = {
     offsetLeft: number | null;
   };
   devicePixelRatio: number;
+  domOrder: Array<{
+    index: number;
+    testId: string | null;
+    tagName: string;
+    paintIndex: string | null;
+    dominant: string | null;
+    zIndex: string;
+    revealPhase: string | null;
+  }>;
   r024Proofs: typeof R024_PROOF_STATUS;
 };
 
@@ -98,8 +133,12 @@ export function persistCrossingProof(
     visualViewport: proof.visualViewport,
     devicePixelRatio: proof.devicePixelRatio,
     probe: proof.probe,
+    captureMode: proof.captureMode,
+    animation: proof.animation,
     cssAnimationsFinished: proof.cssAnimationsFinished,
+    coincidenceKind: proof.coincidenceKind,
     sampleMethod: proof.sampleMethod,
+    domOrder: proof.domOrder,
     ...extra,
   };
 }
@@ -310,29 +349,214 @@ export async function probeSeriesCrossing(
   );
 }
 
+export async function probeExactMarker(
+  page: Page,
+  seriesId: SeriesId,
+  pointId: string,
+): Promise<CrossingProbe> {
+  return page.evaluate(
+    ({ seriesId: id, pointId: pid }) => {
+      const marker = document.getElementById(`landscape-ticker-marker-${id}-${pid}`);
+      if (!(marker instanceof SVGCircleElement)) {
+        return {
+          owner: null,
+          hitTestId: null,
+          dominant: null,
+          paintIndex: null,
+          zIndex: null,
+          screenX: null,
+          screenY: null,
+          svgX: null,
+          svgY: null,
+          reason: 'missing-marker',
+        };
+      }
+      const svgX = Number(marker.getAttribute('cx'));
+      const svgY = Number(marker.getAttribute('cy'));
+      const layer = document.querySelector(`[data-testid="landscape-ticker-path-${id}"]`);
+      const svg =
+        layer instanceof SVGSVGElement
+          ? layer
+          : (layer?.closest('svg') ??
+            document.querySelector<SVGSVGElement>('[data-testid="landscape-ticker-chart-focus"]'));
+      const ctm = svg?.getScreenCTM();
+      if (!svg || !ctm || !Number.isFinite(svgX) || !Number.isFinite(svgY)) {
+        return {
+          owner: null,
+          hitTestId: null,
+          dominant: null,
+          paintIndex: null,
+          zIndex: null,
+          screenX: null,
+          screenY: null,
+          svgX,
+          svgY,
+          reason: 'missing-svg',
+        };
+      }
+      const pt = svg.createSVGPoint();
+      pt.x = svgX;
+      pt.y = svgY;
+      const screen = pt.matrixTransform(ctm);
+      const el = document.elementFromPoint(screen.x, screen.y);
+      const group = el?.closest('[data-testid^="landscape-ticker-path-"]');
+      const hit = el?.closest('[data-testid^="landscape-ticker-hit-"]');
+      return {
+        owner: group?.getAttribute('data-testid') ?? null,
+        hitTestId: hit?.getAttribute('data-testid') ?? marker.getAttribute('data-testid'),
+        dominant: group?.getAttribute('data-dominant') ?? null,
+        paintIndex: group?.getAttribute('data-paint-index') ?? null,
+        zIndex:
+          group instanceof HTMLElement || group instanceof SVGElement
+            ? getComputedStyle(group).zIndex
+            : null,
+        screenX: screen.x,
+        screenY: screen.y,
+        svgX,
+        svgY,
+        reason: 'ok',
+      };
+    },
+    { seriesId, pointId },
+  );
+}
+
+export async function readAnimationState(page: Page): Promise<AnimationSnapshot[]> {
+  return page.evaluate(() =>
+    document.getAnimations().map((anim) => {
+      const timing = anim.effect?.getComputedTiming();
+      const duration = timing?.duration;
+      const target =
+        anim.effect && 'target' in anim.effect ? (anim.effect as KeyframeEffect).target : null;
+      const testId =
+        target instanceof Element
+          ? (target.closest('[data-testid^="landscape-ticker-path-"]')?.getAttribute('data-testid') ??
+            target.getAttribute('data-testid'))
+          : null;
+      return {
+        playState: anim.playState,
+        currentTime: typeof anim.currentTime === 'number' ? anim.currentTime : null,
+        duration: typeof duration === 'number' ? duration : null,
+        targetTestId: testId,
+      };
+    }),
+  );
+}
+
+function animationNonterminal(items: AnimationSnapshot[]): boolean {
+  return items.some(
+    (item) =>
+      item.currentTime != null &&
+      item.duration != null &&
+      item.duration > 0 &&
+      item.currentTime > 0 &&
+      item.currentTime < item.duration,
+  );
+}
+
 export async function assertDominantCrossingPixel(
   page: Page,
   seriesId: SeriesId,
   u: number,
-  options?: { clipSlug?: string },
+  options?: {
+    clipSlug?: string;
+    mode?: CaptureMode;
+    pointId?: string;
+    liveAtMs?: number;
+  },
 ): Promise<CrossingProof> {
-  const probe = await probeSeriesCrossing(page, seriesId, u);
+  const mode: CaptureMode = options?.mode ?? 'settled';
+  const probe = options?.pointId
+    ? await probeExactMarker(page, seriesId, options.pointId)
+    : await probeSeriesCrossing(page, seriesId, u);
   expect(probe.reason).toBe('ok');
   expect(probe.owner).toBe(`landscape-ticker-path-${seriesId}`);
-  expect(probe.hitTestId).toBe(`landscape-ticker-hit-${seriesId}`);
   expect(probe.dominant).toBe('true');
   expect(probe.screenX).toBeTruthy();
   expect(probe.screenY).toBeTruthy();
-  await page.evaluate(() => {
-    for (const anim of document.getAnimations()) {
-      try {
-        anim.finish();
-      } catch {
-        /* ignore animations that cannot finish */
+
+  let invokedFinish = false;
+  let pausedForCapture = false;
+  let finishFailures: string[] = [];
+  let clockAdvancedMs = 0;
+  let seekCurrentTimeMs: number | null = null;
+  let soughtAnimationCount = 0;
+  if (mode === 'settled') {
+    const result = await page.evaluate(() => {
+      const failures: string[] = [];
+      for (const anim of document.getAnimations()) {
+        try {
+          anim.finish();
+        } catch (err) {
+          failures.push(err instanceof Error ? err.message : String(err));
+        }
       }
-    }
-  });
+      return failures;
+    });
+    finishFailures = result;
+    expect(finishFailures, 'animation.finish() failures').toEqual([]);
+    invokedFinish = true;
+  } else {
+    const liveAtMs = options?.liveAtMs;
+    expect(liveAtMs, 'live capture requires a recorded nonterminal time').toBeGreaterThan(0);
+    const recordedMs = Number(liveAtMs);
+    await expect
+      .poll(async () => {
+        const items = await readAnimationState(page);
+        return items.some(
+          (item) =>
+            item.playState !== 'finished' &&
+            item.duration != null &&
+            item.duration > recordedMs,
+        );
+      }, { message: 'waiting for a live animation longer than the recorded capture time' })
+      .toBe(true);
+    const seek = await page.evaluate((ms: number) => {
+      const failures: string[] = [];
+      let sought = 0;
+      for (const anim of document.getAnimations()) {
+        const duration = anim.effect?.getComputedTiming().duration;
+        if (typeof duration !== 'number' || !(duration > ms) || ms <= 0) continue;
+        if (anim.playState === 'finished') continue;
+        try {
+          anim.currentTime = ms;
+          sought += 1;
+        } catch (err) {
+          failures.push(err instanceof Error ? err.message : String(err));
+        }
+      }
+      return { failures, sought };
+    }, recordedMs);
+    expect(seek.failures, 'live currentTime seek failures').toEqual([]);
+    expect(seek.sought, 'live capture must seek at least one nonterminal animation').toBeGreaterThan(0);
+    seekCurrentTimeMs = recordedMs;
+    soughtAnimationCount = seek.sought;
+    await page.evaluate(() => {
+      for (const anim of document.getAnimations()) anim.pause();
+    });
+    pausedForCapture = true;
+  }
+
+  const items = await readAnimationState(page);
+  const animation: AnimationCaptureState = {
+    count: items.length,
+    items,
+    invokedFinish,
+    pausedForCapture,
+    settlementMethod: invokedFinish ? 'animation.finish()' : 'none-live',
+    finishFailures,
+    nonterminal: animationNonterminal(items),
+    clockAdvancedMs,
+    seekCurrentTimeMs,
+    soughtAnimationCount,
+  };
+  if (mode === 'live') {
+    expect(animation.invokedFinish).toBe(false);
+    expect(animation.nonterminal).toBe(true);
+  }
+
   const metrics = await measureVisualViewport(page);
+  const domOrder = await collectSvgLayerOrder(page);
   const clipX = Math.max(0, Math.round(probe.screenX as number) - CLIP_PAD);
   const clipY = Math.max(0, Math.round(probe.screenY as number) - CLIP_PAD);
   const png = await page.screenshot({
@@ -340,7 +564,7 @@ export async function assertDominantCrossingPixel(
     scale: 'css',
   });
   const slug = options?.clipSlug ?? seriesId;
-  const filename = `crossing-clip-${slug}-${randomBytes(4).toString('hex')}.png`;
+  const filename = `crossing-clip-${slug}.png`;
   const dir = evidenceDir() ?? tmpdir();
   mkdirSync(dir, { recursive: true });
   const abs = join(dir, filename);
@@ -373,11 +597,14 @@ export async function assertDominantCrossingPixel(
     marginToNextNearest: owned.marginToNextNearest,
     tolerance: CROSSING_PIXEL_TOLERANCE,
     toleranceJustification:
-      'Independent 40-unit Euclidean budget for 2.25px stroke plus glow. Not fitted to a sampled result. Pixel may be the nearest qualifying neighbor inside the persisted crossing clip.',
+      'Independent 40-unit Euclidean budget for mixed cores (older ~2px, dominant ~2.75px plus casing) and glow. Not fitted to a sampled result. Pixel may be the nearest qualifying neighbor inside the persisted clip.',
     elementFromPointOwner: probe.owner,
     elementFromPointHitTestId: probe.hitTestId,
     probe,
-    cssAnimationsFinished: true,
+    captureMode: mode,
+    animation,
+    cssAnimationsFinished: invokedFinish && finishFailures.length === 0,
+    coincidenceKind: options?.pointId ? 'exact-shared-vertex' : 'segment-crossing',
     sampleMethod:
       'CSS-scale 48×48 clip around round(screenX, screenY); RGB from the nearest clip pixel within independent tolerance 40 that is uniquely nearer the expected series; PNG reopened and resampled before return.',
     image,
@@ -389,6 +616,7 @@ export async function assertDominantCrossingPixel(
       offsetLeft: metrics.visualViewportOffsetLeft,
     },
     devicePixelRatio: metrics.devicePixelRatio,
+    domOrder,
     r024Proofs: R024_PROOF_STATUS,
   };
 }

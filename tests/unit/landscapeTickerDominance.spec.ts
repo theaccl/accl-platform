@@ -288,7 +288,12 @@ test.describe('landscape ticker activation dominance', () => {
     expect(chart).toContain('ranked.push(active)');
     expect(chart).toContain('data-dominance-order');
     expect(chart).toContain('data-dominant');
-    expect(chart).toContain('[...plotted].reverse()');
+    expect(chart).toContain('landscape-ticker-casing');
+    expect(chart).toContain('landscapeTickerEmphasis');
+    expect(chart).not.toContain('react-bits');
+    expect(chart).not.toContain('pinch-to-zoom');
+    expect(chart).toContain('[...painted].reverse()');
+    expect(chart).toContain('row.path != null');
     expect(src('lib/profile/landscapeTickerSession.ts')).toContain('dominanceOrder');
     expect(src('lib/profile/landscapeTickerSession.ts')).toContain('moveToFront');
   });

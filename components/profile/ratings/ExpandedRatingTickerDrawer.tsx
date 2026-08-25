@@ -26,13 +26,13 @@ import {
   categoryRevealPhase,
   createLandscapeTickerSession,
   dominanceRank,
-  frontMostVisibleCategory,
   isCategoryQueued,
   isCategorySelected,
   reduceLandscapeTickerSession,
   visibleCategoryIds,
   visibleDominanceOrder,
 } from '@/lib/profile/landscapeTickerSession';
+import { paintedDominanceIds } from '@/lib/profile/landscapeTickerHierarchy';
 import {
   isLandscapeFitBox,
   isMaterialViewportChange,
@@ -155,7 +155,12 @@ function LandscapeTickerOverlay({
   }, [categoryLanePoints, visibleIds]);
 
   const dominanceBackToFront = visibleDominanceOrder(session);
-  const dominantCategory = frontMostVisibleCategory(session);
+  const paintedIds = paintedDominanceIds(
+    dominanceBackToFront,
+    Object.fromEntries(categoryLanePoints.map((cat) => [cat.id, cat.points.length])),
+  );
+  const paintedDominantCategory = paintedIds[paintedIds.length - 1] ?? null;
+  const dominantCategory = paintedDominantCategory;
   const chartSeries = useMemo(() => {
     const rows = categoryLanePoints.map((cat) => ({
       id: cat.id,
@@ -327,6 +332,8 @@ function LandscapeTickerOverlay({
                         {categoryLanePoints.map((cat) => {
                           const selected = isCategorySelected(session, cat.id);
                           const queued = isCategoryQueued(session, cat.id);
+                          const dominant = dominantCategory === cat.id;
+                          const subject = session.activeReveal?.categoryId === cat.id;
                           const count = cat.points.length;
                           return (
                             <button
@@ -336,6 +343,8 @@ function LandscapeTickerOverlay({
                               data-testid={cat.testId}
                               data-selected={selected ? 'true' : 'false'}
                               data-queued={queued ? 'true' : 'false'}
+                              data-dominant={dominant ? 'true' : 'false'}
+                              data-subject={subject ? 'true' : 'false'}
                               data-point-count={count}
                               data-empty={count === 0 ? 'true' : 'false'}
                               data-hero-revealed={session.heroRevealedIds.includes(cat.id) ? 'true' : 'false'}
@@ -345,7 +354,18 @@ function LandscapeTickerOverlay({
                                   ? 'bg-[#0f1723] text-gray-100'
                                   : 'border-[#23303f] text-gray-500 opacity-70'
                               }`}
-                              style={selected ? { borderColor: cat.color, color: cat.color } : undefined}
+                              style={
+                                selected
+                                  ? {
+                                      borderColor: cat.color,
+                                      color: cat.color,
+                                      boxShadow:
+                                        dominant || subject
+                                          ? `0 0 0 1px ${cat.color}, 0 0 ${subject ? 10 : 6}px ${cat.color}66`
+                                          : undefined,
+                                    }
+                                  : undefined
+                              }
                             >
                               <span
                                 className="inline-block h-2.5 w-2.5 rounded-full"

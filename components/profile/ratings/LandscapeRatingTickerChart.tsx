@@ -14,6 +14,11 @@ import {
   type LandscapeTickerPlotGeometry,
 } from '@/lib/profile/landscapeTickerPath';
 import {
+  LANDSCAPE_TICKER_CASING_STROKE,
+  landscapeTickerEmphasis,
+  landscapeTickerStrokeStyle,
+} from '@/lib/profile/landscapeTickerHierarchy';
+import {
   LANDSCAPE_TICKER_HERO_MS,
   LANDSCAPE_TICKER_QUIET_MS,
 } from '@/lib/profile/landscapeTickerSession';
@@ -125,10 +130,17 @@ export function LandscapeRatingTickerChart({
     });
   }, [geometry, visibleSeries]);
 
+  const painted = useMemo(
+    () => plotted.filter((row): row is (typeof plotted)[number] & { path: NonNullable<(typeof plotted)[number]['path']> } =>
+      row.path != null,
+    ),
+    [plotted],
+  );
+  const paintedDominantId = painted[painted.length - 1]?.series.id ?? null;
+
   const navPoints = useMemo((): NavPoint[] => {
     const out: NavPoint[] = [];
-    for (const row of [...plotted].reverse()) {
-      if (!row.path) continue;
+    for (const row of [...painted].reverse()) {
       for (const pt of row.path.plotted) {
         out.push({
           seriesId: row.series.id,
@@ -140,28 +152,43 @@ export function LandscapeRatingTickerChart({
       }
     }
     return out;
-  }, [plotted]);
+  }, [painted]);
 
   const activeReveal = visibleSeries.find(
     (s) => s.phase === 'hero' || s.phase === 'quiet' || s.phase === 'instant',
+  );
+  const paintedReveal = painted.find(
+    (row) =>
+      row.series.phase === 'hero' || row.series.phase === 'quiet' || row.series.phase === 'instant',
   );
   const revealSerial = activeReveal?.revealSerial ?? null;
   const revealId = activeReveal?.id;
   const revealPhase = activeReveal?.phase;
   const revealTimerKey = landscapeTickerRevealTimerKey(revealSerial, revealPhase);
+  const revealIsDrawable = Boolean(paintedReveal && paintedReveal.series.id === revealId);
   const heroPulseSerial =
-    !reducedMotion && revealPhase === 'hero' && revealSerial != null ? revealSerial : null;
+    !reducedMotion && revealPhase === 'hero' && revealIsDrawable && revealSerial != null
+      ? revealSerial
+      : null;
 
   useEffect(() => {
     if (!revealTimerKey || revealSerial == null || !revealId || !revealPhase) return;
-    if (revealPhase === 'instant' || reducedMotion) {
+    if (revealPhase === 'instant' || reducedMotion || !revealIsDrawable) {
       onRevealComplete(revealId, revealSerial);
       return;
     }
     const ms = revealPhase === 'hero' ? LANDSCAPE_TICKER_HERO_MS : LANDSCAPE_TICKER_QUIET_MS;
     const timer = window.setTimeout(() => onRevealComplete(revealId, revealSerial), ms);
     return () => window.clearTimeout(timer);
-  }, [revealTimerKey, revealSerial, revealId, revealPhase, reducedMotion, onRevealComplete]);
+  }, [
+    revealTimerKey,
+    revealSerial,
+    revealId,
+    revealPhase,
+    reducedMotion,
+    revealIsDrawable,
+    onRevealComplete,
+  ]);
 
   useEffect(() => {
     if (heroPulseSerial == null) return;
@@ -174,7 +201,7 @@ export function LandscapeRatingTickerChart({
     );
   }, [heroPulseSerial, activeReveal?.id]);
 
-  const lineCount = plotted.filter((row) => row.path && row.path.plotted.length > 0).length;
+  const lineCount = painted.length;
   const dramatic = !reducedMotion;
   const chartLabel = active
     ? `${active.label} rating ${active.point.ratingAfter}. Arrow keys move between points.`
@@ -207,8 +234,9 @@ export function LandscapeRatingTickerChart({
         data-hero-pulse-serial={heroPulseSerial ?? 'none'}
         data-offset-path={offsetPathOk ? 'true' : 'false'}
         data-empty-open={visibleSeries.length === 0 ? 'true' : 'false'}
-        data-dominance-order={visibleSeries.map((s) => s.id).join(' ') || 'none'}
-        data-dominant-category={visibleSeries[visibleSeries.length - 1]?.id ?? 'none'}
+        data-dominance-order={painted.map((row) => row.series.id).join(' ') || 'none'}
+        data-dominant-category={paintedDominantId ?? 'none'}
+        data-painted-count={painted.length}
       >
         <svg
           viewBox={`0 0 ${size.width} ${size.height}`}
@@ -299,8 +327,7 @@ export function LandscapeRatingTickerChart({
         </svg>
 
         <div className={styles.seriesStack} data-testid="landscape-ticker-series-stack">
-          {plotted.map((row, paintIndex) => {
-            if (!row.path) return null;
+          {painted.map((row, paintIndex) => {
             const { series: s, path } = row;
             const hero = s.phase === 'hero' && dramatic && path.plotted.length > 1;
             const quiet = s.phase === 'quiet' && dramatic && path.plotted.length > 1;
@@ -316,7 +343,14 @@ export function LandscapeRatingTickerChart({
                 ? styles.quietCore
                 : styles.settledCore;
             const last = path.plotted[path.plotted.length - 1];
-            const frontMost = plotted[plotted.length - 1]?.series.id === s.id;
+            const frontMost = paintedDominantId === s.id;
+            const emphasis = landscapeTickerEmphasis({
+              phase: s.phase,
+              frontMost,
+              revealActive: Boolean(paintedReveal),
+              reducedMotion,
+            });
+            const stroke = landscapeTickerStrokeStyle(emphasis);
             const strokeLayerKey = `${s.id}-${s.phase}-${s.revealSerial ?? 'settled'}`;
             const pickNearest = (clientX: number, clientY: number, svgEl: SVGSVGElement | null) => {
               if (!svgEl) return;
@@ -355,6 +389,10 @@ export function LandscapeRatingTickerChart({
                 data-dominance-rank={s.dominanceRank ?? paintIndex}
                 data-paint-index={paintIndex}
                 data-dominant={frontMost ? 'true' : 'false'}
+                data-emphasis={emphasis}
+                data-recessed={emphasis === 'recessed' ? 'true' : 'false'}
+                data-core-width={stroke.core}
+                data-casing-width={stroke.casing}
               >
                 <path
                   key={`glow-${strokeLayerKey}`}
@@ -364,19 +402,35 @@ export function LandscapeRatingTickerChart({
                   pointerEvents="none"
                   data-ticker-anim={hero ? 'hero-glow' : quiet ? 'quiet-glow' : 'settled-glow'}
                   stroke={s.color}
-                  strokeWidth={hero || quiet ? 7 : 5}
-                  opacity={0.28}
+                  strokeWidth={stroke.glow}
+                  opacity={stroke.glowOpacity}
                 />
+                {stroke.casing > 0 ? (
+                  <path
+                    key={`casing-${strokeLayerKey}`}
+                    d={path.d}
+                    pathLength={1}
+                    fill="none"
+                    className={coreClass}
+                    pointerEvents="none"
+                    data-testid={`landscape-ticker-casing-${s.id}`}
+                    data-ticker-anim={hero ? 'hero-casing' : quiet ? 'quiet-casing' : 'settled-casing'}
+                    stroke={LANDSCAPE_TICKER_CASING_STROKE}
+                    strokeWidth={stroke.casing}
+                    opacity={stroke.casingOpacity}
+                  />
+                ) : null}
                 <path
                   key={`core-${strokeLayerKey}`}
                   d={path.d}
                   pathLength={1}
                   className={coreClass}
                   pointerEvents="none"
+                  data-testid={`landscape-ticker-core-${s.id}`}
                   data-ticker-anim={hero ? 'hero-core' : quiet ? 'quiet-core' : 'settled-core'}
                   stroke={s.color}
-                  strokeWidth={2.25}
-                  opacity={0.95}
+                  strokeWidth={stroke.core}
+                  opacity={stroke.coreOpacity}
                 />
                 <path
                   d={path.d}
@@ -435,6 +489,20 @@ export function LandscapeRatingTickerChart({
                       path.plotted.length === 1 ? styles.singleBloom : styles.bloom
                     }
                     data-testid={`landscape-ticker-bloom-${s.id}`}
+                    data-bloom-kind="hero"
+                  />
+                ) : null}
+                {quiet && last ? (
+                  <circle
+                    cx={last.x}
+                    cy={last.y}
+                    r="7"
+                    fill={s.color}
+                    opacity={0}
+                    pointerEvents="none"
+                    className={styles.quietBloom}
+                    data-testid={`landscape-ticker-quiet-bloom-${s.id}`}
+                    data-bloom-kind="quiet"
                   />
                 ) : null}
                 {path.plotted.map((pt) => {
@@ -442,35 +510,53 @@ export function LandscapeRatingTickerChart({
                     pt.point,
                     active?.point.id === pt.point.id && active.seriesId === s.id,
                   );
-                  const r =
-                    active?.point.id === pt.point.id && active.seriesId === s.id ? 6 : 4;
+                  const selectedPoint =
+                    active?.point.id === pt.point.id && active.seriesId === s.id;
+                  const r = selectedPoint ? 6 : frontMost ? 4.5 : 3.75;
+                  const fill = style.kind === 'none' ? s.color : style.fill;
+                  const markerStroke =
+                    frontMost || style.kind === 'none' ? s.color : style.stroke;
                   return (
-                    <circle
-                      key={`${s.id}:${pt.point.id}`}
-                      id={`landscape-ticker-marker-${s.id}-${pt.point.id}`}
-                      cx={pt.x}
-                      cy={pt.y}
-                      r={r}
-                      fill={style.fill}
-                      stroke={style.stroke}
-                      strokeWidth="1"
-                      className="cursor-pointer"
-                      pointerEvents="auto"
-                      data-marker-kind={style.kind}
-                      data-testid={`landscape-ticker-marker-${s.id}-${pt.point.id}`}
-                      role="img"
-                      tabIndex={-1}
-                      focusable="false"
-                      aria-label={`${s.label} rating ${pt.point.ratingAfter}`}
-                      onClick={() =>
-                        setActive({
-                          seriesId: s.id,
-                          label: s.label,
-                          color: s.color,
-                          point: pt.point,
-                        })
-                      }
-                    />
+                    <g key={`${s.id}:${pt.point.id}`}>
+                      {frontMost ? (
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={r + 2.25}
+                          fill="none"
+                          stroke={s.color}
+                          strokeWidth="1.6"
+                          opacity="0.55"
+                          pointerEvents="none"
+                          data-testid={`landscape-ticker-marker-halo-${s.id}-${pt.point.id}`}
+                        />
+                      ) : null}
+                      <circle
+                        id={`landscape-ticker-marker-${s.id}-${pt.point.id}`}
+                        cx={pt.x}
+                        cy={pt.y}
+                        r={r}
+                        fill={fill}
+                        stroke={markerStroke}
+                        strokeWidth={frontMost ? 1.6 : 1}
+                        className="cursor-pointer"
+                        pointerEvents="auto"
+                        data-marker-kind={style.kind}
+                        data-testid={`landscape-ticker-marker-${s.id}-${pt.point.id}`}
+                        role="img"
+                        tabIndex={-1}
+                        focusable="false"
+                        aria-label={`${s.label} rating ${pt.point.ratingAfter}`}
+                        onClick={() =>
+                          setActive({
+                            seriesId: s.id,
+                            label: s.label,
+                            color: s.color,
+                            point: pt.point,
+                          })
+                        }
+                      />
+                    </g>
                   );
                 })}
               </svg>
@@ -487,7 +573,7 @@ export function LandscapeRatingTickerChart({
           </p>
         ) : null}
 
-        {visibleSeries.length > 0 && lineCount === 0 ? (
+        {visibleSeries.length > 0 && painted.length === 0 ? (
           <p
             className="pointer-events-none absolute inset-0 m-0 flex items-center justify-center px-4 text-center text-sm text-gray-400"
             data-testid="landscape-ticker-zero-event-plot"
