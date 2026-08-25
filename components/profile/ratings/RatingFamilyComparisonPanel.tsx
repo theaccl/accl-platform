@@ -18,6 +18,7 @@ import {
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
+import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
 import { RATING_LANE_EMPTY } from '@/components/profile/ratings/ratingTickerEmptyStates';
@@ -72,7 +73,7 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         {canExpandLandscape ? (
           <button
             type="button"
-            className="shrink-0 rounded-md border border-[#3d5168] px-2 py-1 text-xs text-gray-300 sm:hidden"
+            className={`${styles.expandMobile} shrink-0 rounded-md border border-[#3d5168] px-2 py-1 text-xs text-gray-300`}
             data-testid="rating-comparison-expand-mobile"
             onClick={() => setDrawerOpen(true)}
           >

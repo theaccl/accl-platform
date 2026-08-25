@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
+import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { LANDSCAPE_TICKER_CROSSING_HISTORY } from './landscapeTickerCrossingFixture';
@@ -114,6 +115,7 @@ export function LandscapeTickerHarness() {
       <button
         type="button"
         id="harness-expand"
+        className={styles.expandMobile}
         data-testid="rating-ticker-expand-mobile"
         onClick={() => setOpen(true)}
       >

@@ -8,6 +8,7 @@ const LAYOUT_FALLBACK = `
 .z-\\[400\\] { z-index: 400; }
 .flex { display: flex; }
 .flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
 .flex-1 { flex: 1 1 0%; }
 .min-h-0 { min-height: 0; }
 .min-w-0 { min-width: 0; }

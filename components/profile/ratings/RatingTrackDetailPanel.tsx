@@ -12,6 +12,7 @@ import {
 import { LANDSCAPE_TICKER_CATEGORIES } from '@/lib/profile/landscapeTickerCategories';
 import { BadgeBoundaryPanel } from '@/components/profile/ratings/BadgeBoundaryPanel';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
+import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import {
@@ -63,7 +64,7 @@ export function RatingTrackDetailPanel({
         {canExpandLandscape ? (
           <button
             type="button"
-            className="shrink-0 rounded-md border border-[#3d5168] px-2 py-1 text-xs text-gray-300 sm:hidden"
+            className={`${styles.expandMobile} shrink-0 rounded-md border border-[#3d5168] px-2 py-1 text-xs text-gray-300`}
             data-testid="rating-ticker-expand-mobile"
             onClick={() => setDrawerOpen(true)}
           >

@@ -34,8 +34,12 @@ import {
   visibleDominanceOrder,
 } from '@/lib/profile/landscapeTickerSession';
 import {
+  isLandscapeFitBox,
   isMaterialViewportChange,
   readViewportSize,
+  readVisualViewportBox,
+  subscribeVisualViewport,
+  visualViewportBoxesEqual,
 } from '@/lib/profile/landscapeTickerViewport';
 import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
@@ -44,16 +48,6 @@ import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 const RATING_ARROW = '\u2192';
 const META_DOT = '\u00B7';
-
-function readVisualViewportBox() {
-  const visual = window.visualViewport;
-  return {
-    offsetTop: Math.round(visual?.offsetTop ?? 0),
-    offsetLeft: Math.round(visual?.offsetLeft ?? 0),
-    width: Math.round(visual?.width ?? window.innerWidth),
-    height: Math.round(visual?.height ?? window.innerHeight),
-  };
-}
 
 type Props = {
   open: boolean;
@@ -108,37 +102,15 @@ function LandscapeTickerOverlay({
   const [viewportBox, setViewportBox] = useState(readVisualViewportBox);
 
   useEffect(() => {
-    const apply = () => {
-      setViewportBox(readVisualViewportBox());
-    };
-    apply();
-    window.visualViewport?.addEventListener('resize', apply);
-    window.visualViewport?.addEventListener('scroll', apply);
-    window.addEventListener('resize', apply);
-    return () => {
-      window.visualViewport?.removeEventListener('resize', apply);
-      window.visualViewport?.removeEventListener('scroll', apply);
-      window.removeEventListener('resize', apply);
-    };
-  }, []);
-
-  useEffect(() => {
-    const root = dialogRef.current;
-    if (!root) return;
-    return attachLandscapeTickerDialogChrome(root, {
-      onClose: () => onCloseRef.current(),
-    });
-  }, []);
-
-  useEffect(() => {
     let last = readViewportSize(window);
     let armed = false;
     const arm = window.requestAnimationFrame(() => {
       last = readViewportSize(window);
       armed = true;
     });
-    const onViewport = () => {
-      const next = readViewportSize(window);
+    const unsubscribe = subscribeVisualViewport((box) => {
+      setViewportBox((prev) => (visualViewportBoxesEqual(prev, box) ? prev : box));
+      const next = { width: box.width, height: box.height };
       if (!armed) {
         last = next;
         return;
@@ -149,16 +121,19 @@ function LandscapeTickerOverlay({
         if (!prev.activeReveal && prev.pendingActivations.length === 0) return prev;
         return reduceLandscapeTickerSession(prev, { type: 'settleForViewportChange' });
       });
-    };
-    window.addEventListener('resize', onViewport);
-    window.addEventListener('orientationchange', onViewport);
-    window.visualViewport?.addEventListener('resize', onViewport);
+    });
     return () => {
       window.cancelAnimationFrame(arm);
-      window.removeEventListener('resize', onViewport);
-      window.removeEventListener('orientationchange', onViewport);
-      window.visualViewport?.removeEventListener('resize', onViewport);
+      unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const root = dialogRef.current;
+    if (!root) return;
+    return attachLandscapeTickerDialogChrome(root, {
+      onClose: () => onCloseRef.current(),
+    });
   }, []);
 
   const categoryLanePoints = useMemo(
@@ -247,10 +222,7 @@ function LandscapeTickerOverlay({
     selectedLabels.length === 0
       ? 'No rating categories selected. The plotting area is empty.'
       : `Selected categories: ${selectedLabels.join(', ')}. Use the chart and arrow keys to move between points, or the event list for finished games.`;
-  const landscapeFit =
-    viewportBox.height > 0 &&
-    viewportBox.height <= 500 &&
-    viewportBox.width >= viewportBox.height;
+  const landscapeFit = isLandscapeFitBox(viewportBox);
 
   return (
     <div
@@ -284,7 +256,7 @@ function LandscapeTickerOverlay({
       aria-labelledby="landscape-ticker-title"
       tabIndex={-1}
     >
-      <header className={`${styles.header} flex shrink-0 items-center justify-between gap-2 border-b border-[#2f3f54] px-4 py-3 landscape:py-1.5`}>
+      <header className={`${styles.header} flex shrink-0 items-center justify-between gap-2 border-b border-[#2f3f54] px-4 py-3`}>
         <div className="min-w-0 flex-1">
           <h3 id="landscape-ticker-title" className="m-0 truncate text-sm font-semibold text-white">
             {heading}
@@ -310,12 +282,12 @@ function LandscapeTickerOverlay({
       </header>
 
       <div
-        className={`${styles.bodyScroll} flex flex-col px-4 py-3 landscape:gap-2`}
+        className={`${styles.bodyScroll} flex flex-col px-4 py-3`}
         data-testid="landscape-ticker-body-scroll"
       >
         <p
           hidden={landscapeFit}
-          className={`${styles.orientationHint} m-0 shrink-0 text-xs text-gray-400 landscape:hidden`}
+          className={`${styles.orientationHint} m-0 shrink-0 text-xs text-gray-400`}
           data-testid="landscape-ticker-orientation-hint"
         >
           Rotate your device sideways for the full ticker. Portrait remains usable.
@@ -342,7 +314,7 @@ function LandscapeTickerOverlay({
                   }}
                   data-testid={item.panelTestId}
                   data-family={item.id}
-                  className={`${styles.familyPanel} ${item.id === 'free' ? 'landscape:gap-2' : ''}`}
+                  className={styles.familyPanel}
                 >
                   {item.id === 'free' ? (
                     <>
@@ -422,7 +394,7 @@ function LandscapeTickerOverlay({
 
                       <ol
                         hidden={landscapeFit}
-                        className={`${styles.eventList} m-0 list-none space-y-2 p-0 landscape:max-h-24`}
+                        className={`${styles.eventList} m-0 list-none space-y-2 p-0`}
                         data-testid="rating-ticker-point-list"
                         aria-label="Rating events for selected categories"
                       >

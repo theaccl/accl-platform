@@ -40,17 +40,10 @@ async function mountCompareMajorRatings(page: Page, viewport: { width: number; h
 }
 
 async function clickCompareMajorRatingsExpand(page: Page) {
-  const current = page.viewportSize();
-  if (!current || current.width >= 640) {
-    await page.setViewportSize({ width: 360, height: 800 });
-  }
   const expand = page.getByTestId('rating-comparison-expand-mobile');
   await expect(expand).toBeVisible();
   await expand.click();
   await page.getByTestId('expanded-rating-ticker-drawer').waitFor();
-  if (current && (current.width !== 360 || current.height !== 800)) {
-    await page.setViewportSize(current);
-  }
 }
 
 async function assertCleanLandscapeFromComparison(page: Page) {
@@ -156,7 +149,6 @@ test.describe('compare-major-ratings expand entry point', () => {
     await page.setViewportSize({ width: 800, height: 360 });
     await page.screenshot({ path: shot('e03-before-expand-800x360.png'), fullPage: true });
     await clickCompareMajorRatingsExpand(page);
-    await page.setViewportSize({ width: 800, height: 360 });
     await assertCleanLandscapeFromComparison(page);
     await page.screenshot({ path: shot('e04-after-expand-empty-800x360.png'), fullPage: true });
 
@@ -164,7 +156,6 @@ test.describe('compare-major-ratings expand entry point', () => {
     await page.setViewportSize({ width: 667, height: 375 });
     await page.screenshot({ path: shot('e05-before-expand-667x375.png'), fullPage: true });
     await clickCompareMajorRatingsExpand(page);
-    await page.setViewportSize({ width: 667, height: 375 });
     await assertCleanLandscapeFromComparison(page);
     await page.screenshot({ path: shot('e06-after-expand-empty-667x375.png'), fullPage: true });
     expect(existsSync(shot('e01-before-expand-360x800.png'))).toBe(true);

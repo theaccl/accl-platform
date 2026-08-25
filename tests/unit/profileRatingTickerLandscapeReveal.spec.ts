@@ -333,7 +333,20 @@ test.describe('profile rating ticker landscape interactive reveal', () => {
       "document.body.style.overflow = 'hidden'",
     );
     expect(drawer).not.toContain('sm:hidden');
-    expect(src('components/profile/ratings/RatingTrackDetailPanel.tsx')).toContain('sm:hidden');
+    expect(src('components/profile/ratings/RatingTrackDetailPanel.tsx')).toContain('expandMobile');
+    expect(src('components/profile/ratings/RatingTrackDetailPanel.tsx')).not.toContain('sm:hidden');
+    expect(src('components/profile/ratings/RatingFamilyComparisonPanel.tsx')).toContain('expandMobile');
+    expect(src('components/profile/ratings/RatingFamilyComparisonPanel.tsx')).not.toContain('sm:hidden');
+    expect(src('components/profile/ratings/landscapeRatingTicker.module.css')).toContain('.expandMobile');
+    expect(src('components/profile/ratings/landscapeRatingTicker.module.css')).toContain(
+      "[data-landscape-fit='true']",
+    );
+    expect(src('components/profile/ratings/landscapeRatingTicker.module.css')).not.toContain(
+      '@media (orientation: landscape) and (max-height: 500px)',
+    );
+    expect(src('lib/profile/landscapeTickerViewport.ts')).toContain('subscribeVisualViewport');
+    expect(drawer).toContain('subscribeVisualViewport');
+    expect(drawer).toContain('isLandscapeFitBox');
     expect(src('lib/profile/landscapeTickerMotion.ts')).toContain('cssSupportsOffsetPath');
     expect(src('components/profile/ratings/LandscapeRatingTickerChart.tsx')).toContain(
       'cssSupportsOffsetPath',

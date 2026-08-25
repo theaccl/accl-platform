@@ -111,6 +111,7 @@
   flex: 1 1 0%;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: none;
 }
 
 .familyViewport {
@@ -154,7 +155,7 @@
   flex-shrink: 0;
   flex-wrap: wrap;
   gap: 0.25rem;
-  overflow-x: auto;
+  overflow: hidden;
   padding-bottom: 0.25rem;
 }
 
@@ -178,85 +179,118 @@
   }
 }
 
-@media (orientation: landscape) and (max-height: 500px) {
-  .overlay {
-    height: var(--ticker-vvh, 100svh);
-    max-height: var(--ticker-vvh, 100svh);
-  }
+.overlay[data-landscape-fit='true'] {
+  height: var(--ticker-vvh, 100svh);
+  max-height: var(--ticker-vvh, 100svh);
+}
 
-  .header {
-    padding-top: 0.35rem;
-    padding-bottom: 0.35rem;
-  }
+.overlay[data-landscape-fit='true'] .header {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
 
-  .currentRating {
-    display: none;
-  }
+.overlay[data-landscape-fit='true'] .currentRating,
+.overlay[data-landscape-fit='true'] .orientationHint,
+.overlay[data-landscape-fit='true'] .eventList,
+.overlay[data-landscape-fit='true'] .seriesSummary {
+  display: none;
+}
 
-  .bodyScroll {
-    overflow: hidden;
-    padding-top: 0.35rem;
-    padding-bottom: 0.35rem;
-    gap: 0.3rem;
-  }
+.overlay[data-landscape-fit='true'] .bodyScroll {
+  overflow: hidden;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  gap: 0.25rem;
+}
 
-  .familyTrack {
-    min-height: 0;
-    height: 100%;
-  }
+.overlay[data-landscape-fit='true'] .familyTrack {
+  min-height: 0;
+  height: 100%;
+}
 
-  .familyPanel {
-    gap: 0.3rem;
-    overflow: hidden;
-    height: 100%;
-    min-height: 0;
-  }
+.overlay[data-landscape-fit='true'] .familyPanel {
+  gap: 0.25rem;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
 
-  .familyViewport {
-    overflow: hidden;
-    flex: 1 1 0%;
-    min-height: 0;
-  }
+.overlay[data-landscape-fit='true'] .familyViewport {
+  overflow: hidden;
+  flex: 1 1 0%;
+  min-height: 0;
+  overscroll-behavior: none;
+}
 
-  .categoryControls {
-    overflow-x: hidden;
-    padding-bottom: 0;
-    gap: 0.2rem;
-  }
+.overlay[data-landscape-fit='true'] .categoryControls {
+  overflow: hidden;
+  padding-bottom: 0;
+  gap: 0.2rem;
+}
 
-  .chartWrap {
-    height: 100%;
-  }
+.overlay[data-landscape-fit='true'] .categoryControls :global(button) {
+  flex: 0 1 auto;
+  min-height: 2rem;
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+}
 
-  .chartSlot {
-    position: relative;
-    flex: 1 1 0%;
-    min-height: 0;
-  }
+.overlay[data-landscape-fit='true'] .header > button {
+  min-height: 2rem;
+}
 
-  .frame {
-    height: 100%;
-    min-height: 7.75rem;
-  }
+.overlay[data-landscape-fit='true'] .laneTabs {
+  overflow: hidden;
+}
 
-  .eventList,
-  .seriesSummary {
-    display: none;
-  }
+.overlay[data-landscape-fit='true'] .laneTabs :global([role='tablist']) {
+  overflow: hidden;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
 
-  .orientationHint {
-    display: none;
-  }
+.overlay[data-landscape-fit='true'] .laneTabs :global(button) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0.2rem 0.4rem;
+}
 
-  .pointDetail {
-    position: absolute;
-    left: 0.35rem;
-    right: 0.35rem;
-    bottom: 0.35rem;
-    z-index: 6;
-    max-height: 4.25rem;
-    overflow: auto;
-    margin: 0;
+.overlay[data-landscape-fit='true'] .chartWrap {
+  height: 100%;
+}
+
+.overlay[data-landscape-fit='true'] .chartSlot {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+.overlay[data-landscape-fit='true'] .frame {
+  height: 100%;
+  min-height: 4.5rem;
+}
+
+.overlay[data-landscape-fit='true'] .pointDetail {
+  position: absolute;
+  left: 0.35rem;
+  right: 0.35rem;
+  bottom: 0.35rem;
+  z-index: 6;
+  max-height: 4.25rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+}
+
+.expandMobile {
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (min-width: 1024px) and (min-height: 600px) {
+  .expandMobile {
+    display: none !important;
   }
 }
 
