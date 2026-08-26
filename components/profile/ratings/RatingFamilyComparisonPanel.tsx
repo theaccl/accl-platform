@@ -8,8 +8,7 @@ import {
 } from '@/lib/profileRatingChartLevels';
 import {
   applyActivationToggle,
-  frontMostId,
-  initialDominanceOrder,
+  paintedActivationOrder,
 } from '@/lib/profile/ratingLineDominanceOrder';
 import {
   filterMajorFamilySeriesByLane,
@@ -21,7 +20,10 @@ import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/Expande
 import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
-import { RATING_LANE_EMPTY } from '@/components/profile/ratings/ratingTickerEmptyStates';
+import {
+  COMPARISON_SELECT_EMPTY,
+  RATING_LANE_EMPTY,
+} from '@/components/profile/ratings/ratingTickerEmptyStates';
 
 const COMPARISON_EMPTY =
   'Major-family comparison will appear here after finished rated games are recorded for these tracks.';
@@ -31,19 +33,24 @@ type Props = {
   canLinkFinishedGames: boolean;
 };
 
-function initialComparisonDominance(): MajorFamilyTrackId[] {
-  return initialDominanceOrder(MAJOR_FAMILY_COMPARISON_SERIES.map((s) => s.trackId));
-}
-
 export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGames }: Props) {
   const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
-  const [dominanceOrder, setDominanceOrder] = useState<MajorFamilyTrackId[]>(initialComparisonDominance);
+  const [dominanceOrder, setDominanceOrder] = useState<MajorFamilyTrackId[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const baseSeries = useMemo(() => buildMajorFamilySeriesData(historyByTrack), [historyByTrack]);
   const laneSeries = useMemo(() => filterMajorFamilySeriesByLane(baseSeries, lane), [baseSeries, lane]);
   const visibleTrackIds = useMemo(() => new Set(dominanceOrder), [dominanceOrder]);
+  const paintedIds = useMemo(
+    () =>
+      paintedActivationOrder(
+        dominanceOrder,
+        Object.fromEntries(laneSeries.map((s) => [s.trackId, s.points.length])),
+      ),
+    [dominanceOrder, laneSeries],
+  );
+  const paintedDominantCategory = paintedIds[paintedIds.length - 1] ?? null;
 
   const anyLanePoints = majorFamilySeriesHasAnyPoints(laneSeries);
   const anyBasePoints = majorFamilySeriesHasAnyPoints(baseSeries);
@@ -64,8 +71,9 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
   return (
     <div
       data-testid="rating-family-comparison-panel"
+      data-empty-open={dominanceOrder.length === 0 ? 'true' : 'false'}
       data-dominance-order={dominanceOrder.join(' ') || 'none'}
-      data-dominant-category={frontMostId(dominanceOrder) ?? 'none'}
+      data-dominant-category={paintedDominantCategory ?? 'none'}
       className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4"
     >
       <div className="flex items-center justify-between gap-2">
@@ -141,7 +149,7 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         </p>
       ) : renderedPointCount === 0 ? (
         <p className="m-0 text-xs text-gray-500" data-testid="comparison-all-hidden">
-          Show at least one family in the legend to draw the chart.
+          {COMPARISON_SELECT_EMPTY}
         </p>
       ) : (
         <MultiLineRatingTickerChart

@@ -8,6 +8,7 @@ import {
   frontMostId,
   initialDominanceOrder,
   moveIdToFront,
+  paintedActivationOrder,
   removeIdFromOrder,
   sortItemsByDominance,
 } from '../../lib/profile/ratingLineDominanceOrder';
@@ -21,7 +22,7 @@ function src(rel: string): string {
 }
 
 test.describe('compact comparison activation dominance (unit)', () => {
-  test('initial ordering is deterministic registry order', () => {
+  test('initial ordering helper still uses registry order when given selected ids', () => {
     const ids = MAJOR_FAMILY_COMPARISON_SERIES.map((s) => s.trackId);
     expect(initialDominanceOrder(ids)).toEqual([
       'tournament',
@@ -31,6 +32,27 @@ test.describe('compact comparison activation dominance (unit)', () => {
       'free_day',
     ]);
     expect(frontMostId(initialDominanceOrder(ids))).toBe('free_day');
+  });
+
+  test('compact comparison opens with no selected families', () => {
+    const panel = src('components/profile/ratings/RatingFamilyComparisonPanel.tsx');
+    expect(panel).toContain('useState<MajorFamilyTrackId[]>([])');
+    expect(panel).toContain('COMPARISON_SELECT_EMPTY');
+    expect(panel).not.toContain('initialComparisonDominance');
+    expect(src('components/profile/ratings/ratingTickerEmptyStates.ts')).toContain(
+      "export const COMPARISON_SELECT_EMPTY = 'Select ratings to compare.';",
+    );
+  });
+
+  test('painted activation order excludes zero-point ids', () => {
+    expect(
+      paintedActivationOrder(['free_rapid', 'tournament', 'free_blitz'], {
+        free_rapid: 2,
+        tournament: 0,
+        free_blitz: 3,
+      }),
+    ).toEqual(['free_rapid', 'free_blitz']);
+    expect(paintedActivationOrder(['tournament'], { tournament: 0 })).toEqual([]);
   });
 
   test('Tournament then Rapid then Blitz paints back-to-front in that order', () => {

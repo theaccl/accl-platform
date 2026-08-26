@@ -81,13 +81,13 @@ async function prepareCrossingChart(page: Page): Promise<void> {
     viewport: { width: 360, height: 800 },
   });
   await page.getByTestId('comparison-lane-tab-overall').click();
-  await page.getByTestId('multi-line-rating-chart').waitFor();
+  await page.getByTestId('rating-family-comparison-panel').waitFor();
 }
 
-async function isolateRapidThenBlitz(page: Page): Promise<void> {
-  await page.getByTestId('major-family-legend-tournament').click();
-  await page.getByTestId('major-family-legend-bullet').click();
-  await page.getByTestId('major-family-legend-daily').click();
+async function selectRapidThenBlitz(page: Page): Promise<void> {
+  await page.getByTestId('major-family-legend-rapid').click();
+  await page.getByTestId('major-family-legend-blitz').click();
+  await page.getByTestId('multi-line-rating-chart').waitFor();
 }
 
 async function selectBlitzLast(page: Page): Promise<void> {
@@ -96,34 +96,33 @@ async function selectBlitzLast(page: Page): Promise<void> {
 }
 
 test.describe('compact comparison dominance (real component)', () => {
-  test('initial compact ordering is deterministic registry order', async ({ page }) => {
+  test('fresh compact mount is empty with fixed legend order', async ({ page }) => {
     await prepareCrossingChart(page);
     const panel = page.getByTestId('rating-family-comparison-panel');
-    await expect(panel).toHaveAttribute(
-      'data-dominance-order',
-      'tournament free_bullet free_blitz free_rapid free_day',
-    );
-    await expect(panel).toHaveAttribute('data-dominant-category', 'free_day');
-    await expect(page.getByTestId('multi-line-rating-chart')).toHaveAttribute(
-      'data-dominance-order',
-      'tournament free_bullet free_blitz free_rapid free_day',
-    );
-    expect(await seriesGroupOrder(page)).toEqual(['free_blitz', 'free_rapid', 'free_day']);
+    await expect(panel).toHaveAttribute('data-empty-open', 'true');
+    await expect(panel).toHaveAttribute('data-dominance-order', 'none');
+    await expect(panel).toHaveAttribute('data-dominant-category', 'none');
+    await expect(page.getByTestId('multi-line-rating-chart')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="multi-line-series-"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="multi-line-point-"]')).toHaveCount(0);
+    await expect(page.getByTestId('comparison-all-hidden')).toHaveText('Select ratings to compare.');
     expect(await legendButtonOrder(page)).toEqual(LEGEND_ORDER);
-    await expect(page.getByTestId('multi-line-rating-chart')).toHaveAttribute('data-hero', 'false');
+    for (const id of LEGEND_ORDER) {
+      await expect(page.getByTestId(id)).toHaveAttribute('aria-pressed', 'false');
+    }
     await expect(page.locator('[data-ticker-anim]')).toHaveCount(0);
     await expect(page.getByTestId('expanded-rating-ticker-drawer')).toHaveCount(0);
   });
 
   test('selecting Blitz last paints it after Rapid and owns the crossing', async ({ page }) => {
     await prepareCrossingChart(page);
-    await isolateRapidThenBlitz(page);
+    await selectRapidThenBlitz(page);
     await expect(page.getByTestId('rating-family-comparison-panel')).toHaveAttribute(
       'data-dominance-order',
-      'free_blitz free_rapid',
+      'free_rapid free_blitz',
     );
-    expect(await seriesGroupOrder(page)).toEqual(['free_blitz', 'free_rapid']);
-    await expect(page.getByTestId('multi-line-series-group-free_rapid')).toHaveAttribute(
+    expect(await seriesGroupOrder(page)).toEqual(['free_rapid', 'free_blitz']);
+    await expect(page.getByTestId('multi-line-series-group-free_blitz')).toHaveAttribute(
       'data-dominant',
       'true',
     );
@@ -163,7 +162,7 @@ test.describe('compact comparison dominance (real component)', () => {
     page,
   }) => {
     await prepareCrossingChart(page);
-    await isolateRapidThenBlitz(page);
+    await selectRapidThenBlitz(page);
     await selectBlitzLast(page);
     expect(await seriesGroupOrder(page)).toEqual(['free_rapid', 'free_blitz']);
 
@@ -199,7 +198,7 @@ test.describe('compact comparison dominance (real component)', () => {
     const shot = (name: string) => join(dir, name);
 
     await prepareCrossingChart(page);
-    await isolateRapidThenBlitz(page);
+    await selectRapidThenBlitz(page);
     await page.screenshot({ path: shot('c01-rapid-selected-before-blitz-360x800.png'), fullPage: true });
 
     await selectBlitzLast(page);
@@ -220,7 +219,7 @@ test.describe('compact comparison dominance (real component)', () => {
       viewport: { width: 800, height: 360 },
     });
     await page.getByTestId('comparison-lane-tab-overall').click();
-    await isolateRapidThenBlitz(page);
+    await selectRapidThenBlitz(page);
     await page.screenshot({ path: shot('c06-rapid-selected-before-blitz-800x360.png'), fullPage: true });
 
     await selectBlitzLast(page);

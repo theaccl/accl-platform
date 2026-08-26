@@ -73,7 +73,7 @@ test.describe('compare-major-ratings expand entry point', () => {
     await mountCompareMajorRatings(page, { width: 360, height: 800 });
     await expect(page.getByTestId('rating-family-comparison-panel')).toHaveAttribute(
       'data-dominance-order',
-      'tournament free_bullet free_blitz free_rapid free_day',
+      'none',
     );
     await clickCompareMajorRatingsExpand(page);
     await assertCleanLandscapeFromComparison(page);

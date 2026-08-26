@@ -38,6 +38,17 @@ export function frontMostId<T extends string>(order: readonly T[]): T | null {
   return order.length > 0 ? order[order.length - 1]! : null;
 }
 
+/**
+ * Selected categories with no drawable points stay in session order
+ * but do not participate in painted dominance.
+ */
+export function paintedActivationOrder<T extends string>(
+  order: readonly T[],
+  pointCountById: Readonly<Record<string, number>>,
+): T[] {
+  return order.filter((id) => (pointCountById[id] ?? 0) > 0);
+}
+
 export function sortItemsByDominance<T>(
   items: readonly T[],
   dominanceOrder: readonly string[],
