@@ -1,4 +1,5 @@
-import { albertPresenceDeniedByClassification, classifyAuthoritativeGame } from './gameClassification';
+import { albertPresenceDeniedByClassification } from './computeCapabilityEnvelope';
+import { classifyAuthoritativeGame } from './gameClassification';
 import type { LoadSeatedGamesResult } from './loadSeatedGamesForAuthorization';
 import type { AuthoritativeGameSnapshot, UntrustedCallerAuthorizationInput } from './types';
 

@@ -34,12 +34,7 @@ function isContradictory(game: AuthoritativeGameSnapshot): boolean {
   if (source === 'bot_game' && hasTournament) return true;
   if (source === 'bot_ladder' && hasTournament) return true;
   if (source === 'asi_arena' && hasTournament) return true;
-  if (source === 'asi_arena' && (source === 'bot_game' || hasBotSettings(game.bot_settings))) {
-    // source cannot be two values; bot_settings on ASI is contradictory product mix
-    if (hasBotSettings(game.bot_settings)) return true;
-  }
-  if (source === 'bot_ladder' && source === 'bot_game') return true;
-  if (source === 'bot_game' && source === 'asi_arena') return true;
+  if (source === 'asi_arena' && hasBotSettings(game.bot_settings)) return true;
   return false;
 }
 

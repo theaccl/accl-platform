@@ -9,8 +9,8 @@ export type RoleInvariantFloor = {
  * Server-owned, role-indexed never-floors. Request-time policy cannot override these.
  * Changing a floor requires a doctrine/architecture change and test update.
  */
-export const ROLE_INVARIANT_FLOORS: Readonly<Record<CoreRole, RoleInvariantFloor>> = Object.freeze({
-  ALBERT_ASSISTANT: Object.freeze({
+export const ROLE_INVARIANT_FLOORS = {
+  ALBERT_ASSISTANT: {
     forceFalse: [
       'canBePresentAsAlbertDuringAnyActiveGame',
       'canCoachOrAnalyzeHumanLiveGame',
@@ -20,8 +20,8 @@ export const ROLE_INVARIANT_FLOORS: Readonly<Record<CoreRole, RoleInvariantFloor
       'canSelfLearnInSandbox',
     ],
     forceProjection: null,
-  }),
-  TRAINER_PERSONA: Object.freeze({
+  },
+  TRAINER_PERSONA: {
     forceFalse: [
       'canBePresentAsAlbertDuringAnyActiveGame',
       'canCoachOrAnalyzeHumanLiveGame',
@@ -31,8 +31,8 @@ export const ROLE_INVARIANT_FLOORS: Readonly<Record<CoreRole, RoleInvariantFloor
       'canSelfLearnInSandbox',
     ],
     forceProjection: null,
-  }),
-  BOT_LADDER_PERSONA: Object.freeze({
+  },
+  BOT_LADDER_PERSONA: {
     forceFalse: [
       'canBePresentAsAlbertDuringAnyActiveGame',
       'canCoachOrAnalyzeHumanLiveGame',
@@ -42,8 +42,8 @@ export const ROLE_INVARIANT_FLOORS: Readonly<Record<CoreRole, RoleInvariantFloor
       'canSelfLearnInSandbox',
     ],
     forceProjection: null,
-  }),
-  ASI_ARENA: Object.freeze({
+  },
+  ASI_ARENA: {
     forceFalse: [
       'canBePresentAsAlbertDuringAnyActiveGame',
       'canCoachOrAnalyzeHumanLiveGame',
@@ -52,9 +52,9 @@ export const ROLE_INVARIANT_FLOORS: Readonly<Record<CoreRole, RoleInvariantFloor
       'canAnalyzeCompletedGames',
       'canAccessTrainingPositions',
     ],
-    forceProjection: 'none',
-  }),
-});
+    forceProjection: 'none' as const,
+  },
+} as const satisfies Record<CoreRole, RoleInvariantFloor>;
 
 export function applyRoleInvariantFloors(role: CoreRole, envelope: CapabilityEnvelope): CapabilityEnvelope {
   const floor = ROLE_INVARIANT_FLOORS[role];
