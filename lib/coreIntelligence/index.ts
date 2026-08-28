@@ -17,6 +17,11 @@ export type {
 export { isCoreRole, defaultProjectionForRole } from './roles';
 export { ROLE_INVARIANT_FLOORS, applyRoleInvariantFloors } from './roleInvariantPolicy';
 export {
+  AUTHORIZED_ROLE_TRANSITIONS,
+  isAuthorizedRoleTransition,
+  personaMatchesDestinationRole,
+} from './roleTransitionPolicy';
+export {
   classifyAuthoritativeGame,
   isActiveGameClassification,
   isHumanLiveOrCorrespondenceClassification,
@@ -33,10 +38,16 @@ export {
   createSanitizedHandoffPacket,
   transitionRoleSession,
   InMemoryHandoffNonceStore,
+  sanitizeCarriedHandoffContext,
+  DEFAULT_HANDOFF_MAX_AGE_MS,
+  DEFAULT_HANDOFF_MAX_FUTURE_SKEW_MS,
 } from './handoff';
 export type { HandoffNonceStore, TransitionRoleResult } from './handoff';
 export { authorizePlayerModelProjection } from './playerModelProjectionAccess';
-export { loadSeatedAuthoritativeGamesForPlayer } from './loadSeatedGamesForAuthorization';
+export {
+  loadSeatedAuthoritativeGamesForPlayer,
+  SEATED_AUTHORIZATION_GAME_SELECT,
+} from './loadSeatedGamesForAuthorization';
 export type { LoadSeatedGamesResult } from './loadSeatedGamesForAuthorization';
 export { evaluateAlbertRouteAccess } from './albertRouteAccess';
 export type { AlbertRouteAccessResult } from './albertRouteAccess';

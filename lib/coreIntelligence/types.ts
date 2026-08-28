@@ -62,6 +62,8 @@ export type PersonaDefinition = {
 /** Server-constructed sanitized persona-transition packet. */
 export type HandoffPacket = {
   playerId: string;
+  sourceRole: CoreRole;
+  sourceRoleSessionId: string;
   destinationRole: CoreRole;
   destinationPersonaId: string | null;
   reason: string;
