@@ -19,6 +19,7 @@ import {
 const nexusPagePath = join(process.cwd(), 'app', 'nexus', 'page.tsx');
 const nexusLayoutPath = join(process.cwd(), 'components', 'nexus', 'NexusHubLayout.tsx');
 const albertRoutePath = join(process.cwd(), 'app', 'api', 'albert', 'message', 'route.ts');
+const albertHandlerPath = join(process.cwd(), 'app', 'api', 'albert', 'message', 'handler.ts');
 
 test.describe('Albert communication boundary', () => {
   test('accepts a trimmed bounded message', () => {
@@ -59,10 +60,12 @@ test.describe('Albert communication boundary', () => {
 
   test('uses bounded explicit Gateway attempts with reserved fallback time', () => {
     const route = readFileSync(albertRoutePath, 'utf8');
+    const handler = readFileSync(albertHandlerPath, 'utf8');
 
-    expect(route).toContain('model: gateway(attempt.modelId)');
-    expect(route).toContain('timeout: { totalMs: attempt.timeoutMs }');
-    expect(route).toContain('maxRetries: 0');
+    expect(route).toContain('handleAlbertMessage(request)');
+    expect(handler).toContain('model: gateway(input.modelId)');
+    expect(handler).toContain('timeout: { totalMs: input.timeoutMs }');
+    expect(handler).toContain('maxRetries: 0');
     expect(ALBERT_DEFAULT_MODEL_ID).toBe('deepseek/deepseek-v4-pro-0813');
     expect(ALBERT_FALLBACK_MODEL_IDS).toEqual(['xai/grok-4.6']);
     expect(buildAlbertModelAttempts()).toEqual([
