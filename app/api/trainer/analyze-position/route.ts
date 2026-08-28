@@ -1,6 +1,6 @@
-import { Chess } from 'chess.js';
 import { createClient } from '@supabase/supabase-js';
 import { evaluateTrainerPositionUci } from '@/lib/analysis/engineComputeService';
+import { parsePosition } from '@/lib/chess';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import { assertTrainerAnalysisAllowed } from '@/lib/trainer/trainerAnalysisGuard';
 import {
@@ -81,8 +81,9 @@ async function postTrainerAnalyze(request: Request): Promise<Response> {
   const gameId =
     body.gameId != null && String(body.gameId).trim() !== '' ? String(body.gameId).trim() : null;
 
+  let position;
   try {
-    new Chess(fen);
+    position = parsePosition(fen);
   } catch {
     return json({ ok: false, error: 'invalid_fen', code: 'BAD_FEN', availability: 'unavailable' }, 400);
   }
@@ -164,7 +165,7 @@ async function postTrainerAnalyze(request: Request): Promise<Response> {
     fen,
     gameId,
     availability: 'available',
-    summary: centipawnToHumanLine(best?.scoreCp ?? null),
+    summary: centipawnToHumanLine(best?.scoreCp ?? null, position.turn),
     evaluation: {
       bestMove: uci.bestMove,
       centipawn: best?.scoreCp ?? null,

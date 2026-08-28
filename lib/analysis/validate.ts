@@ -1,4 +1,4 @@
-import { Chess } from 'chess.js';
+import { parsePosition, PositionParseError } from '@/lib/chess';
 
 export class InvalidFenError extends Error {
   constructor(message = 'invalid_fen') {
@@ -8,12 +8,12 @@ export class InvalidFenError extends Error {
 }
 
 export function validateFenOrThrow(fen: string): void {
-  if (typeof fen !== 'string' || fen.trim().length === 0) {
-    throw new InvalidFenError();
-  }
   try {
-    new Chess(fen);
-  } catch {
+    parsePosition(fen);
+  } catch (err) {
+    if (err instanceof PositionParseError) {
+      throw new InvalidFenError();
+    }
     throw new InvalidFenError();
   }
 }

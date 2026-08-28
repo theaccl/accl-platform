@@ -12,7 +12,7 @@ export function buildHeuristicRows(moves: { san: string }[]): AnalyzedMove[] {
 export function buildEngineRows(
   moves: { san: string }[],
   depth: number,
-  score = 0
+  score: number | null = 0
 ): AnalyzedMove[] {
   return moves.map((m, idx) => ({
     index: idx,
