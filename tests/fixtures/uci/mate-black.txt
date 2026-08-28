@@ -1,0 +1,2 @@
+info depth 8 seldepth 8 multipv 1 score mate 1 pv f7f8
+bestmove f7f8

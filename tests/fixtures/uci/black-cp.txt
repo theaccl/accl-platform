@@ -1,0 +1,2 @@
+info depth 10 seldepth 12 multipv 1 score cp 42 nodes 800 pv e7e5
+bestmove e7e5

@@ -17,7 +17,7 @@ export function classifyBestLineSpread(deltaCp: number): MoveClassification {
   return 'Blunder';
 }
 
-/** Compare alternative to best line (from same side to move). */
+/** Compare alternative to best line (from same side to move / mover POV). */
 export function classifyMoveVsBest(bestCp: number | null, altCp: number | null): MoveClassification {
   if (bestCp == null || altCp == null) return 'Good';
   const loss = bestCp - altCp;
@@ -29,10 +29,17 @@ export function classifyMoveVsBest(bestCp: number | null, altCp: number | null):
   return 'Blunder';
 }
 
-export function centipawnToHumanLine(cp: number | null): string {
+/**
+ * Human evaluation line. `cp` is mover-POV (legacy Trainer API).
+ * Wording names White or Black explicitly — never “side to move”.
+ */
+export function centipawnToHumanLine(cp: number | null, turn: 'w' | 'b'): string {
   if (cp == null) return 'Evaluation pending — position is sharp or balanced.';
-  if (Math.abs(cp) < 25) return 'Roughly equal — the position is balanced.';
-  if (Math.abs(cp) < 80) return cp > 0 ? 'Slight edge for the side to move.' : 'Slight disadvantage — find precise moves.';
-  if (Math.abs(cp) < 200) return cp > 0 ? 'Clear advantage — stay accurate.' : 'Under pressure — defend carefully.';
-  return cp > 0 ? 'Decisive advantage — convert calmly.' : 'Critical — only good moves keep the game alive.';
+  const whiteCp = turn === 'b' ? -cp : cp;
+  if (Math.abs(whiteCp) < 25) return 'Roughly equal — the position is balanced.';
+  const side = whiteCp > 0 ? 'White' : 'Black';
+  const mag = Math.abs(whiteCp);
+  if (mag < 80) return `Slight edge for ${side}.`;
+  if (mag < 200) return `Clear advantage for ${side}.`;
+  return `Decisive advantage for ${side}.`;
 }
