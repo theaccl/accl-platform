@@ -59,7 +59,7 @@ export type EngineAnalysisResult = {
   limits: {
     depth: number;
     multiPv: number;
-    timeoutMs: number | null;
+    timeoutMs: number;
   };
 };
 
@@ -76,5 +76,6 @@ export type EvaluatePositionInput = {
   transport: EngineTransport;
   position: ParsedPosition;
   limits?: EngineSearchLimits;
-  identity?: EngineIdentity;
+  /** Required. Injected transports must not invent a Stockfish version. */
+  identity: EngineIdentity;
 };

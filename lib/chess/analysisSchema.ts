@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { parsePosition } from '@/lib/chess/position';
+import { parsePosition, isLegalUciPv } from '@/lib/chess/position';
 import type { EngineAnalysisResult } from '@/lib/chess/engine/types';
 import { UCI_MOVE_PATTERN } from '@/lib/chess/engine/uci';
 
@@ -110,17 +110,18 @@ export const chessAnalysisSchema = z
         message: 'terminal_bestmove_expected_null',
       });
     }
-    if (!parsed.terminal && value.bestMove == null && value.lines.length > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['bestMove'],
-        message: 'missing_bestmove',
-      });
-    }
 
     const ranks = new Set<number>();
+    let rank1Move: string | null = null;
     for (let i = 0; i < value.lines.length; i += 1) {
       const line = value.lines[i]!;
+      if (line.rank > value.search.multiPv) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines', i, 'rank'],
+          message: 'rank_exceeds_multipv',
+        });
+      }
       if (ranks.has(line.rank)) {
         ctx.addIssue({
           code: 'custom',
@@ -129,6 +130,9 @@ export const chessAnalysisSchema = z
         });
       }
       ranks.add(line.rank);
+      if (line.rank === 1) {
+        rank1Move = line.move.toLowerCase();
+      }
       if (!legal.has(line.move.toLowerCase())) {
         ctx.addIssue({
           code: 'custom',
@@ -141,6 +145,37 @@ export const chessAnalysisSchema = z
           code: 'custom',
           path: ['lines', i, 'pv'],
           message: 'pv_first_move_mismatch',
+        });
+      }
+      if (!isLegalUciPv(parsed.engineFen, line.pv)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines', i, 'pv'],
+          message: 'illegal_pv_continuation',
+        });
+      }
+    }
+
+    if (!parsed.terminal) {
+      if (!ranks.has(1)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines'],
+          message: 'missing_rank_1',
+        });
+      }
+      if (rank1Move != null && value.bestMove?.toLowerCase() !== rank1Move) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['bestMove'],
+          message: 'bestmove_rank1_mismatch',
+        });
+      }
+      if (value.bestMove == null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['bestMove'],
+          message: 'missing_bestmove',
         });
       }
     }

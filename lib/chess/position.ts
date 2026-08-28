@@ -95,3 +95,34 @@ export function parsePosition(fen: string): ParsedPosition {
 export function legalPositionKey(fen: string): string {
   return parsePosition(fen).positionKey;
 }
+
+const UCI_MOVE = /^[a-h][1-8][a-h][1-8][qrbn]?$/i;
+
+/**
+ * Replay each UCI move from `engineFen` with chess.js. Syntax is checked first;
+ * any illegal continuation returns false.
+ */
+export function isLegalUciPv(engineFen: string, pv: readonly string[]): boolean {
+  if (!Array.isArray(pv) || pv.length === 0) return false;
+  let chess: Chess;
+  try {
+    chess = new Chess(engineFen);
+  } catch {
+    return false;
+  }
+  for (const raw of pv) {
+    const uci = String(raw ?? '').toLowerCase();
+    if (!UCI_MOVE.test(uci)) return false;
+    try {
+      const moved = chess.move({
+        from: uci.slice(0, 2),
+        to: uci.slice(2, 4),
+        promotion: (uci[4] as 'q' | 'r' | 'b' | 'n' | undefined) ?? undefined,
+      });
+      if (!moved) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}

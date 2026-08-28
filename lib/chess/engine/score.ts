@@ -8,7 +8,7 @@ function flipScore(score: EngineScore): EngineScore {
   if (score.kind === 'mate') {
     return { kind: 'mate', mate: -score.mate };
   }
-  return score;
+  return { kind: 'wdl', win: score.loss, draw: score.draw, loss: score.win };
 }
 
 /**

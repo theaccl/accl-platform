@@ -1,4 +1,5 @@
 import { EngineFailure, type EngineBound, type EngineScore } from '@/lib/chess/engine/types';
+import { isLegalUciPv, parsePosition } from '@/lib/chess/position';
 
 export const UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][qrbn]?$/i;
 
@@ -145,8 +146,7 @@ function parseBestMove(line: string): { present: true; move: string | null } | {
 
 export type ParseUciTranscriptOptions = {
   multiPv: number;
-  legalMoves: ReadonlySet<string>;
-  terminal: boolean;
+  engineFen: string;
 };
 
 /**
@@ -157,6 +157,13 @@ export function parseUciTranscript(
   lines: readonly string[],
   options: ParseUciTranscriptOptions
 ): ParsedUciTranscript {
+  let position;
+  try {
+    position = parsePosition(options.engineFen);
+  } catch {
+    throw new EngineFailure('INVALID_POSITION', 'invalid_engine_fen');
+  }
+  const legalMoves = new Set(position.legalUciMoves);
   const multiPv = Math.max(1, options.multiPv);
   const byRank = new Map<number, ParsedUciInfo>();
   let bestMove: string | null | undefined;
@@ -180,20 +187,21 @@ export function parseUciTranscript(
       }
       continue;
     }
-    if (parsed.rank > multiPv) {
+    if (parsed.rank < 1 || parsed.rank > multiPv) {
       throw new EngineFailure('MALFORMED_UCI', 'engine_multipv_overflow');
     }
     if (byRank.has(parsed.rank) && byRank.get(parsed.rank)!.pv[0] !== parsed.pv[0]) {
-      // Iterative deepening updates the same rank; last complete line wins unless
-      // two different first moves appear at the same depth (contradiction).
       const previous = byRank.get(parsed.rank)!;
       if (previous.depth === parsed.depth) {
         throw new EngineFailure('CONTRADICTORY_UCI', 'engine_duplicate_rank');
       }
     }
     const first = parsed.pv[0];
-    if (!first || !options.legalMoves.has(first)) {
+    if (!first || !legalMoves.has(first)) {
       throw new EngineFailure('MALFORMED_UCI', 'engine_illegal_pv_move');
+    }
+    if (!isLegalUciPv(position.engineFen, parsed.pv)) {
+      throw new EngineFailure('MALFORMED_UCI', 'engine_illegal_pv_continuation');
     }
     byRank.set(parsed.rank, parsed);
   }
@@ -208,26 +216,28 @@ export function parseUciTranscript(
     throw new EngineFailure('CONTRADICTORY_UCI', 'engine_duplicate_rank');
   }
 
-  if (options.terminal && linesOut.length === 0 && bestMove === null) {
+  if (position.terminal && linesOut.length === 0 && bestMove === null) {
     return { bestMove: null, lines: [] };
   }
 
-  if (linesOut.length === 0) {
-    throw new EngineFailure('MALFORMED_UCI', 'engine_empty_pv');
-  }
-
-  if (bestMove === null) {
-    if (!options.terminal) {
-      throw new EngineFailure('MALFORMED_UCI', 'engine_missing_bestmove');
-    }
+  if (position.terminal && bestMove === null) {
     return { bestMove: null, lines: linesOut };
   }
 
-  if (!options.legalMoves.has(bestMove)) {
+  const rank1 = byRank.get(1);
+  if (!rank1) {
+    throw new EngineFailure('MALFORMED_UCI', 'engine_missing_rank1');
+  }
+
+  if (bestMove === null) {
+    throw new EngineFailure('MALFORMED_UCI', 'engine_missing_bestmove');
+  }
+
+  if (!legalMoves.has(bestMove)) {
     throw new EngineFailure('MALFORMED_UCI', 'engine_illegal_bestmove');
   }
 
-  if (linesOut[0]?.pv[0] !== bestMove) {
+  if (rank1.pv[0] !== bestMove) {
     throw new EngineFailure('PV_MISMATCH', 'engine_pv_mismatch');
   }
 

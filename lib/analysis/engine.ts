@@ -2,6 +2,7 @@ import {
   EngineFailure,
   evaluatePositionWithStockfish,
   parsePosition,
+  PINNED_STOCKFISH_IDENTITY,
   toMoverPov,
   type EngineAnalysisResult,
   type EngineTransport,
@@ -171,7 +172,7 @@ export class StockfishWebAdapter {
         transport: this.createTransport(),
         position,
         limits: { depth: requestDepth, multiPv: requestMultiPv },
-        identity: { name: 'stockfish', version: '18.0.7' },
+        identity: PINNED_STOCKFISH_IDENTITY,
       });
       return engineEvalFromWhitePovResult(result, position.turn, requestDepth, requestMultiPv);
     } finally {

@@ -1,4 +1,5 @@
 import type { ParsedPosition } from '@/lib/chess/position';
+import { parsePosition } from '@/lib/chess/position';
 import { toWhitePov } from '@/lib/chess/engine/score';
 import {
   EngineFailure,
@@ -10,43 +11,97 @@ import {
 } from '@/lib/chess/engine/types';
 import { parseUciTranscript } from '@/lib/chess/engine/uci';
 
-export const DEFAULT_STOCKFISH_IDENTITY: EngineIdentity = {
+/** Pinned identity for legacy Stockfish wrappers that execute the lockfile package. */
+export const PINNED_STOCKFISH_IDENTITY: EngineIdentity = {
   name: 'stockfish',
   version: '18.0.7',
 };
 
+/** @deprecated Use PINNED_STOCKFISH_IDENTITY in wrappers; the adapter never infers this. */
+export const DEFAULT_STOCKFISH_IDENTITY = PINNED_STOCKFISH_IDENTITY;
+
+export const ENGINE_DEFAULT_DEPTH = 12;
+export const ENGINE_MAX_DEPTH = 24;
+export const ENGINE_DEFAULT_MULTIPV = 1;
+export const ENGINE_MAX_MULTIPV = 8;
+export const ENGINE_DEFAULT_TIMEOUT_MS = 10_000;
+export const ENGINE_MAX_TIMEOUT_MS = 20_000;
+export const ENGINE_MAX_TRANSCRIPT_LINES = 512;
+export const ENGINE_MAX_TRANSCRIPT_BYTES = 65_536;
+
 function clampLimits(limits: EngineSearchLimits | undefined): {
   depth: number;
   multiPv: number;
-  timeoutMs: number | null;
+  timeoutMs: number;
 } {
-  const depth = Math.max(1, Math.floor(limits?.depth ?? 12));
-  const multiPv = Math.max(1, Math.min(8, Math.floor(limits?.multiPv ?? 1)));
-  const timeoutMs =
-    limits?.timeoutMs == null ? null : Math.max(1, Math.floor(limits.timeoutMs));
-  return { depth, multiPv, timeoutMs };
+  const depthRaw = limits?.depth ?? ENGINE_DEFAULT_DEPTH;
+  const multiPvRaw = limits?.multiPv ?? ENGINE_DEFAULT_MULTIPV;
+  const timeoutRaw = limits?.timeoutMs ?? ENGINE_DEFAULT_TIMEOUT_MS;
+  return {
+    depth: Math.min(ENGINE_MAX_DEPTH, Math.max(1, Math.floor(depthRaw))),
+    multiPv: Math.min(ENGINE_MAX_MULTIPV, Math.max(1, Math.floor(multiPvRaw))),
+    timeoutMs: Math.min(ENGINE_MAX_TIMEOUT_MS, Math.max(1, Math.floor(timeoutRaw))),
+  };
 }
 
-function positionCommand(position: ParsedPosition): string {
-  return `position fen ${position.engineFen}`;
+function requireIdentity(identity: EngineIdentity | undefined): EngineIdentity {
+  if (
+    !identity ||
+    identity.name !== 'stockfish' ||
+    typeof identity.version !== 'string' ||
+    identity.version.trim().length === 0
+  ) {
+    throw new EngineFailure('ENGINE_CRASH', 'engine_identity_required');
+  }
+  const version = identity.version.trim();
+  if (/[\u0000-\u001F\u007F]/.test(version)) {
+    throw new EngineFailure('ENGINE_CRASH', 'engine_identity_required');
+  }
+  return { name: 'stockfish', version };
+}
+
+function sameMoveSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const other = new Set(b);
+  return a.every((move) => other.has(move));
+}
+
+function reparsePosition(input: ParsedPosition): ParsedPosition {
+  let canonical: ParsedPosition;
+  try {
+    canonical = parsePosition(input?.engineFen);
+  } catch {
+    throw new EngineFailure('INVALID_POSITION', 'invalid_engine_fen');
+  }
+  if (
+    input.engineFen !== canonical.engineFen ||
+    input.positionKey !== canonical.positionKey ||
+    input.turn !== canonical.turn ||
+    input.terminal !== canonical.terminal ||
+    !sameMoveSet(input.legalUciMoves ?? [], canonical.legalUciMoves)
+  ) {
+    throw new EngineFailure('INVALID_POSITION', 'contradictory_parsed_position');
+  }
+  return canonical;
 }
 
 /**
  * Injected-transport Stockfish evaluation. No pool, singleton, or scheduling.
- * Accepts a validated parsed position only — never a raw user string.
+ * Reparses `engineFen` before any subscribe/send. Identity is required from the caller.
  */
 export async function evaluatePositionWithStockfish(
   input: EvaluatePositionInput
 ): Promise<EngineAnalysisResult> {
-  const { transport, position } = input;
+  const identity = requireIdentity(input.identity);
+  const position = reparsePosition(input.position);
   const limits = clampLimits(input.limits);
-  const identity = input.identity ?? DEFAULT_STOCKFISH_IDENTITY;
-  const legalMoves = new Set(position.legalUciMoves);
+  const { transport } = input;
 
   let settled = false;
   let cleaned = false;
   let unsubscribe: (() => void) | null = null;
   const transcript: string[] = [];
+  let transcriptBytes = 0;
 
   const cleanup = () => {
     if (cleaned) return;
@@ -79,18 +134,12 @@ export async function evaluatePositionWithStockfish(
       resolve(result);
     };
 
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    if (limits.timeoutMs != null) {
-      timeout = setTimeout(() => {
-        fail(new EngineFailure('ENGINE_TIMEOUT', 'engine_eval_timeout'));
-      }, limits.timeoutMs);
-    }
+    const timeout = setTimeout(() => {
+      fail(new EngineFailure('ENGINE_TIMEOUT', 'engine_eval_timeout'));
+    }, limits.timeoutMs);
 
     const finish = (fn: () => void) => {
-      if (timeout) {
-        clearTimeout(timeout);
-        timeout = null;
-      }
+      clearTimeout(timeout);
       fn();
     };
 
@@ -100,13 +149,20 @@ export async function evaluatePositionWithStockfish(
           if (settled) return;
           const line = String(raw ?? '').trim();
           if (!line) return;
+          transcriptBytes += line.length + 1;
+          if (
+            transcript.length + 1 > ENGINE_MAX_TRANSCRIPT_LINES ||
+            transcriptBytes > ENGINE_MAX_TRANSCRIPT_BYTES
+          ) {
+            finish(() => fail(new EngineFailure('MALFORMED_UCI', 'engine_transcript_overflow')));
+            return;
+          }
           transcript.push(line);
           if (!line.toLowerCase().startsWith('bestmove ')) return;
           try {
             const parsed = parseUciTranscript(transcript, {
               multiPv: limits.multiPv,
-              legalMoves,
-              terminal: position.terminal,
+              engineFen: position.engineFen,
             });
             const lines: EngineLine[] = parsed.lines.map((info) => ({
               rank: info.rank,
@@ -142,7 +198,7 @@ export async function evaluatePositionWithStockfish(
       transport.send('isready');
       transport.send('ucinewgame');
       transport.send(`setoption name MultiPV value ${limits.multiPv}`);
-      transport.send(positionCommand(position));
+      transport.send(`position fen ${position.engineFen}`);
       transport.send(`go depth ${limits.depth}`);
     } catch (err) {
       finish(() => fail(err));

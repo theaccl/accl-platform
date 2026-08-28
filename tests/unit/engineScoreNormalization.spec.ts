@@ -33,7 +33,14 @@ test.describe('engine score White-POV normalization', () => {
     }
   });
 
-  test('mover POV round-trips White POV', () => {
+  test('WDL win/loss swap on perspective flip and round-trip both turns', () => {
+    const wdl: EngineScore = { kind: 'wdl', win: 800, draw: 50, loss: 150 };
+    expect(toWhitePov(wdl, 'w')).toEqual(wdl);
+    expect(toWhitePov(wdl, 'b')).toEqual({ kind: 'wdl', win: 150, draw: 50, loss: 800 });
+    expect(toMoverPov(wdl, 'w')).toEqual(wdl);
+    expect(toMoverPov({ kind: 'wdl', win: 150, draw: 50, loss: 800 }, 'b')).toEqual(wdl);
+    expect(toMoverPov(toWhitePov(wdl, 'b'), 'b')).toEqual(wdl);
+    expect(toMoverPov(toWhitePov(wdl, 'w'), 'w')).toEqual(wdl);
     expect(toMoverPov(toWhitePov(cp(42), 'b'), 'b')).toEqual(cp(42));
     expect(toMoverPov(toWhitePov(mate(2), 'b'), 'b')).toEqual(mate(2));
   });

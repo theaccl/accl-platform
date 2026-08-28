@@ -4,6 +4,7 @@ import {
   evaluatePositionWithStockfish,
   moverPovCentipawn,
   parsePosition,
+  PINNED_STOCKFISH_IDENTITY,
   type EngineTransport,
 } from '@/lib/chess';
 
@@ -158,7 +159,7 @@ async function runUciEvaluationInner(
       transport,
       position,
       limits: { depth, multiPv, timeoutMs },
-      identity: { name: 'stockfish', version: '18.0.7' },
+      identity: PINNED_STOCKFISH_IDENTITY,
     });
     return {
       bestMove: result.bestMove,
