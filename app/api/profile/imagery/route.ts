@@ -1,5 +1,6 @@
 import { placeProfileImageSchema, parseJsonBody } from '@/lib/imageGenerator/api';
-import { extensionForMimeType, type ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
+import { createProfileStillDerivative } from '@/lib/imageGenerator/derivatives';
+import type { ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { guardRequest } from '@/lib/server/requestGuard';
@@ -26,18 +27,25 @@ export async function POST(request: Request): Promise<Response> {
     if (candidateResult.error) return jsonResponse({ error: 'Could not load approved candidate' }, 500);
     if (!candidateResult.data) return jsonResponse({ error: 'Approved candidate not found' }, 404);
     const candidate = candidateResult.data as ImageGenerationCandidateRow;
-    if (parsed.data.surface === 'profile_image' && candidate.byte_size > 5 * 1024 * 1024) {
-      return jsonResponse({ error: 'Profile image derivative exceeds the 5 MB profile-image limit' }, 422);
-    }
     const downloaded = await supabase.storage
       .from('image-generation-candidates')
       .download(candidate.storage_path);
     if (downloaded.error) return jsonResponse({ error: 'Could not read private candidate' }, 500);
 
+    let derivative;
+    try {
+      derivative = await createProfileStillDerivative(
+        new Uint8Array(await downloaded.data.arrayBuffer()),
+        parsed.data.surface
+      );
+    } catch {
+      return jsonResponse({ error: 'Could not create a safe profile still image' }, 422);
+    }
+
     const bucket = parsed.data.surface === 'profile_image' ? 'profile-avatars' : 'profile-backgrounds';
-    const path = `${user.id}/generated/${candidate.id}.${extensionForMimeType(candidate.mime_type)}`;
-    const published = await supabase.storage.from(bucket).upload(path, downloaded.data, {
-      contentType: candidate.mime_type,
+    const path = `${user.id}/generated/${candidate.id}/${derivative.version}-${parsed.data.surface}.${derivative.extension}`;
+    const published = await supabase.storage.from(bucket).upload(path, derivative.bytes, {
+      contentType: derivative.mimeType,
       cacheControl: '31536000',
       upsert: true,
     });
@@ -48,6 +56,11 @@ export async function POST(request: Request): Promise<Response> {
       p_candidate_id: candidate.id,
       p_surface: parsed.data.surface,
       p_published_storage_path: path,
+      p_derivative_format: derivative.extension,
+      p_derivative_width: derivative.width,
+      p_derivative_height: derivative.height,
+      p_derivative_byte_size: derivative.byteSize,
+      p_derivative_version: derivative.version,
     });
     if (placed.error) {
       return jsonResponse({ error: 'Could not finish profile imagery placement' }, 409);
