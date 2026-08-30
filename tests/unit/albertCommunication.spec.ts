@@ -34,8 +34,12 @@ test.describe('Albert communication boundary', () => {
     });
   });
 
-  test('keeps Albert advisory-only and excludes live move authority', () => {
+  test('gives Albert a chess identity while excluding player and live move authority', () => {
     const policy = buildAlbertSystemPrompt().toLowerCase();
+    expect(policy).toContain('personal chess assistant and mentor');
+    expect(policy).toContain('lifelong student of chess');
+    expect(policy).toContain('study and enjoy playing chess');
+    expect(policy).toContain('never claim an actual accl player account');
     expect(policy).toContain('no access to live boards');
     expect(policy).toContain('never provide position-specific move recommendations');
     expect(policy).toContain('never claim that you changed a game');
@@ -54,7 +58,8 @@ test.describe('Albert communication boundary', () => {
   test('provides a truthful greeting when the model service is degraded', () => {
     const fallback = buildAlbertFallbackReply('Hello Albert').toLowerCase();
     expect(fallback).toContain('hi');
-    expect(fallback).toContain('advisory assistant');
+    expect(fallback).toContain('personal chess assistant and mentor');
+    expect(fallback).toContain('lifelong student of chess');
     expect(fallback).toContain('cannot alter games');
   });
 
