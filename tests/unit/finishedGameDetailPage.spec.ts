@@ -19,7 +19,14 @@ test.describe("/finished/[id] detail page (static)", () => {
     expect(src).toContain('data-testid="finished-result-summary"');
     expect(src).toContain('data-testid="game-board"');
     expect(src).toContain('arePiecesDraggable={false}');
+    expect(src).toContain('customSquareStyles={lastMoveSquareStyles}');
     expect(src).not.toContain("Player123");
     expect(src).not.toContain("Board Replay Placeholder");
+  });
+
+  test("finished board stays read-only and is wired to lastMoveSquareStyles", () => {
+    const src = readFileSync(pagePath, "utf8");
+    expect(src).toContain("arePiecesDraggable={false}");
+    expect(src).toContain("customSquareStyles={lastMoveSquareStyles}");
   });
 });

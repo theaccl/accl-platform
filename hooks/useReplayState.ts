@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Chess } from 'chess.js';
 import type { Square } from 'chess.js';
 import { lastMoveMatchesAuthoritativePosition } from '@/lib/coherentGamePresentation';
+import { selectReplayHighlight } from '@/lib/replay/selectReplayHighlight';
 
 export type MoveLogRow = {
   san: string;
@@ -89,20 +90,11 @@ export function useReplayState(
   }, [replayStep, moveLogs, startFen]);
 
   const lastMoveSquareStyles = useMemo(() => {
-    if (moveLogs.length === 0) {
-      return {} as Record<string, CSSProperties>;
-    }
+    const selected = selectReplayHighlight(moveLogs, replayStep);
     if (replayStep !== null) {
-      if (replayStep <= 0) {
-        return {} as Record<string, CSSProperties>;
-      }
-      const idx = Math.min(replayStep, moveLogs.length) - 1;
-      if (idx < 0) {
-        return {} as Record<string, CSSProperties>;
-      }
-      return squareStylesForLastMove(moveLogs[idx]);
+      return squareStylesForLastMove(selected.move);
     }
-    const lastMove = moveLogs[moveLogs.length - 1];
+    const lastMove = selected.move;
     if (
       enforceAuthoritativeCoherence &&
       authoritativeFen != null &&
