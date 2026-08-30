@@ -38,3 +38,15 @@ The licensed registries are connected on `feature/image-generator-slice-1`. The 
 - Motion on a placed image
 
 The ACCL host design system wins: React Bits source is harmonized to ACCL colors, typography, spacing, radii, accessibility, and motion rules.
+
+## Five-system review room
+
+The branch includes a review-only comparison route at `/image-generator/concepts`:
+
+1. **Sovereign Atelier** — premium, ceremonial, and closest to the initial direction
+2. **Arena Forge** — competitive, tactical, and intense
+3. **Crest Ceremony** — emotional, centered, and identity-led
+4. **Midnight Vault** — minimal, private, and modern
+5. **Broadcast Reveal** — bold, theatrical, and designed around the player-facing premiere
+
+The concepts share a prompt during comparison, support desktop/mobile preview widths, and cannot call the generation API. The selected direction will replace the live Create presentation only after review.
