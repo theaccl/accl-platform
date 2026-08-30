@@ -81,8 +81,17 @@ export default function FinishedGameDetailPage() {
     return isEnPassantMoveLog(m) ? `${m.san} e.p.` : m.san;
   }, []);
 
-  const { moveLogs, setMoveLogs, replayStep, setReplayStep, pairedRows, boardPosition, lastMoveSquareStyles } =
-    useReplayState(sanForDisplay, START_FEN);
+  const {
+    moveLogs,
+    setMoveLogs,
+    replayStep,
+    setReplayStep,
+    isReplayPlaying,
+    toggleReplayPlayback,
+    pairedRows,
+    boardPosition,
+    lastMoveSquareStyles,
+  } = useReplayState(sanForDisplay, START_FEN);
 
   useEffect(() => {
     let cancelled = false;
@@ -414,6 +423,14 @@ export default function FinishedGameDetailPage() {
                       disabled={replayStep !== null && replayStep <= 0}
                     />
                     <ReplayBtn
+                      label={isReplayPlaying ? "Pause" : "Play"}
+                      onClick={toggleReplayPlayback}
+                      disabled={maxReplayStep === 0}
+                      testId="game-finished-replay-playback"
+                      pressed={isReplayPlaying}
+                      ariaLabel="Play or pause replay"
+                    />
+                    <ReplayBtn
                       label="Next"
                       onClick={() =>
                         setReplayStep((s) => {
@@ -472,16 +489,25 @@ function ReplayBtn({
   label,
   onClick,
   disabled,
+  testId,
+  pressed,
+  ariaLabel,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  testId?: string;
+  pressed?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      data-testid={testId}
+      aria-pressed={pressed}
+      aria-label={ariaLabel}
       className="rounded-lg border border-gray-700 bg-[#21262d] px-3 py-1.5 text-xs font-medium text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#2b3138]"
     >
       {label}

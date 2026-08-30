@@ -1,7 +1,7 @@
 'use client';
 
-import type { CSSProperties } from 'react';
-import { useMemo, useState } from 'react';
+import type { CSSProperties, Dispatch, SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Chess } from 'chess.js';
 import type { Square } from 'chess.js';
 import { lastMoveMatchesAuthoritativePosition } from '@/lib/coherentGamePresentation';
@@ -17,6 +17,8 @@ export type MoveLogRow = {
 };
 
 export type ReplayPairedRow = { num: number; white: string; black?: string };
+
+const DEFAULT_REPLAY_INTERVAL_MS = 850;
 
 function replayFenAtStep(step: number, moveLogs: MoveLogRow[], startFen: string): string {
   if (step <= 0) return startFen;
@@ -60,10 +62,41 @@ export function useReplayState(
   sanForDisplay: (m: MoveLogRow) => string,
   startFen: string,
   authoritativeFen?: string | null,
-  enforceAuthoritativeCoherence = true
+  enforceAuthoritativeCoherence = true,
+  replayIntervalMs = DEFAULT_REPLAY_INTERVAL_MS
 ) {
   const [moveLogs, setMoveLogs] = useState<MoveLogRow[]>([]);
-  const [replayStep, setReplayStep] = useState<number | null>(null);
+  const [replayStep, setReplayStepState] = useState<number | null>(null);
+  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+
+  const setReplayStep = useCallback<Dispatch<SetStateAction<number | null>>>((nextStep) => {
+    setIsReplayPlaying(false);
+    setReplayStepState(nextStep);
+  }, []);
+
+  const toggleReplayPlayback = useCallback(() => {
+    if (isReplayPlaying) {
+      setIsReplayPlaying(false);
+      return;
+    }
+    if (moveLogs.length === 0) return;
+    setReplayStepState((current) =>
+      current === null || current >= moveLogs.length ? 0 : current
+    );
+    setIsReplayPlaying(true);
+  }, [isReplayPlaying, moveLogs.length]);
+
+  useEffect(() => {
+    if (!isReplayPlaying || moveLogs.length === 0 || replayStep === null || replayStep >= moveLogs.length) return;
+
+    const timeout = window.setTimeout(() => {
+      const next = Math.min(moveLogs.length, replayStep + 1);
+      setReplayStepState(next);
+      if (next >= moveLogs.length) setIsReplayPlaying(false);
+    }, replayIntervalMs);
+
+    return () => window.clearTimeout(timeout);
+  }, [isReplayPlaying, moveLogs.length, replayIntervalMs, replayStep]);
 
   const pairedRows = useMemo((): ReplayPairedRow[] => {
     if (moveLogs.length === 0) return [];
@@ -110,6 +143,8 @@ export function useReplayState(
     setMoveLogs,
     replayStep,
     setReplayStep,
+    isReplayPlaying,
+    toggleReplayPlayback,
     pairedRows,
     boardPosition,
     lastMoveSquareStyles,
