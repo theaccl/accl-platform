@@ -7,10 +7,36 @@ import { parseClaimedRequest, type ImageGenerationProvider } from '@/lib/imageGe
 export type ImageGenerationProcessResult = {
   claimed: boolean;
   request_id?: string;
-  final_status?: 'review' | 'failed';
+  final_status?: 'queued' | 'review' | 'failed';
   candidate_count?: number;
+  retry_after_seconds?: number;
   error?: string;
 };
+
+const MAX_QUEUE_ATTEMPTS = 3;
+
+export function isTransientImageGenerationError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return [
+    'timeout',
+    'timed out',
+    'rate limit',
+    '429',
+    '500',
+    '502',
+    '503',
+    '504',
+    'fetch failed',
+    'network',
+    'socket',
+    'overloaded',
+    'temporarily unavailable',
+  ].some((signal) => message.includes(signal));
+}
+
+export function imageGenerationRetryDelaySeconds(attemptCount: number): number {
+  return Math.min(300, 30 * 2 ** Math.max(0, attemptCount - 1));
+}
 
 export async function processOneImageGeneration(
   supabase: SupabaseClient,
@@ -78,13 +104,26 @@ export async function processOneImageGeneration(
       await supabase.storage.from('image-generation-candidates').remove(uploadedPaths);
     }
     const message = error instanceof Error ? error.message : String(error);
-    await supabase.rpc('finalize_image_generation_request', {
+    const retryable = isTransientImageGenerationError(error) && request.attempt_count < MAX_QUEUE_ATTEMPTS;
+    const retryAfterSeconds = imageGenerationRetryDelaySeconds(request.attempt_count);
+    const finalized = await supabase.rpc('retry_or_fail_image_generation_request', {
       p_request_id: request.id,
-      p_succeeded: false,
       p_failure_code: message.split(':', 1)[0].slice(0, 100),
       p_failure_detail: message.slice(0, 2000),
+      p_retryable: retryable,
+      p_retry_after_seconds: retryAfterSeconds,
     });
-    return { claimed: true, request_id: request.id, final_status: 'failed', error: message };
+    const finalStatus =
+      finalized.data && typeof finalized.data === 'object' && finalized.data.status === 'queued'
+        ? 'queued'
+        : 'failed';
+    return {
+      claimed: true,
+      request_id: request.id,
+      final_status: finalStatus,
+      retry_after_seconds: finalStatus === 'queued' ? retryAfterSeconds : undefined,
+      error: finalized.error ? `${message}; retry_finalize_failed:${finalized.error.message}` : message,
+    };
   }
 }
 

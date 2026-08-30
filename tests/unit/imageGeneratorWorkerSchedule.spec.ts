@@ -1,0 +1,52 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { expect, test } from '@playwright/test';
+
+import {
+  imageGenerationRetryDelaySeconds,
+  isTransientImageGenerationError,
+} from '../../lib/imageGenerator/worker';
+
+async function source(path: string): Promise<string> {
+  return readFile(join(process.cwd(), path), 'utf8');
+}
+
+test('Vercel schedules one bounded image request per minute', async () => {
+  const config = JSON.parse(await source('vercel.json')) as {
+    crons: Array<{ path: string; schedule: string }>;
+  };
+  expect(config.crons).toContainEqual({
+    path: '/api/internal/image-generation/process?batch=1',
+    schedule: '* * * * *',
+  });
+});
+
+test('cron requests use Vercel bearer authentication and a GET handler', async () => {
+  const auth = await source('lib/imageGenerator/internalAuth.ts');
+  const route = await source('app/api/internal/image-generation/process/route.ts');
+  expect(auth).toContain('CRON_SECRET');
+  expect(auth).toContain('Bearer ${cronSecret}');
+  expect(route).toContain('export async function GET');
+  expect(route).toContain('recover_stale_image_generation_requests');
+});
+
+test('transient provider failures use bounded exponential retries', () => {
+  expect(isTransientImageGenerationError(new Error('fetch failed'))).toBe(true);
+  expect(isTransientImageGenerationError(new Error('provider returned 503'))).toBe(true);
+  expect(isTransientImageGenerationError(new Error('provider_candidate_mime_invalid'))).toBe(false);
+  expect(imageGenerationRetryDelaySeconds(1)).toBe(30);
+  expect(imageGenerationRetryDelaySeconds(2)).toBe(60);
+  expect(imageGenerationRetryDelaySeconds(3)).toBe(120);
+});
+
+test('retry migration enforces due-time claims, three attempts, and stale recovery', async () => {
+  const sql = (await source(
+    'supabase/migrations/20260830230000_image_generation_worker_retry_schedule.sql'
+  )).toLowerCase();
+  expect(sql).toContain('next_attempt_at <= now()');
+  expect(sql).toContain('attempt_count < 3');
+  expect(sql).toContain('retry_or_fail_image_generation_request');
+  expect(sql).toContain('recover_stale_image_generation_requests');
+  expect(sql).toContain('for update skip locked');
+  expect(sql).toContain('to service_role');
+});

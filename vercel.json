@@ -3,6 +3,10 @@
     {
       "path": "/api/internal/live-clock-timeout/process?batch=25",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/internal/image-generation/process?batch=1",
+      "schedule": "* * * * *"
     }
   ]
 }

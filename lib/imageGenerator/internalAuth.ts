@@ -15,12 +15,21 @@ export function imageGenerationWorkerSecret(): string {
   );
 }
 
+export function imageGenerationCronSecret(): string {
+  return process.env.CRON_SECRET?.trim() || '';
+}
+
 export function imageGenerationWorkerConfigured(): boolean {
-  return imageGenerationWorkerSecret().length >= 16;
+  return imageGenerationWorkerSecret().length >= 16 || imageGenerationCronSecret().length >= 16;
 }
 
 export function verifyImageGenerationWorkerRequest(request: Request): boolean {
-  const expected = imageGenerationWorkerSecret();
-  const provided = request.headers.get('x-accl-image-generation-secret') ?? '';
-  return expected.length >= 16 && timingSafeEqual(provided, expected);
+  const workerSecret = imageGenerationWorkerSecret();
+  const providedWorkerSecret = request.headers.get('x-accl-image-generation-secret') ?? '';
+  if (workerSecret.length >= 16 && timingSafeEqual(providedWorkerSecret, workerSecret)) return true;
+
+  const cronSecret = imageGenerationCronSecret();
+  const providedAuthorization = request.headers.get('authorization') ?? '';
+  const expectedAuthorization = `Bearer ${cronSecret}`;
+  return cronSecret.length >= 16 && timingSafeEqual(providedAuthorization, expectedAuthorization);
 }
