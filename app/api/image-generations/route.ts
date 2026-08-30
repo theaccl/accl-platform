@@ -3,6 +3,7 @@ import {
   DEFAULT_IMAGE_GENERATION_MODEL,
   IMAGE_GENERATION_PROVIDER,
 } from '@/lib/imageGenerator/provider';
+import { moderateImagePrompt } from '@/lib/imageGenerator/safety';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { guardRequest } from '@/lib/server/requestGuard';
@@ -18,6 +19,13 @@ export async function POST(request: Request): Promise<Response> {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
     const parsed = createGenerationSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return jsonResponse({ error: 'Invalid generation request' }, 400);
+    const promptSafety = moderateImagePrompt(parsed.data.prompt);
+    if (!promptSafety.allowed) {
+      return jsonResponse(
+        { error: 'This prompt cannot be used for ACCL profile imagery', code: promptSafety.code },
+        422
+      );
+    }
     const idempotencyKey = request.headers.get('idempotency-key')?.trim() ?? '';
     if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
       return jsonResponse({ error: 'Idempotency-Key header must be 8–200 characters' }, 400);

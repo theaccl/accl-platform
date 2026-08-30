@@ -3,6 +3,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { extensionForMimeType } from '@/lib/imageGenerator/domain';
 import { parseClaimedRequest, type ImageGenerationProvider } from '@/lib/imageGenerator/provider';
+import {
+  moderateImagePrompt,
+  validateGeneratedCandidateSafety,
+} from '@/lib/imageGenerator/safety';
 
 export type ImageGenerationProcessResult = {
   claimed: boolean;
@@ -49,6 +53,9 @@ export async function processOneImageGeneration(
 
   const uploadedPaths: string[] = [];
   try {
+    const promptSafety = moderateImagePrompt(request.prompt);
+    if (!promptSafety.allowed) throw new Error(`prompt_safety_rejected:${promptSafety.code}`);
+
     const generated = await provider.generate({
       prompt: request.prompt,
       candidateCount: request.candidate_count,
@@ -57,6 +64,7 @@ export async function processOneImageGeneration(
     });
     for (let index = 0; index < generated.length; index++) {
       const candidate = generated[index];
+      validateGeneratedCandidateSafety(candidate);
       const digest = createHash('sha256').update(candidate.bytes).digest('hex');
       const storagePath = `${request.owner_id}/${request.id}/${index + 1}-${digest.slice(0, 16)}.${extensionForMimeType(
         candidate.mimeType
@@ -80,6 +88,7 @@ export async function processOneImageGeneration(
         p_width: candidate.width ?? null,
         p_height: candidate.height ?? null,
         p_sha256: digest,
+        p_moderation_status: 'approved',
       });
       if (registered.error) throw new Error(`candidate_register_failed:${registered.error.message}`);
     }
