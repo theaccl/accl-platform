@@ -46,6 +46,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role (API routes / server only) |
 | `STRIPE_SECRET_KEY` | **Test mode only:** `sk_test_…` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (test dashboard) |
+| `STRIPE_PRO_PRICE_ID` | Stripe test-mode recurring Price for ACCL Pro |
+| `NEXT_PUBLIC_APP_URL` | Optional trusted application origin for subscription Checkout redirects; Vercel previews use their automatic `VERCEL_URL` |
 | `ACCL_ANALYSIS_QUEUE_SECRET` | Internal analysis queue auth |
 | `ACCL_TOURNAMENT_OPS_SECRET` | Internal tournament operator routes (`x-accl-tournament-ops-secret`, min 16 chars) |
 | `ACCL_INTERNAL_PAYMENTS_SECRET` | Internal payout/refund route auth |

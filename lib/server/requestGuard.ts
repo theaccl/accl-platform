@@ -12,6 +12,7 @@ export type GuardRouteKey =
   | 'submit_move'
   | 'payments'
   | 'payments_webhook'
+  | 'image_generation'
   | 'tournaments';
 
 type RouteLimits = {
@@ -29,6 +30,7 @@ const ROUTES: Record<GuardRouteKey, RouteLimits> = {
   submit_move: { maxPerWindow: 180, windowMs: 60_000, burstMax: 45, burstWindowMs: 10_000 },
   payments: { maxPerWindow: 60, windowMs: 60_000, burstMax: 20, burstWindowMs: 10_000 },
   payments_webhook: { maxPerWindow: 3000, windowMs: 60_000, burstMax: 400, burstWindowMs: 10_000 },
+  image_generation: { maxPerWindow: 20, windowMs: 60_000, burstMax: 6, burstWindowMs: 10_000 },
   tournaments: { maxPerWindow: 80, windowMs: 60_000, burstMax: 25, burstWindowMs: 10_000 },
 };
 

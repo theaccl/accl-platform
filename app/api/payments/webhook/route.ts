@@ -1,7 +1,10 @@
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import { getPaymentProvider } from '@/lib/payments/paymentProvider';
 import type { FinancialWebhookResult } from '@/lib/payments/paymentProvider';
-import { registerAndExecuteFinancialWebhook } from '@/lib/payments/webhookProcessing';
+import {
+  executeProSubscriptionChanged,
+  registerAndExecuteFinancialWebhook,
+} from '@/lib/payments/webhookProcessing';
 import { enqueueTask } from '@/lib/queue/simpleQueue';
 import { guardRequest } from '@/lib/server/requestGuard';
 import { auditApiLog, shortId } from '@/lib/server/prodLog';
@@ -54,6 +57,14 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const supabase = createServiceRoleClient();
+    if (parsed.kind === 'pro_subscription_changed') {
+      try {
+        await executeProSubscriptionChanged(supabase, parsed);
+      } catch {
+        return json({ error: 'subscription_sync_failed' }, 500);
+      }
+      return new Response(null, { status: 200 });
+    }
     enqueueTask(
       'webhook_financial',
       () => registerAndExecuteFinancialWebhook(supabase, parsed),

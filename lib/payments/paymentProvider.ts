@@ -29,7 +29,19 @@ export type FinancialWebhookResult =
     }
   | { kind: 'payment_intent_failed'; eventId: string; paymentIntentId: string }
   | { kind: 'charge_dispute_created'; eventId: string; paymentIntentId: string | null }
-  | { kind: 'charge_refunded'; eventId: string; paymentIntentId: string | null };
+  | { kind: 'charge_refunded'; eventId: string; paymentIntentId: string | null }
+  | {
+      kind: 'pro_subscription_changed';
+      eventId: string;
+      eventType: string;
+      providerCreatedAt: string;
+      userId: string;
+      subscriptionId: string;
+      customerId: string;
+      status: 'incomplete' | 'incomplete_expired' | 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid' | 'paused';
+      cancelAtPeriodEnd: boolean;
+      currentPeriodEnd: string | null;
+    };
 
 export type IncomingWebhookResult = FinancialWebhookResult;
 
@@ -106,6 +118,13 @@ function stubProvider(): PaymentProvider {
         metadata?: Record<string, string>;
         id?: string;
         payment_intent?: string;
+        user_id?: string;
+        subscription_id?: string;
+        customer_id?: string;
+        status?: string;
+        cancel_at_period_end?: boolean;
+        current_period_end?: string;
+        created_at?: string;
       };
       try {
         data = JSON.parse(s) as typeof data;
@@ -113,6 +132,24 @@ function stubProvider(): PaymentProvider {
         throw new Error('invalid_webhook_payload');
       }
       const t = data.type ?? '';
+      if (t.startsWith('customer.subscription.')) {
+        const userId = data.user_id ?? data.metadata?.accl_user_id;
+        if (!userId || !data.subscription_id || !data.status) {
+          return { kind: 'ignored', eventId: data.event_id ?? 'stub_evt', detail: 'subscription_metadata_missing' };
+        }
+        return {
+          kind: 'pro_subscription_changed',
+          eventId: data.event_id ?? 'stub_evt',
+          eventType: t,
+          providerCreatedAt: data.created_at ?? new Date().toISOString(),
+          userId,
+          subscriptionId: data.subscription_id,
+          customerId: data.customer_id ?? '',
+          status: data.status as Extract<FinancialWebhookResult, { kind: 'pro_subscription_changed' }>['status'],
+          cancelAtPeriodEnd: data.cancel_at_period_end ?? false,
+          currentPeriodEnd: data.current_period_end ?? null,
+        };
+      }
       if (t === 'payment_intent.payment_failed' && data.id) {
         return {
           kind: 'payment_intent_failed',
@@ -235,6 +272,40 @@ async function loadStripeProvider(): Promise<PaymentProvider> {
             kind: 'charge_refunded',
             eventId: event.id,
             paymentIntentId: piId,
+          };
+        }
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const proPriceId = process.env.STRIPE_PRO_PRICE_ID?.trim();
+          const isPro = Boolean(
+            proPriceId && subscription.items.data.some((item) => item.price.id === proPriceId)
+          );
+          if (!isPro) {
+            return { kind: 'ignored', eventId: event.id, detail: 'non_pro_subscription' };
+          }
+          const userId = subscription.metadata?.accl_user_id?.trim();
+          if (!userId) {
+            return { kind: 'ignored', eventId: event.id, detail: 'subscription_metadata_missing' };
+          }
+          const customerId =
+            typeof subscription.customer === 'string'
+              ? subscription.customer
+              : subscription.customer.id;
+          const periodEnds = subscription.items.data.map((item) => item.current_period_end);
+          const currentPeriodEnd = periodEnds.length > 0 ? Math.max(...periodEnds) : null;
+          return {
+            kind: 'pro_subscription_changed',
+            eventId: event.id,
+            eventType: event.type,
+            providerCreatedAt: new Date(event.created * 1000).toISOString(),
+            userId,
+            subscriptionId: subscription.id,
+            customerId,
+            status: subscription.status,
+            cancelAtPeriodEnd: subscription.cancel_at_period_end,
+            currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : null,
           };
         }
         default:

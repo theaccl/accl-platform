@@ -21,6 +21,8 @@ function eventTypeLabel(parsed: FinancialWebhookResult): string {
       return 'charge.dispute.created';
     case 'charge_refunded':
       return 'charge.refunded';
+    case 'pro_subscription_changed':
+      return parsed.eventType;
     default:
       return 'unknown';
   }
@@ -79,9 +81,43 @@ export async function executeFinancialWebhook(
     case 'charge_refunded':
       await executeChargeRefunded(supabase, parsed);
       return;
+    case 'pro_subscription_changed':
+      await executeProSubscriptionChanged(supabase, parsed);
+      return;
     default:
       return;
   }
+}
+
+export async function executeProSubscriptionChanged(
+  supabase: SupabaseClient,
+  parsed: Extract<FinancialWebhookResult, { kind: 'pro_subscription_changed' }>
+): Promise<void> {
+  const { error } = await supabase.rpc('sync_pro_subscription_entitlement', {
+    p_provider_event_id: parsed.eventId,
+    p_event_type: parsed.eventType,
+    p_provider_created_at: parsed.providerCreatedAt,
+    p_user_id: parsed.userId,
+    p_provider_subscription_id: parsed.subscriptionId,
+    p_provider_customer_id: parsed.customerId,
+    p_status: parsed.status,
+    p_cancel_at_period_end: parsed.cancelAtPeriodEnd,
+    p_current_period_end: parsed.currentPeriodEnd,
+  });
+  if (error) {
+    auditApiLog('pro_subscription_webhook', {
+      result: 'sync_failed',
+      event: shortId(parsed.eventId),
+      detail: error.message,
+    });
+    throw new Error(error.message);
+  }
+  auditApiLog('pro_subscription_webhook', {
+    result: 'synced',
+    event: shortId(parsed.eventId),
+    subscription: shortId(parsed.subscriptionId),
+    status: parsed.status,
+  });
 }
 
 async function executePaymentSucceeded(
