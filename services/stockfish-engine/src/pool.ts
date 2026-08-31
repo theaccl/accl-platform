@@ -45,6 +45,7 @@ export type EngineWorkerLease = {
 
 export type EngineWorkerPoolSnapshot = {
   accepting: boolean;
+  requiresResidentMemoryMeasurement: boolean;
   circuitOpenUntilMs: number | null;
   workers: Array<{
     id: string;
@@ -61,6 +62,8 @@ export type EngineWorkerPoolOptions = {
   maxResidentMemoryBytes?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  requireResidentMemoryMeasurement?: boolean;
+  observer?: { recordPoolEvent(event: 'job_recycle' | 'age_recycle' | 'rss_recycle' | 'replacement_attempt' | 'replacement_success' | 'replacement_failure' | 'circuit_open'): void };
 };
 
 const REPLACEMENT_BACKOFF_MS = [250, 500, 1_000, 2_000, 5_000] as const;
@@ -82,6 +85,8 @@ export class EngineWorkerPool {
   private readonly maxResidentMemoryBytes: number;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly requireResidentMemoryMeasurement: boolean;
+  private readonly observer?: EngineWorkerPoolOptions['observer'];
   private readonly replacementFailures: number[] = [];
   private readonly maintenanceTasks = new Set<Promise<unknown>>();
   private readonly maintenanceStop: Promise<void>;
@@ -101,6 +106,8 @@ export class EngineWorkerPool {
     this.maxResidentMemoryBytes = options.maxResidentMemoryBytes ?? Number.POSITIVE_INFINITY;
     this.now = options.now ?? (() => performance.now());
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.requireResidentMemoryMeasurement = options.requireResidentMemoryMeasurement ?? false;
+    this.observer = options.observer;
     this.maintenanceStop = new Promise<void>((resolve) => {
       this.resolveMaintenanceStop = resolve;
     });
@@ -128,6 +135,10 @@ export class EngineWorkerPool {
     if (!this.canLease()) return null;
     const slot = this.slots.find((candidate) => candidate.state === 'IDLE');
     if (!slot) return null;
+    if (this.requireResidentMemoryMeasurement && slot.worker.residentMemoryBytes() === null) {
+      await this.replaceFailedSlot(slot);
+      throw new Error('engine_process_rss_unavailable');
+    }
 
     slot.state = 'LEASED';
     let transport: EngineTransport;
@@ -136,6 +147,11 @@ export class EngineWorkerPool {
     } catch (error) {
       await this.replaceFailedSlot(slot);
       throw error;
+    }
+    if (this.requireResidentMemoryMeasurement && slot.worker.residentMemoryBytes() === null) {
+      transport.close();
+      await this.replaceFailedSlot(slot);
+      throw new Error('engine_process_rss_unavailable');
     }
     if (!this.canLease()) {
       transport.close();
@@ -168,6 +184,7 @@ export class EngineWorkerPool {
     this.pruneReplacementFailures();
     return {
       accepting: this.accepting,
+      requiresResidentMemoryMeasurement: this.requireResidentMemoryMeasurement,
       circuitOpenUntilMs: this.circuitOpenUntilMs,
       workers: this.slots.map((slot) => ({
         id: slot.worker.id,
@@ -190,7 +207,9 @@ export class EngineWorkerPool {
         await this.replaceFailedSlot(slot);
         return;
       }
-      if (this.shouldRecycle(slot)) {
+      const recycleReason = this.recycleReason(slot);
+      if (recycleReason) {
+        this.recordEvent(recycleReason);
         await this.recycleHealthySlot(slot);
       } else {
         slot.state = 'IDLE';
@@ -230,13 +249,12 @@ export class EngineWorkerPool {
     }
   }
 
-  private shouldRecycle(slot: WorkerSlot): boolean {
+  private recycleReason(slot: WorkerSlot): 'job_recycle' | 'age_recycle' | 'rss_recycle' | null {
     const rss = slot.worker.residentMemoryBytes();
-    return (
-      slot.completedSearches >= this.maxCompletedSearches ||
-      this.now() - slot.createdAtMs >= this.maxWorkerAgeMs ||
-      (rss !== null && rss >= this.maxResidentMemoryBytes)
-    );
+    if (slot.completedSearches >= this.maxCompletedSearches) return 'job_recycle';
+    if (this.now() - slot.createdAtMs >= this.maxWorkerAgeMs) return 'age_recycle';
+    if (rss !== null && rss >= this.maxResidentMemoryBytes) return 'rss_recycle';
+    return null;
   }
 
   /** Warm replacement first, then retire the healthy old worker. */
@@ -259,9 +277,11 @@ export class EngineWorkerPool {
     }
     slot.state = 'RETIRING';
     let replacement: WorkerSlot;
+    this.recordEvent('replacement_attempt');
     try {
       replacement = await this.createWarmSlotWithRetry({ promote: false });
     } catch {
+      this.recordEvent('replacement_failure');
       if (this.slots.includes(slot) && slot.state === 'RETIRING') {
         slot.state = 'IDLE';
       }
@@ -282,12 +302,14 @@ export class EngineWorkerPool {
         replacement.state = 'RETIRING';
         replacement.orphaned = true;
       }
+      this.recordEvent('replacement_failure');
       this.openCircuit();
       return;
     }
 
     this.removeSlot(slot);
     replacement.state = 'IDLE';
+    this.recordEvent('replacement_success');
   }
 
   private replaceFailedSlot(slot: WorkerSlot): Promise<void> {
@@ -297,12 +319,14 @@ export class EngineWorkerPool {
   }
 
   private async replaceFailedSlotReserved(slot: WorkerSlot): Promise<void> {
+    this.recordEvent('replacement_attempt');
     slot.state = 'RETIRING';
     try {
       await slot.worker.terminate();
     } catch {
       slot.state = 'RETIRING';
       slot.orphaned = true;
+      this.recordEvent('replacement_failure');
       this.openCircuit();
       return;
     }
@@ -310,7 +334,9 @@ export class EngineWorkerPool {
     if (!this.accepting) return;
     try {
       await this.createWarmSlotWithRetry({ promote: true });
+      this.recordEvent('replacement_success');
     } catch {
+      this.recordEvent('replacement_failure');
       // Circuit or leftover RETIRING replacement is already recorded.
     }
   }
@@ -468,6 +494,9 @@ export class EngineWorkerPool {
   }
 
   private openCircuit(): void {
+    if (this.circuitOpenUntilMs === null || this.now() >= this.circuitOpenUntilMs) {
+      this.recordEvent('circuit_open');
+    }
     this.circuitOpenUntilMs = this.now() + CIRCUIT_OPEN_MS;
   }
 
@@ -504,5 +533,15 @@ export class EngineWorkerPool {
   private isCircuitOpen(): boolean {
     this.pruneReplacementFailures();
     return this.circuitOpenUntilMs !== null;
+  }
+
+  private recordEvent(
+    event: Parameters<NonNullable<EngineWorkerPoolOptions['observer']>['recordPoolEvent']>[0]
+  ): void {
+    try {
+      this.observer?.recordPoolEvent(event);
+    } catch {
+      // Observability must never alter worker lifecycle or capacity ownership.
+    }
   }
 }

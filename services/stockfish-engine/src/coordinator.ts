@@ -13,6 +13,7 @@ import {
   EngineRuntimeScheduler,
   type SchedulerDispatch,
 } from '@/services/stockfish-engine/src/scheduler';
+import type { EngineRuntimeTelemetry } from '@/services/stockfish-engine/src/observability';
 
 export type EngineLeaseExecutor = (input: {
   request: ApprovedRuntimeRequest;
@@ -28,6 +29,8 @@ type PendingJob = {
   abortListener?: () => void;
   cancelRunning?: () => void;
   settled: boolean;
+  admittedAtMs: number;
+  queueLatencyRecorded: boolean;
 };
 
 type RunningJob = {
@@ -46,6 +49,7 @@ export type EngineRuntimeCoordinatorOptions = {
   now?: () => number;
   setTimer?: typeof setTimeout;
   clearTimer?: typeof clearTimeout;
+  telemetry?: EngineRuntimeTelemetry;
 };
 
 export class EngineRuntimeCoordinator {
@@ -57,6 +61,7 @@ export class EngineRuntimeCoordinator {
   private wakeTimer: ReturnType<typeof setTimeout> | null = null;
   private pumping = false;
   private shuttingDown = false;
+  private readonly telemetry?: EngineRuntimeTelemetry;
 
   constructor(
     private readonly pool: EngineWorkerPool,
@@ -66,6 +71,7 @@ export class EngineRuntimeCoordinator {
     this.now = options.now ?? (() => performance.now());
     this.setTimer = options.setTimer ?? setTimeout;
     this.clearTimer = options.clearTimer ?? clearTimeout;
+    this.telemetry = options.telemetry;
   }
 
   evaluate(value: unknown, signal?: AbortSignal): Promise<EngineRuntimeEnvelope> {
@@ -84,6 +90,9 @@ export class EngineRuntimeCoordinator {
     }
 
     if (signal?.aborted) {
+      this.telemetry?.recordLatency(request.lane, 'queue', 0);
+      this.telemetry?.recordLatency(request.lane, 'total', 0);
+      this.telemetry?.recordOutcome(request.lane, 'ENGINE_REQUEST_CANCELLED');
       return Promise.resolve(runtimeFailureEnvelope('ENGINE_REQUEST_CANCELLED'));
     }
 
@@ -94,10 +103,15 @@ export class EngineRuntimeCoordinator {
         resolve,
         signal,
         settled: false,
+        admittedAtMs: this.now(),
+        queueLatencyRecorded: false,
       };
-      const admission = this.scheduler.admit(request, pending, this.now());
+      const admission = this.scheduler.admit(request, pending, pending.admittedAtMs);
       if (!admission.ok) {
         pending.settled = true;
+        this.telemetry?.recordLatency(request.lane, 'queue', 0);
+        this.telemetry?.recordLatency(request.lane, 'total', 0);
+        this.telemetry?.recordOutcome(request.lane, admission.rejection.code);
         resolve(runtimeFailureEnvelope(admission.rejection.code));
         return;
       }
@@ -140,8 +154,12 @@ export class EngineRuntimeCoordinator {
   }
 
   snapshot() {
+    const scheduler = this.scheduler.snapshot(this.now());
+    for (const lane of Object.keys(scheduler.waitingByLane) as Array<keyof typeof scheduler.waitingByLane>) {
+      this.telemetry?.setQueue(lane, scheduler.waitingByLane[lane], scheduler.oldestQueueAgeMsByLane[lane]);
+    }
     return {
-      scheduler: this.scheduler.snapshot(),
+      scheduler,
       pool: this.pool.snapshot(),
       runningRequests: this.running.size,
       shuttingDown: this.shuttingDown,
@@ -185,6 +203,8 @@ export class EngineRuntimeCoordinator {
   private run(dispatch: SchedulerDispatch<PendingJob>, lease: EngineWorkerLease): void {
     const pending = dispatch.value;
     const now = this.now();
+    const searchStartedAtMs = now;
+    this.recordQueueLatency(pending, now);
     const searchDelay = Math.max(0, pending.request.limits.timeoutMs);
     const totalDelay = Math.max(0, dispatch.totalDeadlineMs - now);
 
@@ -199,6 +219,12 @@ export class EngineRuntimeCoordinator {
       this.detachAbort(pending);
       this.running.delete(running);
       pending.resolve(envelope);
+      this.telemetry?.recordLatency(pending.request.lane, 'search', this.now() - searchStartedAtMs);
+      this.telemetry?.recordLatency(pending.request.lane, 'total', this.now() - pending.admittedAtMs);
+      this.telemetry?.recordOutcome(
+        pending.request.lane,
+        envelope.ok ? 'success' : envelope.error.code
+      );
       try {
         await lease.settle(outcome);
       } catch {
@@ -252,8 +278,18 @@ export class EngineRuntimeCoordinator {
   private settlePending(pending: PendingJob, code: EngineRuntimeFailureCode): void {
     if (pending.settled) return;
     pending.settled = true;
+    const now = this.now();
+    this.recordQueueLatency(pending, now);
+    this.telemetry?.recordLatency(pending.request.lane, 'total', now - pending.admittedAtMs);
+    this.telemetry?.recordOutcome(pending.request.lane, code);
     this.detachAbort(pending);
     pending.resolve(runtimeFailureEnvelope(code));
+  }
+
+  private recordQueueLatency(pending: PendingJob, nowMs: number): void {
+    if (pending.queueLatencyRecorded) return;
+    pending.queueLatencyRecorded = true;
+    this.telemetry?.recordLatency(pending.request.lane, 'queue', nowMs - pending.admittedAtMs);
   }
 
   private detachAbort(pending: PendingJob): void {

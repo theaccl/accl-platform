@@ -33,6 +33,7 @@ export type SchedulerSnapshot = {
   accepting: boolean;
   waiting: number;
   waitingByLane: Record<EngineRuntimeLane, number>;
+  oldestQueueAgeMsByLane: Record<EngineRuntimeLane, number>;
   running: number;
   runningBatch: number;
 };
@@ -203,7 +204,7 @@ export class EngineRuntimeScheduler<T> {
     return rejected;
   }
 
-  snapshot(): SchedulerSnapshot {
+  snapshot(nowMs = performance.now()): SchedulerSnapshot {
     return {
       accepting: this.accepting,
       waiting: this.waiting,
@@ -212,6 +213,12 @@ export class EngineRuntimeScheduler<T> {
         TRAINER_INTERACTIVE: this.queues.TRAINER_INTERACTIVE.length,
         PROTECTED_REVIEW: this.queues.PROTECTED_REVIEW.length,
         POST_GAME_BATCH: this.queues.POST_GAME_BATCH.length,
+      },
+      oldestQueueAgeMsByLane: {
+        BOT_LIVE: this.oldestAge('BOT_LIVE', nowMs),
+        TRAINER_INTERACTIVE: this.oldestAge('TRAINER_INTERACTIVE', nowMs),
+        PROTECTED_REVIEW: this.oldestAge('PROTECTED_REVIEW', nowMs),
+        POST_GAME_BATCH: this.oldestAge('POST_GAME_BATCH', nowMs),
       },
       running: this.running,
       runningBatch: this.runningBatch,
@@ -240,6 +247,11 @@ export class EngineRuntimeScheduler<T> {
   private removeQueued(entry: QueueEntry<T>): void {
     this.waiting = Math.max(0, this.waiting - 1);
     this.queuedIds.delete(entry.request.correlationId);
+  }
+
+  private oldestAge(lane: EngineRuntimeLane, nowMs: number): number {
+    const admittedAtMs = this.queues[lane][0]?.admittedAtMs;
+    return admittedAtMs === undefined ? 0 : Math.max(0, Math.floor(nowMs - admittedAtMs));
   }
 
   private reject(

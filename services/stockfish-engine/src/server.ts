@@ -6,6 +6,7 @@ import {
   type EngineRuntimeEnvelope,
 } from '@/lib/chess/runtime';
 import type { EngineRuntimeCoordinator } from '@/services/stockfish-engine/src/coordinator';
+import { ENGINE_RUNTIME_WORKER_COUNT } from '@/lib/chess/runtime';
 
 export type EngineHttpRequest = {
   method: string;
@@ -33,8 +34,9 @@ export type EngineReadySnapshot = {
   shuttingDown: boolean;
   pool: {
     accepting: boolean;
+    requiresResidentMemoryMeasurement?: boolean;
     circuitOpenUntilMs: number | null;
-    workers: Array<{ state: string }>;
+    workers: Array<{ state: string; residentMemoryBytes?: number | null }>;
   };
 };
 
@@ -42,8 +44,11 @@ export function isEngineRuntimeReady(snapshot: EngineReadySnapshot): boolean {
   if (snapshot.shuttingDown) return false;
   if (!snapshot.pool.accepting) return false;
   if (snapshot.pool.circuitOpenUntilMs !== null) return false;
-  return snapshot.pool.workers.some((worker) =>
-    (USABLE_WORKER_STATES as readonly string[]).includes(worker.state)
+  if (snapshot.pool.workers.length !== ENGINE_RUNTIME_WORKER_COUNT) return false;
+  return snapshot.pool.workers.every((worker) =>
+    (USABLE_WORKER_STATES as readonly string[]).includes(worker.state) &&
+    (!snapshot.pool.requiresResidentMemoryMeasurement ||
+      (typeof worker.residentMemoryBytes === 'number' && Number.isFinite(worker.residentMemoryBytes)))
   );
 }
 

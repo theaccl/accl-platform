@@ -16,7 +16,19 @@ test('engine service config has locked capacity and no binary requirement outsid
     threadsPerWorker: 1,
     hashMiBPerWorker: 128,
     binaryPath: null,
+    maxResidentMemoryBytes: null,
+    imageDigest: null,
   });
+});
+
+test('RSS threshold and image identity are optional but strictly bounded when supplied', () => {
+  expect(parseEngineServiceConfig({
+    NODE_ENV: 'test',
+    STOCKFISH_MAX_RSS_BYTES: '1073741824',
+    ENGINE_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
+  })).toMatchObject({ maxResidentMemoryBytes: 1_073_741_824, imageDigest: `sha256:${'a'.repeat(64)}` });
+  expect(() => parseEngineServiceConfig({ NODE_ENV: 'test', STOCKFISH_MAX_RSS_BYTES: '1' })).toThrow(EngineServiceConfigError);
+  expect(() => parseEngineServiceConfig({ NODE_ENV: 'test', ENGINE_IMAGE_DIGEST: 'latest' })).toThrow(EngineServiceConfigError);
 });
 
 test('production fails closed without exact native identity and rejects ASM/WASM', () => {
