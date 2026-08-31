@@ -4,7 +4,41 @@ export type BotName = 'Cardi Bot' | 'Aggro Bot' | 'Endgame Bot';
 
 export type BotCandidateLine = {
   move: string;
+  /** @deprecated Compatibility score for the legacy selector. */
   scoreCp: number | null;
+  /** Raw Stockfish score from the side-to-move point of view. */
+  engineScoreCp?: number | null;
+  engineRank?: number | null;
+  /** Difference from the best engine candidate; populated by the safety layer. */
+  lossFromBestCp?: number | null;
+  source?: 'engine' | 'static-fallback';
+  openingReference?: boolean;
+  /** Stockfish principal variation beginning with this candidate move. */
+  enginePv?: string[];
+  /** Concrete continuation evidence derived through the opponent's best PV reply. */
+  planEvidence?: {
+    opponentReply: string | null;
+    continuation: string | null;
+    observedPlies: number;
+    materialDeltaAfterPvCp: number | null;
+    concreteCompensation: boolean;
+    sustainedInitiative: boolean;
+    initiativeReasons: string[];
+  };
+  staticRiskCp?: number;
+  allowsForcedMate?: boolean;
+  features?: {
+    capture: boolean;
+    check: boolean;
+    mate: boolean;
+    promotion: boolean;
+    development: boolean;
+    centerControl: boolean;
+    kingPressure: boolean;
+    movedPieceEnPrise: boolean;
+    opponentReplyCount: number;
+    materialDeltaAfterMoveCp: number;
+  };
 };
 
 export type BotSelection = {

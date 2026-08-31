@@ -1,4 +1,6 @@
 import type { FinishedGameAnalysisIntakePayload } from '@/lib/finishedGameAnalysisIntake';
+import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
 import {
   EngineFailure,
   evaluatePositionWithStockfish,
@@ -32,12 +34,6 @@ export type EngineServiceResult = {
   };
 };
 
-type StockfishEngine = {
-  sendCommand: (cmd: string) => void;
-  listener?: (line: string) => void;
-  terminate?: () => void;
-};
-
 function moveTagHints(san: string): string[] {
   const tags: string[] = [];
   if (san.includes('x')) tags.push('capture');
@@ -59,11 +55,59 @@ function detectBlunderSignals(moves: Array<{ san: string | null }>) {
   return out;
 }
 
-type UciLine = { rank: number; move: string; scoreCp: number | null };
+type UciLine = { rank: number; move: string; scoreCp: number | null; pv?: string[] };
 
 const TRAINER_MAX_CONCURRENT = 3;
 let trainerConcurrent = 0;
 const trainerWaiters: Array<() => void> = [];
+
+function nodeStockfishProcessTransport(): EngineTransport {
+  const asmPath = resolve(process.cwd(), 'node_modules', 'stockfish', 'bin', 'stockfish-18-asm.js');
+  const child = spawn(process.execPath, [asmPath], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  let closed = false;
+
+  return {
+    send(command: string) {
+      if (closed || !child.stdin.writable) throw new Error('stockfish_process_not_writable');
+      child.stdin.write(`${command}\n`);
+    },
+    subscribe(handlers) {
+      let stdoutBuffer = '';
+      const onStdout = (chunk: Buffer | string) => {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) handlers.onLine(line);
+      };
+      const onError = (error: unknown) => handlers.onError?.(error);
+      // Emscripten may emit non-fatal runtime diagnostics on stderr while the
+      // UCI channel remains healthy. Drain them without converting them into a
+      // chess-engine failure; actual spawn errors still use `onError` below.
+      const onStderr = () => {};
+      child.stdout.on('data', onStdout);
+      child.stderr.on('data', onStderr);
+      child.on('error', onError);
+      return () => {
+        child.stdout.off('data', onStdout);
+        child.stderr.off('data', onStderr);
+        child.off('error', onError);
+      };
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      try {
+        child.stdin.end('quit\n');
+      } catch {
+        // Process may already have exited.
+      }
+      if (!child.killed) child.kill();
+    },
+  };
+}
 
 async function acquireTrainerSlot(): Promise<void> {
   if (trainerConcurrent < TRAINER_MAX_CONCURRENT) {
@@ -87,37 +131,6 @@ export type TrainerUciOptions = {
   multiPv?: number;
   timeoutMs?: number;
 };
-
-function nodeStockfishTransport(engine: StockfishEngine): EngineTransport {
-  let closed = false;
-  return {
-    send(command: string) {
-      engine.sendCommand(command);
-    },
-    subscribe(handlers) {
-      engine.listener = (raw) => {
-        handlers.onLine(String(raw ?? ''));
-      };
-      return () => {
-        engine.listener = undefined;
-      };
-    },
-    close() {
-      if (closed) return;
-      closed = true;
-      try {
-        engine.sendCommand('quit');
-      } catch {
-        // Engine may already be gone.
-      }
-      try {
-        engine.terminate?.();
-      } catch {
-        // Terminate is best-effort.
-      }
-    },
-  };
-}
 
 /**
  * Single-position UCI eval for trainer / post-game surfaces. Uses asm Stockfish; bounded depth & time.
@@ -146,13 +159,9 @@ async function runUciEvaluationInner(
   const position = parsePosition(fen);
 
   const originalFetch = globalThis.fetch;
-  /** Resolved at runtime from node_modules; excluded from the server bundle (Next/Vercel build). */
-  const stockfishInit = (
-    await import(/* webpackIgnore: true */ 'stockfish')
-  ).default as (enginePath?: string) => Promise<StockfishEngine>;
-  // WASM builds crash in the current Next route runtime; use asm engine for stable Node execution.
-  const engine = await stockfishInit('asm');
-  const transport = nodeStockfishTransport(engine);
+  // A fresh child process avoids stockfish@18's self-replacing CommonJS ASM
+  // initializer and keeps its process-level listeners out of the Next server.
+  const transport = nodeStockfishProcessTransport();
 
   try {
     const result = await evaluatePositionWithStockfish({
@@ -167,6 +176,7 @@ async function runUciEvaluationInner(
         rank: line.rank,
         move: line.move,
         scoreCp: moverPovCentipawn(line.score, position.turn),
+        pv: line.pv,
       })),
     };
   } catch (err) {

@@ -20,6 +20,7 @@ import { buildBotGameTurnRpcParams } from '@/lib/replay/botGameTurnRpc';
 import { buildMoveIdempotencyKey } from '@/lib/replay/moveIdempotencyKey';
 import { validateRpcMoveLogPayload } from '@/lib/replay/rpcMoveLogPayload';
 import { recordShadowBotMoveJob, type BotMoveShadowRecordInput } from '@/lib/server/botMoveJobShadow';
+import { auditApiLog, shortId } from '@/lib/server/prodLog';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -213,7 +214,10 @@ export async function commitBotGameTurn(
     const difficultyProfile = getBotDifficultyProfile(pre.botConfig.accl_bot_v1.difficulty);
     thinkMs = randomThinkTimeMs(difficultyProfile);
 
-    const candidates = await buildBotCandidatesFromFen(pre.fenNow, difficultyProfile);
+    const candidates = await buildBotCandidatesFromFen(pre.fenNow, difficultyProfile, {
+      allowOpeningReference: true,
+      personalityStyle: pre.botConfig.accl_bot_v1.personalityStyle,
+    });
     const selected = selectBotMoveForStyle(
       pre.botConfig.accl_bot_v1.personalityStyle,
       candidates,
@@ -228,6 +232,14 @@ export async function commitBotGameTurn(
         humanRow: postHumanRow,
         thinkMs,
       };
+    }
+
+    if (selected.rationale.startsWith('static-fallback:')) {
+      auditApiLog('bot_move_engine_degraded', {
+        game_id: shortId(gameId),
+        difficulty: pre.botConfig.accl_bot_v1.difficulty,
+        personality: pre.botConfig.accl_bot_v1.personalityStyle,
+      });
     }
 
     const applied = applySanitizedUciToBoard(pre.fenNow, selected.move);
