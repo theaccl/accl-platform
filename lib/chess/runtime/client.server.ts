@@ -256,10 +256,7 @@ async function executeEngineRuntimeRemoteRequest(
 
   let body: unknown;
   try {
-    const text = await raceWithSignal(response.text(), deadline.signal);
-    if (Buffer.byteLength(text, 'utf8') > MAX_ENGINE_RESPONSE_BYTES) {
-      return runtimeFailureEnvelope('ENGINE_PROTOCOL_ERROR');
-    }
+    const text = await readBoundedResponseText(response, deadline.signal);
     body = JSON.parse(text) as unknown;
   } catch {
     const deadlineFailure = failureCodeForDeadline(deadline.cause());
@@ -279,6 +276,58 @@ async function executeEngineRuntimeRemoteRequest(
   return response.status === expectedStatus
     ? envelope
     : runtimeFailureEnvelope('ENGINE_PROTOCOL_ERROR');
+}
+
+async function readBoundedResponseText(
+  response: Response,
+  signal: AbortSignal
+): Promise<string> {
+  if (!response.body) return '';
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  let complete = false;
+  let cancelled = false;
+  const cancel = (reason: unknown) => {
+    if (cancelled || complete) return;
+    cancelled = true;
+    void reader.cancel(reason).catch(() => {
+      // Cancellation is best effort; the caller still receives the typed failure.
+    });
+  };
+
+  try {
+    while (true) {
+      const next = await raceWithSignal(reader.read(), signal);
+      if (next.done) {
+        complete = true;
+        break;
+      }
+      if (!next.value) continue;
+
+      byteLength += next.value.byteLength;
+      if (byteLength > MAX_ENGINE_RESPONSE_BYTES) {
+        const error = new Error('engine_runtime_response_too_large');
+        cancel(error);
+        throw error;
+      }
+      chunks.push(next.value);
+    }
+  } catch (error) {
+    cancel(error);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function createGoogleEngineRuntimeAuthorizationProvider(

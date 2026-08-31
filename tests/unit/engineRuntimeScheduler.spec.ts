@@ -8,8 +8,10 @@ import {
   type EngineRuntimeLane,
 } from '@/lib/chess/runtime';
 import { EngineRuntimeScheduler } from '@/services/stockfish-engine/src/scheduler';
+import type { SchedulerRejected } from '@/services/stockfish-engine/src/scheduler';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const ignoreExpired = () => {};
 
 function request(
   correlationId: string,
@@ -57,8 +59,8 @@ test('batch work never occupies both workers and release is exactly once', () =>
   scheduler.admit(request('post', 'POST_GAME_BATCH'), 'post', 0);
   scheduler.admit(request('bot', 'BOT_LIVE'), 'bot', 0);
 
-  const first = scheduler.dispatch(1);
-  const second = scheduler.dispatch(1);
+  const first = scheduler.dispatch(1, ignoreExpired);
+  const second = scheduler.dispatch(1, ignoreExpired);
   expect(first).not.toBeNull();
   expect(second).not.toBeNull();
   expect(scheduler.snapshot()).toMatchObject({ running: 2, runningBatch: 1 });
@@ -88,7 +90,7 @@ test('weighted deficit scheduler is deterministic and FIFO within bounded queued
 
   while (scheduler.snapshot().waiting > 0) {
     const index = order.length;
-    const item = scheduler.dispatch(index + 1);
+    const item = scheduler.dispatch(index + 1, ignoreExpired);
     expect(item).not.toBeNull();
     if (!item) break;
     order.push(item.request.lane);
@@ -116,7 +118,7 @@ test('continuous bot traffic cannot starve an admitted batch request', () => {
 
   const order: EngineRuntimeLane[] = [];
   for (let index = 0; index < 12 && !order.includes('POST_GAME_BATCH'); index += 1) {
-    const item = scheduler.dispatch(index + 1);
+    const item = scheduler.dispatch(index + 1, ignoreExpired);
     expect(item).not.toBeNull();
     if (!item) break;
     order.push(item.request.lane);
@@ -147,4 +149,19 @@ test('queue, total timeout, cancellation, and shutdown settlements are distinct'
     ok: false,
     rejection: { code: 'ENGINE_POOL_UNAVAILABLE' },
   });
+});
+
+test('dispatch reports each request that expires during dispatch exactly once', () => {
+  const scheduler = new EngineRuntimeScheduler<string>();
+  const settled: SchedulerRejected<string>[] = [];
+  scheduler.admit(request('dispatch-expired', 'BOT_LIVE', 1_000, 10_000), 'pending', 0);
+
+  expect(scheduler.dispatch(251, (rejection) => settled.push(rejection))).toBeNull();
+  expect(settled).toMatchObject([
+    { value: 'pending', code: 'ENGINE_QUEUE_TIMEOUT' },
+  ]);
+
+  expect(scheduler.dispatch(500, (rejection) => settled.push(rejection))).toBeNull();
+  expect(scheduler.cancel('dispatch-expired')).toBeNull();
+  expect(settled).toHaveLength(1);
 });

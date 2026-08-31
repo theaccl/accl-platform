@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { EngineTransport } from '@/lib/chess';
 import { createLeaseTransport, type PhysicalWorkerIo } from '@/services/stockfish-engine/src/leaseTransport';
 import {
+  CIRCUIT_OPEN_MS,
   EngineWorkerPool,
   type PhysicalEngineWorker,
 } from '@/services/stockfish-engine/src/pool';
@@ -188,6 +189,59 @@ test('five replacement failures open the pool circuit', async () => {
   expect(creations).toBe(7);
   expect(pool.snapshot().circuitOpenUntilMs).toBeGreaterThan(now);
   expect(await pool.acquire()).toBeNull();
+});
+
+test('closed circuit replenishes missing capacity once before concurrent leases', async () => {
+  let creations = 0;
+  let now = 10_000;
+  let releaseRecoveredWarm!: () => void;
+  const recoveredWarm = new Promise<void>((resolve) => {
+    releaseRecoveredWarm = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      const worker = new FakeWorker(`worker-${creations}`);
+      if (creations >= 3 && creations <= 7) {
+        worker.warmError = new Error('injected_replacement_failure');
+      }
+      if (creations === 8) {
+        worker.warm = async () => {
+          worker.warmCalls += 1;
+          await recoveredWarm;
+        };
+      }
+      return worker;
+    },
+    {
+      now: () => now,
+      sleep: async (ms) => {
+        now += ms;
+      },
+    }
+  );
+  await pool.start();
+  const failedLease = await pool.acquire();
+  await failedLease?.settle('engine_crashed');
+  expect(creations).toBe(7);
+  expect(pool.snapshot().workers).toHaveLength(1);
+
+  now += CIRCUIT_OPEN_MS + 1;
+  const firstAcquire = pool.acquire();
+  const secondAcquire = pool.acquire();
+  await expect.poll(() => creations).toBe(8);
+  expect(pool.snapshot().workers.filter((worker) => worker.state === 'WARMING')).toHaveLength(1);
+
+  releaseRecoveredWarm();
+  const [first, second] = await Promise.all([firstAcquire, secondAcquire]);
+  expect(new Set([first?.workerId, second?.workerId])).toEqual(
+    new Set(['worker-2', 'worker-8'])
+  );
+  expect(creations).toBe(8);
+  expect(pool.snapshot().workers).toHaveLength(2);
+  await first?.settle('success');
+  await second?.settle('success');
+  expect(pool.snapshot().workers.map((worker) => worker.state)).toEqual(['IDLE', 'IDLE']);
 });
 
 test('second startup worker that fails warm and terminate stays retiring and blocks start', async () => {

@@ -85,6 +85,7 @@ export class EngineWorkerPool {
   private readonly replacementFailures: number[] = [];
   private accepting = false;
   private circuitOpenUntilMs: number | null = null;
+  private replenishment: Promise<void> | null = null;
 
   constructor(
     private readonly factory: PhysicalEngineWorkerFactory,
@@ -116,6 +117,7 @@ export class EngineWorkerPool {
 
   async acquire(): Promise<EngineWorkerLease | null> {
     if (!this.accepting || this.isCircuitOpen()) return null;
+    await this.replenishCapacity();
     const slot = this.slots.find((candidate) => candidate.state === 'IDLE');
     if (!slot) return null;
 
@@ -144,6 +146,7 @@ export class EngineWorkerPool {
 
   async shutdown(): Promise<void> {
     this.accepting = false;
+    await this.replenishment;
     await this.retryRetainedTerminations();
   }
 
@@ -267,6 +270,45 @@ export class EngineWorkerPool {
     } catch {
       // Circuit or leftover RETIRING replacement is already recorded.
     }
+  }
+
+  private async replenishCapacity(): Promise<void> {
+    if (this.replenishment) {
+      await this.replenishment;
+      return;
+    }
+
+    const replenishment = this.replenishMissingSlots().finally(() => {
+      if (this.replenishment === replenishment) this.replenishment = null;
+    });
+    this.replenishment = replenishment;
+    await replenishment;
+  }
+
+  private async replenishMissingSlots(): Promise<void> {
+    if (!this.accepting || this.isCircuitOpen()) return;
+    if (this.slots.some((slot) => slot.orphaned && slot.state === 'RETIRING')) {
+      this.openCircuit();
+      return;
+    }
+
+    while (
+      this.accepting &&
+      !this.isCircuitOpen() &&
+      this.usableCapacityCount() < this.workerCount
+    ) {
+      try {
+        await this.createWarmSlotWithRetry({ promote: true });
+      } catch {
+        return;
+      }
+    }
+  }
+
+  private usableCapacityCount(): number {
+    return this.slots.filter(
+      (slot) => slot.state !== 'RETIRING' && slot.state !== 'TERMINATED'
+    ).length;
   }
 
   private async createWarmSlot(options: { promote: boolean }): Promise<WorkerSlot> {

@@ -127,9 +127,12 @@ export class EngineRuntimeScheduler<T> {
     return expired;
   }
 
-  dispatch(nowMs: number): SchedulerDispatch<T> | null {
+  dispatch(
+    nowMs: number,
+    settleExpired: (rejection: SchedulerRejected<T>) => void
+  ): SchedulerDispatch<T> | null {
     if (this.running >= ENGINE_RUNTIME_WORKER_COUNT || this.waiting === 0) return null;
-    this.expire(nowMs);
+    for (const rejection of this.expire(nowMs)) settleExpired(rejection);
     if (this.waiting === 0) return null;
 
     const maxVisits = ENGINE_RUNTIME_LANES.length * 32;

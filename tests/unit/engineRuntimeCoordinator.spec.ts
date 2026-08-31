@@ -129,6 +129,61 @@ test('running caller cancellation settles once and recovers the leased worker', 
   await coordinator.shutdown();
 });
 
+test('queue expiry while a prior lease is preparing settles once with the queue timeout', async () => {
+  let now = 0;
+  const prepareStarted = gate();
+  const allowPrepare = gate();
+  const workers: CoordinatorWorker[] = [];
+  const pool = new EngineWorkerPool(
+    async () => {
+      const worker = new CoordinatorWorker(`worker-${workers.length + 1}`);
+      if (workers.length === 0) {
+        worker.prepareLeaseImpl = async () => {
+          prepareStarted.resolve();
+          await allowPrepare.promise;
+          now = 251;
+          return {
+            send() {},
+            subscribe: () => () => {},
+            close() {},
+          };
+        };
+      }
+      workers.push(worker);
+      return worker;
+    },
+    { now: () => now }
+  );
+  await pool.start();
+
+  const coordinator = new EngineRuntimeCoordinator(
+    pool,
+    async ({ request: approved, position }) => successResult(position, approved.limits),
+    { now: () => now }
+  );
+  const first = coordinator.evaluate(request('slow-lease'));
+  await prepareStarted.promise;
+
+  let settlementCount = 0;
+  const queued = coordinator
+    .evaluate({ ...request('dispatch-expired'), lane: 'BOT_LIVE' })
+    .then((envelope) => {
+      settlementCount += 1;
+      return envelope;
+    });
+  await expect.poll(() => coordinator.snapshot().scheduler.waiting).toBe(1);
+
+  allowPrepare.resolve();
+  await expect(queued).resolves.toEqual({
+    ok: false,
+    error: { code: 'ENGINE_QUEUE_TIMEOUT', retryable: true },
+  });
+  await expect(first).resolves.toMatchObject({ ok: true });
+  expect(settlementCount).toBe(1);
+  expect(coordinator.snapshot().scheduler.waiting).toBe(0);
+  await coordinator.shutdown();
+});
+
 function successResult(
   position: { positionKey: string; engineFen: string; turn: 'w' | 'b'; terminal: boolean },
   limits: EngineAnalysisResult['limits']

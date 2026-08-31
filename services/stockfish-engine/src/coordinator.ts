@@ -154,7 +154,9 @@ export class EngineRuntimeCoordinator {
     try {
       this.expireQueued();
       while (!this.shuttingDown && this.scheduler.snapshot().waiting > 0) {
-        const dispatch = this.scheduler.dispatch(this.now());
+        const dispatch = this.scheduler.dispatch(this.now(), (rejection) => {
+          this.settlePending(rejection.value, rejection.code);
+        });
         if (!dispatch) break;
         let lease: EngineWorkerLease | null;
         try {

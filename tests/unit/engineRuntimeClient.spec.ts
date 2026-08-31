@@ -274,6 +274,7 @@ test('authenticated transport classifies caller abort and its own total deadline
 });
 
 test('authenticated transport keeps the total deadline through response-body consumption', async () => {
+  let cancelCalls = 0;
   const transport = createEngineRuntimeRemoteTransport({
     env: lockedEnvironment,
     authorizationProvider: async () => 'Bearer google-id-token',
@@ -282,6 +283,9 @@ test('authenticated transport keeps the total deadline through response-body con
         new ReadableStream<Uint8Array>({
           start() {
             // Deliberately never enqueue or close: the deadline must settle the caller.
+          },
+          cancel() {
+            cancelCalls += 1;
           },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
@@ -294,6 +298,48 @@ test('authenticated transport keeps the total deadline through response-body con
     ok: false,
     error: { code: 'ENGINE_TOTAL_TIMEOUT', retryable: true },
   });
+  expect(cancelCalls).toBe(1);
+});
+
+test('authenticated transport cancels a streaming response immediately above one MiB', async () => {
+  let pullCalls = 0;
+  let cancelCalls = 0;
+  const transport = createEngineRuntimeRemoteTransport({
+    env: lockedEnvironment,
+    authorizationProvider: async () => 'Bearer google-id-token',
+    fetchImpl: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              pullCalls += 1;
+              if (pullCalls === 1) {
+                controller.enqueue(new Uint8Array(1024 * 1024));
+                return;
+              }
+              if (pullCalls === 2) {
+                controller.enqueue(new Uint8Array([1]));
+                return;
+              }
+              controller.enqueue(new Uint8Array(1024 * 1024));
+            },
+            cancel() {
+              cancelCalls += 1;
+              return new Promise<void>(() => undefined);
+            },
+          },
+          { highWaterMark: 0 }
+        ),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      ),
+  });
+
+  await expect(transport(request)).resolves.toEqual({
+    ok: false,
+    error: { code: 'ENGINE_PROTOCOL_ERROR', retryable: false },
+  });
+  expect(cancelCalls).toBe(1);
+  expect(pullCalls).toBe(2);
 });
 
 test('client total deadline includes actor-limiter wait and settles before the running peer', async () => {
