@@ -2,7 +2,14 @@ import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { extensionForMimeType, type ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
-import type { ImageGenerationProvider } from '@/lib/imageGenerator/provider';
+import {
+  enforceImageGenerationCostGuard,
+  recordProviderGenerationCost,
+} from '@/lib/imageGenerator/costAccounting';
+import {
+  ImageGenerationProviderError,
+  type ImageGenerationProvider,
+} from '@/lib/imageGenerator/provider';
 import { moderateImagePrompt, validateGeneratedCandidateSafety } from '@/lib/imageGenerator/safety';
 import { imageGenerationRetryDelaySeconds, isTransientImageGenerationError } from '@/lib/imageGenerator/worker';
 
@@ -47,6 +54,11 @@ export async function processOneImageRefinement(
   try {
     const guidanceSafety = moderateImagePrompt(refinement.guidance);
     if (!guidanceSafety.allowed) throw new Error(`prompt_safety_rejected:${guidanceSafety.code}`);
+    await enforceImageGenerationCostGuard(supabase, {
+      requestId: refinement.request_id,
+      refinementId: refinement.id,
+      attemptNumber: refinement.attempt_count,
+    });
     const [requestResult, candidateResult] = await Promise.all([
       supabase.from('image_generation_requests').select('prompt,membership_tier').eq('id', refinement.request_id).single(),
       supabase
@@ -71,7 +83,7 @@ export async function processOneImageRefinement(
       `Guided refinement: ${refinement.guidance}`,
       'Preserve the selected identity direction while applying only the requested refinement.',
     ].join('\n\n');
-    const generated = await provider.generate({
+    const generation = await provider.generate({
       prompt,
       candidateCount: 2,
       requestId: refinement.request_id,
@@ -84,6 +96,17 @@ export async function processOneImageRefinement(
         bytes: new Uint8Array(await downloaded.data.arrayBuffer()),
         mimeType: sourceCandidate.mime_type,
       }],
+    });
+    const generated = generation.images;
+    await recordProviderGenerationCost(supabase, {
+      requestId: refinement.request_id,
+      refinementId: refinement.id,
+      operation: 'refinement',
+      attemptNumber: refinement.attempt_count,
+      provider,
+      generatedImageCount: generated.length,
+      outputBytes: generated.reduce((total, candidate) => total + candidate.bytes.byteLength, 0),
+      receipt: generation.receipt,
     });
 
     for (let index = 0; index < generated.length; index++) {
@@ -123,7 +146,25 @@ export async function processOneImageRefinement(
       throw new Error(`refinement_finalize_failed:${finalized.error?.message ?? 'not_running'}`);
     }
     return { claimed: true, refinement_id: refinement.id, final_status: 'review' };
-  } catch (error) {
+  } catch (caught) {
+    let error = caught;
+    if (caught instanceof ImageGenerationProviderError && caught.generatedImageCount > 0) {
+      try {
+        await recordProviderGenerationCost(supabase, {
+          requestId: refinement.request_id,
+          refinementId: refinement.id,
+          operation: 'refinement',
+          attemptNumber: refinement.attempt_count,
+          provider,
+          generatedImageCount: caught.generatedImageCount,
+          outputBytes: caught.outputBytes,
+          receipt: caught.partialResult.receipt,
+          partialFailure: true,
+        });
+      } catch (receiptError) {
+        error = receiptError;
+      }
+    }
     if (uploadedPaths.length > 0) {
       await supabase.storage.from('image-generation-candidates').remove(uploadedPaths);
     }

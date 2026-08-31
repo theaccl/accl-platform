@@ -5,7 +5,15 @@ import {
   extensionForMimeType,
   type ImageGenerationReferenceRow,
 } from '@/lib/imageGenerator/domain';
-import { parseClaimedRequest, type ImageGenerationProvider } from '@/lib/imageGenerator/provider';
+import {
+  enforceImageGenerationCostGuard,
+  recordProviderGenerationCost,
+} from '@/lib/imageGenerator/costAccounting';
+import {
+  ImageGenerationProviderError,
+  parseClaimedRequest,
+  type ImageGenerationProvider,
+} from '@/lib/imageGenerator/provider';
 import {
   moderateImagePrompt,
   validateGeneratedCandidateSafety,
@@ -42,6 +50,7 @@ async function disposeReferenceImages(
 
 export function isTransientImageGenerationError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  if (message.startsWith('cost_receipt_failed:')) return false;
   return [
     'timeout',
     'timed out',
@@ -77,6 +86,10 @@ export async function processOneImageGeneration(
   try {
     const promptSafety = moderateImagePrompt(request.prompt);
     if (!promptSafety.allowed) throw new Error(`prompt_safety_rejected:${promptSafety.code}`);
+    await enforceImageGenerationCostGuard(supabase, {
+      requestId: request.id,
+      attemptNumber: request.attempt_count,
+    });
 
     const referenceImages: Array<{
       bytes: Uint8Array;
@@ -138,7 +151,7 @@ export async function processOneImageGeneration(
       });
     }
 
-    const generated = await provider.generate({
+    const generation = await provider.generate({
       prompt: request.prompt,
       candidateCount: request.candidate_count,
       requestId: request.id,
@@ -147,6 +160,16 @@ export async function processOneImageGeneration(
       operation: 'opening',
       attemptNumber: request.attempt_count,
       referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
+    });
+    const generated = generation.images;
+    await recordProviderGenerationCost(supabase, {
+      requestId: request.id,
+      operation: 'opening',
+      attemptNumber: request.attempt_count,
+      provider,
+      generatedImageCount: generated.length,
+      outputBytes: generated.reduce((total, candidate) => total + candidate.bytes.byteLength, 0),
+      receipt: generation.receipt,
     });
     for (let index = 0; index < generated.length; index++) {
       const candidate = generated[index];
@@ -195,7 +218,24 @@ export async function processOneImageGeneration(
       final_status: 'review',
       candidate_count: generated.length,
     };
-  } catch (error) {
+  } catch (caught) {
+    let error = caught;
+    if (caught instanceof ImageGenerationProviderError && caught.generatedImageCount > 0) {
+      try {
+        await recordProviderGenerationCost(supabase, {
+          requestId: request.id,
+          operation: 'opening',
+          attemptNumber: request.attempt_count,
+          provider,
+          generatedImageCount: caught.generatedImageCount,
+          outputBytes: caught.outputBytes,
+          receipt: caught.partialResult.receipt,
+          partialFailure: true,
+        });
+      } catch (receiptError) {
+        error = receiptError;
+      }
+    }
     if (uploadedPaths.length > 0) {
       await supabase.storage.from('image-generation-candidates').remove(uploadedPaths);
     }

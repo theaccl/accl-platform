@@ -43,6 +43,7 @@ test('placement route uploads the derivative instead of the private raw candidat
   expect(code).toContain('createProfileStillDerivative(');
   expect(code).toContain('upload(path, derivative.bytes');
   expect(code).toContain('contentType: derivative.mimeType');
+  expect(code).toContain('recordPlacementDerivativeCost(');
   expect(code).not.toContain('upload(path, downloaded.data');
 });
 

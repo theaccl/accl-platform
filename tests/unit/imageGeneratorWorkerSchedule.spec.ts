@@ -33,6 +33,7 @@ test('cron requests use Vercel bearer authentication and a GET handler', async (
 test('transient provider failures use bounded exponential retries', () => {
   expect(isTransientImageGenerationError(new Error('fetch failed'))).toBe(true);
   expect(isTransientImageGenerationError(new Error('provider returned 503'))).toBe(true);
+  expect(isTransientImageGenerationError(new Error('cost_receipt_failed: network timeout'))).toBe(false);
   expect(isTransientImageGenerationError(new Error('provider_candidate_mime_invalid'))).toBe(false);
   expect(imageGenerationRetryDelaySeconds(1)).toBe(30);
   expect(imageGenerationRetryDelaySeconds(2)).toBe(60);
@@ -49,6 +50,14 @@ test('opening and refinement calls send trusted Gateway cost-attribution dimensi
   expect(refinementWorker).toContain("operation: 'refinement'");
   expect(refinementWorker).toContain('attemptNumber: refinement.attempt_count');
   expect(refinementWorker).toContain('refinementId: refinement.id');
+  expect(worker).toContain('enforceImageGenerationCostGuard');
+  expect(worker).toContain('recordProviderGenerationCost');
+  expect(refinementWorker).toContain('enforceImageGenerationCostGuard');
+  expect(refinementWorker).toContain('recordProviderGenerationCost');
+  expect(worker).toContain('caught instanceof ImageGenerationProviderError');
+  expect(refinementWorker).toContain('caught instanceof ImageGenerationProviderError');
+  expect(worker).toContain('partialFailure: true');
+  expect(refinementWorker).toContain('partialFailure: true');
 });
 
 test('retry migration enforces due-time claims, three attempts, and stale recovery', async () => {

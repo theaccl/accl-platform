@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { placeProfileImageSchema, parseJsonBody } from '@/lib/imageGenerator/api';
+import { recordPlacementDerivativeCost } from '@/lib/imageGenerator/costAccounting';
 import { createProfileStillDerivative } from '@/lib/imageGenerator/derivatives';
 import type { ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
@@ -35,6 +36,7 @@ export async function POST(request: Request): Promise<Response> {
     if (downloaded.error) return jsonResponse({ error: 'Could not read private candidate' }, 500);
 
     let derivative;
+    const derivativeStartedAt = Date.now();
     try {
       derivative = await createProfileStillDerivative(
         new Uint8Array(await downloaded.data.arrayBuffer()),
@@ -44,8 +46,23 @@ export async function POST(request: Request): Promise<Response> {
       return jsonResponse({ error: 'Could not create a safe profile still image' }, 422);
     }
 
+    const derivativeRunId = randomUUID();
+    try {
+      await recordPlacementDerivativeCost(supabase, {
+        requestId: candidate.request_id,
+        candidateId: candidate.id,
+        surface: parsed.data.surface,
+        derivativeVersion: derivative.version,
+        runId: derivativeRunId,
+        measuredDurationMs: Math.max(0, Date.now() - derivativeStartedAt),
+        outputBytes: derivative.byteSize,
+      });
+    } catch {
+      return jsonResponse({ error: 'Could not audit profile image processing' }, 500);
+    }
+
     const bucket = parsed.data.surface === 'profile_image' ? 'profile-avatars' : 'profile-backgrounds';
-    const path = `${user.id}/generated/${candidate.id}/${derivative.version}-${parsed.data.surface}-${randomUUID()}.${derivative.extension}`;
+    const path = `${user.id}/generated/${candidate.id}/${derivative.version}-${parsed.data.surface}-${derivativeRunId}.${derivative.extension}`;
     const published = await supabase.storage.from(bucket).upload(path, derivative.bytes, {
       contentType: derivative.mimeType,
       cacheControl: '31536000',
