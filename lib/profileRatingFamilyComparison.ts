@@ -12,10 +12,11 @@ export function filterMajorFamilySeriesByLane(
   series: MajorFamilySeriesData[],
   lane: RatingLane,
   nowMs: number = Date.now(),
+  timeZone?: string,
 ): MajorFamilySeriesData[] {
   return series.map((s) => ({
     ...s,
-    points: filterPointsByLane(s.points, lane, nowMs),
+    points: filterPointsByLane(s.points, lane, nowMs, timeZone),
   }));
 }
 

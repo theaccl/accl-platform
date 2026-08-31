@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { cssSupportsOffsetPath, landscapeTickerRevealTimerKey } from '../../lib/profile/landscapeTickerMotion';
 import { isMaterialViewportChange } from '../../lib/profile/landscapeTickerViewport';
-import { BLITZ_RAPID_CROSS_U, DAILY_RAPID_FIRST_CROSS_U } from '../helpers/landscapeTickerCrossingFixture';
+import { SHARED_EVENT_SAMPLE_U } from '../helpers/landscapeTickerCrossingFixture';
 import { mountLandscapeTicker } from '../helpers/mountLandscapeTickerPage';
 
 type Box = { top: number; left: number; right: number; bottom: number; width: number; height: number };
@@ -47,36 +47,23 @@ async function ownerAtSeriesCrossing(
 ) {
   return page.evaluate(
     ({ seriesId: id, u: frac }) => {
-      const markers = [...document.querySelectorAll<SVGCircleElement>(`[data-testid^="landscape-ticker-marker-${id}-"]`)]
-        .map((el) => ({
-          cx: Number(el.getAttribute('cx')),
-          cy: Number(el.getAttribute('cy')),
-        }))
-        .filter((pt) => Number.isFinite(pt.cx) && Number.isFinite(pt.cy))
-        .sort((a, b) => a.cx - b.cx);
-      const rapidCount = document.querySelectorAll('[data-testid^="landscape-ticker-marker-free_rapid-"]').length;
-      const dailyCount = document.querySelectorAll('[data-testid^="landscape-ticker-marker-free_day-"]').length;
-      if (markers.length < 2) {
+      const markers = [
+        ...document.querySelectorAll<SVGCircleElement>(`[data-testid^="landscape-ticker-marker-${id}-"]`),
+      ].filter((el) => !(el.getAttribute('data-testid') ?? '').includes('-halo-'));
+      const rapidCount = document.querySelectorAll(
+        '[data-testid^="landscape-ticker-marker-free_rapid-"]',
+      ).length;
+      const dailyCount = document.querySelectorAll(
+        '[data-testid^="landscape-ticker-marker-free_day-"]',
+      ).length;
+      if (markers.length < 1) {
         return { owner: null, dominant: null, reason: 'missing-markers', rapidCount, dailyCount };
       }
-      const x = markers[0].cx + frac * (markers[1].cx - markers[0].cx);
-      const y = markers[0].cy + frac * (markers[1].cy - markers[0].cy);
-      const layer = document.querySelector(`[data-testid="landscape-ticker-path-${id}"]`);
-      const svg =
-        layer instanceof SVGSVGElement
-          ? layer
-          : (layer?.closest('svg') ??
-            document.querySelector<SVGSVGElement>('[data-testid="landscape-ticker-chart-focus"]'));
-      const ctm = svg?.getScreenCTM();
-      if (!svg || !ctm) {
-        return { owner: null, dominant: null, reason: 'missing-svg', rapidCount, dailyCount };
-      }
-      const pt = svg.createSVGPoint();
-      pt.x = x;
-      pt.y = y;
-      const screen = pt.matrixTransform(ctm);
-      const el = document.elementFromPoint(screen.x, screen.y);
-      const group = el?.closest('[data-testid^="landscape-ticker-path-"]');
+      const index = frac >= 1 ? markers.length - 1 : frac <= 0 ? 0 : Math.min(1, markers.length - 1);
+      const marker = markers[index];
+      const rect = marker.getBoundingClientRect();
+      const el = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const group = el?.closest('[data-testid^="landscape-ticker-path-"]') ?? marker.closest('[data-testid^="landscape-ticker-path-"]');
       return {
         owner: group?.getAttribute('data-testid') ?? null,
         dominant: group?.getAttribute('data-dominant') ?? null,
@@ -859,14 +846,20 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
       'lib/profile/landscapeTickerCategories.ts',
       'lib/profile/landscapeTickerDialogChrome.ts',
       'lib/profile/landscapeTickerFamilies.ts',
+      'lib/profile/landscapeTickerHierarchy.ts',
       'lib/profile/landscapeTickerMotion.ts',
       'lib/profile/landscapeTickerPath.ts',
       'lib/profile/landscapeTickerSession.ts',
       'lib/profile/landscapeTickerViewport.ts',
+      'lib/profile/ratingTickerCalendar.ts',
+      'lib/profile/ratingTickerTimeZone.ts',
+      'lib/ratingHistoryMetrics.ts',
     ];
     for (const rel of production) {
       const buf = readFileSync(join(process.cwd(), rel));
-      expect(buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf).toBe(false);
+      expect(buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf, rel).toBe(false);
+      expect(buf[0] === 0xff && buf[1] === 0xfe, rel).toBe(false);
+      expect(buf[0] === 0xfe && buf[1] === 0xff, rel).toBe(false);
     }
     const text = bytes.toString('utf8');
     expect(text.codePointAt(0)).not.toBe(0xfeff);
@@ -922,14 +915,14 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
     await page.getByTestId('landscape-ticker-category-blitz').click();
     await page.clock.fastForward(50);
     await expect(drawer).toHaveAttribute('data-dominance-order', 'free_blitz');
-    const blitzOnly = await ownerAtSeriesCrossing(page, 'free_blitz', BLITZ_RAPID_CROSS_U);
+    const blitzOnly = await ownerAtSeriesCrossing(page, 'free_blitz', SHARED_EVENT_SAMPLE_U);
     expect(blitzOnly.owner).toBe('landscape-ticker-path-free_blitz');
     expect(blitzOnly.dominant).toBe('true');
     expect(blitzOnly.rapidCount).toBe(0);
 
     await page.getByTestId('landscape-ticker-category-rapid').click();
     await expect(page.getByTestId('landscape-ticker-path-free_rapid')).toHaveCount(0);
-    const queued = await ownerAtSeriesCrossing(page, 'free_blitz', BLITZ_RAPID_CROSS_U);
+    const queued = await ownerAtSeriesCrossing(page, 'free_blitz', SHARED_EVENT_SAMPLE_U);
     expect(queued.owner).toBe('landscape-ticker-path-free_blitz');
     expect(queued.rapidCount).toBe(0);
     await expect(drawer).toHaveAttribute('data-dominance-order', 'free_blitz');
@@ -943,7 +936,7 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
       'landscape-ticker-path-free_blitz',
       'landscape-ticker-path-free_rapid',
     ]);
-    const rapidFront = await ownerAtSeriesCrossing(page, 'free_blitz', BLITZ_RAPID_CROSS_U);
+    const rapidFront = await ownerAtSeriesCrossing(page, 'free_rapid', SHARED_EVENT_SAMPLE_U);
     expect(rapidFront.owner).toBe('landscape-ticker-path-free_rapid');
     expect(rapidFront.dominant).toBe('true');
 
@@ -958,7 +951,7 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
       'landscape-ticker-path-free_rapid',
       'landscape-ticker-path-free_day',
     ]);
-    const dailyFront = await ownerAtSeriesCrossing(page, 'free_day', DAILY_RAPID_FIRST_CROSS_U);
+    const dailyFront = await ownerAtSeriesCrossing(page, 'free_day', SHARED_EVENT_SAMPLE_U);
     expect(dailyFront.owner).toBe('landscape-ticker-path-free_day');
     expect(dailyFront.dominant).toBe('true');
 
@@ -968,7 +961,7 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
 
     await page.getByTestId('landscape-ticker-category-daily').click();
     await expect(chart).toHaveAttribute('data-dominant-category', 'free_rapid');
-    const rapidAgain = await ownerAtSeriesCrossing(page, 'free_blitz', BLITZ_RAPID_CROSS_U);
+    const rapidAgain = await ownerAtSeriesCrossing(page, 'free_rapid', SHARED_EVENT_SAMPLE_U);
     expect(rapidAgain.owner).toBe('landscape-ticker-path-free_rapid');
 
     await page.getByTestId('landscape-ticker-category-blitz').click();
@@ -978,7 +971,7 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
       'quiet',
     );
     await expect(chart).toHaveAttribute('data-dominant-category', 'free_blitz');
-    const blitzQuiet = await ownerAtSeriesCrossing(page, 'free_blitz', BLITZ_RAPID_CROSS_U);
+    const blitzQuiet = await ownerAtSeriesCrossing(page, 'free_blitz', SHARED_EVENT_SAMPLE_U);
     expect(blitzQuiet.owner).toBe('landscape-ticker-path-free_blitz');
     expect(blitzQuiet.dominant).toBe('true');
 

@@ -4,17 +4,15 @@ import { join } from 'node:path';
 
 import { LANDSCAPE_TICKER_CATEGORIES } from '../../lib/profile/landscapeTickerCategories';
 import {
-  BLITZ_RAPID_CROSS_U,
   LANDSCAPE_TICKER_CROSSING_HISTORY,
-  landscapeTickerCrossingHits,
   landscapeTickerCrossingPlotGeometry,
-  landscapeTickerCrossingSvgPoint,
   landscapeTickerSharedCrossingVertex,
 } from '../helpers/landscapeTickerCrossingFixture';
 import {
   landscapeTickerPathFromPoints,
   landscapeTickerRatingDomain,
   landscapeTickerTimeDomain,
+  pathHasDiagonalBetweenEvents,
 } from '../../lib/profile/landscapeTickerPath';
 import {
   categoryRevealPhase,
@@ -258,21 +256,24 @@ test.describe('landscape ticker activation dominance', () => {
     );
   });
 
-  test('crossing fixture has two visible Blitz/Rapid intersections and a shared vertex', () => {
-    const hits = landscapeTickerCrossingHits();
-    const blitzRapid = hits.filter((h) => h.a === 'free_blitz' && h.b === 'free_rapid');
-    expect(blitzRapid).toHaveLength(2);
-    expect(hits.length).toBeGreaterThanOrEqual(2);
-    expect(blitzRapid.every((h) => Math.abs(h.u - BLITZ_RAPID_CROSS_U) < 1e-9)).toBe(true);
-    expect(blitzRapid.every((h) => h.rating === 1500)).toBe(true);
+  test('event-hold paths share the T1 vertex and do not cross during inactive holds', () => {
     const shared = landscapeTickerSharedCrossingVertex();
     expect(shared.ratingAfter).toBe(1400);
     expect(shared.ids).toEqual(['x-bz-2', 'x-dy-2']);
     const geometry = landscapeTickerCrossingPlotGeometry();
-    const blitz = landscapeTickerCrossingSvgPoint('free_blitz', 0, BLITZ_RAPID_CROSS_U, geometry);
-    const rapid = landscapeTickerCrossingSvgPoint('free_rapid', 0, BLITZ_RAPID_CROSS_U, geometry);
-    expect(Math.abs(blitz.x - rapid.x)).toBeLessThan(0.6);
-    expect(Math.abs(blitz.y - rapid.y)).toBeLessThan(0.6);
+    const blitz = landscapeTickerPathFromPoints(LANDSCAPE_TICKER_CROSSING_HISTORY.free_blitz, geometry);
+    const rapid = landscapeTickerPathFromPoints(LANDSCAPE_TICKER_CROSSING_HISTORY.free_rapid, geometry);
+    const daily = landscapeTickerPathFromPoints(LANDSCAPE_TICKER_CROSSING_HISTORY.free_day, geometry);
+    expect(blitz).not.toBeNull();
+    expect(rapid).not.toBeNull();
+    expect(daily).not.toBeNull();
+    expect(pathHasDiagonalBetweenEvents(blitz!.plotted, blitz!.d)).toBe(false);
+    expect(pathHasDiagonalBetweenEvents(rapid!.plotted, rapid!.d)).toBe(false);
+    expect(blitz!.plotted[0].point.ratingAfter).toBe(1600);
+    expect(rapid!.plotted[0].point.ratingAfter).toBe(1400);
+    expect(Math.abs(blitz!.plotted[0].y - rapid!.plotted[0].y)).toBeGreaterThan(2);
+    expect(Math.abs(blitz!.plotted[1].x - daily!.plotted[1].x)).toBeLessThan(0.6);
+    expect(Math.abs(blitz!.plotted[1].y - daily!.plotted[1].y)).toBeLessThan(0.6);
     expect(LANDSCAPE_TICKER_CROSSING_HISTORY.free_blitz.map((p) => p.ratingAfter)).toEqual([
       1600, 1400, 1600,
     ]);
@@ -292,8 +293,10 @@ test.describe('landscape ticker activation dominance', () => {
     expect(chart).toContain('landscapeTickerEmphasis');
     expect(chart).not.toContain('react-bits');
     expect(chart).not.toContain('pinch-to-zoom');
-    expect(chart).toContain('[...painted].reverse()');
+    expect(chart).toContain('[...marked].reverse()');
     expect(chart).toContain('row.path != null');
+    expect(chart).toContain('data-carry-in-only');
+    expect(chart).not.toContain('[...painted].reverse()');
     expect(src('lib/profile/landscapeTickerSession.ts')).toContain('dominanceOrder');
     expect(src('lib/profile/landscapeTickerSession.ts')).toContain('moveToFront');
   });

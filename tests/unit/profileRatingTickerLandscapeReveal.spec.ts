@@ -268,7 +268,8 @@ test.describe('profile rating ticker landscape interactive reveal', () => {
     const single = landscapeTickerPathFromPoints([a], geometry);
     expect(single?.plotted).toHaveLength(1);
     expect(single?.d.startsWith('M ')).toBe(true);
-    expect(single?.d).not.toContain(' L ');
+    expect(single?.d).toContain(' L ');
+    expect(single?.plotted[0].point.id).toBe('a');
   });
 
   test('no rating calculation or ledger writer changes in this lane', () => {

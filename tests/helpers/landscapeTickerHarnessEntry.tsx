@@ -6,11 +6,17 @@ import styles from '@/components/profile/ratings/landscapeRatingTicker.module.cs
 import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { LANDSCAPE_TICKER_CROSSING_HISTORY } from './landscapeTickerCrossingFixture';
+import {
+  LANDSCAPE_TICKER_CARRY_IN_HISTORY,
+  LANDSCAPE_TICKER_CARRY_IN_RAPID_HISTORY,
+} from './landscapeTickerCarryInFixture';
 
 type HarnessOptions = {
   open?: boolean;
   empty?: boolean;
   crossing?: boolean;
+  carryIn?: boolean;
+  carryInRapid?: boolean;
 };
 
 function readOptions(): HarnessOptions {
@@ -72,6 +78,8 @@ export function LandscapeTickerHarness() {
   const [open, setOpen] = useState(initial.open !== false);
   const [empty, setEmpty] = useState(Boolean(initial.empty));
   const [crossing, setCrossing] = useState(Boolean(initial.crossing));
+  const [carryIn, setCarryIn] = useState(Boolean(initial.carryIn));
+  const [carryInRapid, setCarryInRapid] = useState(Boolean(initial.carryInRapid));
   const [lane, setLane] = useState<RatingLane>('overall');
   const [tick, setTick] = useState(0);
   const [historyEpoch, setHistoryEpoch] = useState(0);
@@ -84,6 +92,7 @@ export function LandscapeTickerHarness() {
         newHistoryIdentity: () => void;
         setEmpty: (value: boolean) => void;
         setCrossing: (value: boolean) => void;
+        setCarryIn: (value: boolean) => void;
         openDrawer: () => void;
       };
     }).__tickerHarness = {
@@ -91,6 +100,7 @@ export function LandscapeTickerHarness() {
       newHistoryIdentity: () => setHistoryEpoch((n) => n + 1),
       setEmpty: (value: boolean) => setEmpty(value),
       setCrossing: (value: boolean) => setCrossing(value),
+      setCarryIn: (value: boolean) => setCarryIn(value),
       openDrawer: () => setOpen(true),
     };
   }
@@ -99,8 +109,10 @@ export function LandscapeTickerHarness() {
     void historyEpoch;
     if (empty) return {};
     if (crossing) return LANDSCAPE_TICKER_CROSSING_HISTORY;
+    if (carryInRapid) return LANDSCAPE_TICKER_CARRY_IN_RAPID_HISTORY;
+    if (carryIn) return LANDSCAPE_TICKER_CARRY_IN_HISTORY;
     return buildHistory();
-  }, [empty, crossing, historyEpoch]);
+  }, [empty, crossing, carryIn, carryInRapid, historyEpoch]);
 
   const points = historyByTrack.free_blitz ?? [];
 
@@ -109,7 +121,17 @@ export function LandscapeTickerHarness() {
       data-testid="landscape-ticker-harness"
       data-tick={tick}
       data-history-epoch={historyEpoch}
-      data-fixture={empty ? 'empty' : crossing ? 'crossing' : 'default'}
+      data-fixture={
+        empty
+          ? 'empty'
+          : crossing
+            ? 'crossing'
+            : carryInRapid
+              ? 'carry-in-rapid'
+              : carryIn
+                ? 'carry-in'
+                : 'default'
+      }
     >
       <div style={open ? { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' } : undefined}>
       <button

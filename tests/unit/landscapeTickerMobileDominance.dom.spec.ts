@@ -3,8 +3,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  BLITZ_RAPID_CROSS_U,
-  DAILY_RAPID_FIRST_CROSS_U,
+  SHARED_EVENT_SAMPLE_U,
 } from '../helpers/landscapeTickerCrossingFixture';
 import {
   assertDominantCrossingPixel,
@@ -131,11 +130,12 @@ async function runDominanceSequence(page: Page) {
   await page.clock.fastForward(1800);
   await expect(chart).toHaveAttribute('data-dominant-category', 'free_blitz');
   expect(await paintOrder(page)).toEqual(['free_rapid', 'free_blitz']);
-  const blitzFront = await assertDominantCrossingPixel(page, 'free_blitz', BLITZ_RAPID_CROSS_U, {
+  const blitzFront = await assertDominantCrossingPixel(page, 'free_blitz', SHARED_EVENT_SAMPLE_U, {
     clipSlug: 'blitz-above-rapid',
+    pointId: 'x-bz-2',
   });
   expect(blitzFront.probe.owner).toBe('landscape-ticker-path-free_blitz');
-  expect(blitzFront.probe.hitTestId).toBe('landscape-ticker-hit-free_blitz');
+  expect(blitzFront.probe.hitTestId).toMatch(/^landscape-ticker-(hit|marker)-free_blitz/);
   await expect(page.getByTestId('landscape-ticker-path-free_blitz')).toHaveCSS('z-index', '2');
   await expect(page.getByTestId('landscape-ticker-path-free_rapid')).toHaveCSS('z-index', '1');
 
@@ -143,10 +143,11 @@ async function runDominanceSequence(page: Page) {
   await page.clock.fastForward(1800);
   await expect(chart).toHaveAttribute('data-dominant-category', 'free_day');
   expect(await paintOrder(page)).toEqual(['free_rapid', 'free_blitz', 'free_day']);
-  const dailyFront = await assertDominantCrossingPixel(page, 'free_day', DAILY_RAPID_FIRST_CROSS_U, {
+  const dailyFront = await assertDominantCrossingPixel(page, 'free_day', SHARED_EVENT_SAMPLE_U, {
     clipSlug: 'daily-above-rapid',
+    pointId: 'x-dy-2',
   });
-  expect(dailyFront.probe.hitTestId).toBe('landscape-ticker-hit-free_day');
+  expect(dailyFront.probe.hitTestId).toMatch(/^landscape-ticker-(hit|marker)-free_day/);
 
   await page.getByTestId('landscape-ticker-category-blitz').click();
   await expect(chart).toHaveAttribute('data-dominant-category', 'free_day');
@@ -169,10 +170,11 @@ async function runDominanceSequence(page: Page) {
   await page.clock.fastForward(500);
   await expect(chart).toHaveAttribute('data-dominant-category', 'free_blitz');
   expect(await paintOrder(page)).toEqual(['free_rapid', 'free_day', 'free_blitz']);
-  const blitzQuiet = await assertDominantCrossingPixel(page, 'free_blitz', BLITZ_RAPID_CROSS_U, {
+  const blitzQuiet = await assertDominantCrossingPixel(page, 'free_blitz', SHARED_EVENT_SAMPLE_U, {
     clipSlug: 'blitz-reselected-quiet',
+    pointId: 'x-bz-2',
   });
-  expect(blitzQuiet.probe.hitTestId).toBe('landscape-ticker-hit-free_blitz');
+  expect(blitzQuiet.probe.hitTestId).toMatch(/^landscape-ticker-(hit|marker)-free_blitz/);
 
   await page.getByTestId('landscape-ticker-chart-focus').focus();
   await page.keyboard.press('Home');

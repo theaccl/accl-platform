@@ -32,7 +32,10 @@ import {
   visibleCategoryIds,
   visibleDominanceOrder,
 } from '@/lib/profile/landscapeTickerSession';
-import { paintedDominanceIds } from '@/lib/profile/landscapeTickerHierarchy';
+import {
+  paintedDominanceIds,
+  seriesIsDrawable,
+} from '@/lib/profile/landscapeTickerHierarchy';
 import {
   isLandscapeFitBox,
   isMaterialViewportChange,
@@ -43,7 +46,9 @@ import {
 } from '@/lib/profile/landscapeTickerViewport';
 import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
-import { filterPointsByLane, type RatingLane } from '@/lib/ratingHistoryMetrics';
+import { filterPointsByLane, lastRatingAfterBefore, type RatingLane } from '@/lib/ratingHistoryMetrics';
+import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { formatOccurredAtInZone, resolveTimeZone } from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 const RATING_ARROW = '\u2192';
@@ -136,13 +141,35 @@ function LandscapeTickerOverlay({
     });
   }, []);
 
+  const timeZone = useMemo(() => resolveTimeZone(), []);
+  const nowMs = Date.now();
+  const laneWindow = useMemo(() => {
+    const times: number[] = [];
+    for (const cat of LANDSCAPE_TICKER_CATEGORIES) {
+      for (const p of historyByTrack[cat.trackId] ?? []) {
+        const t = Date.parse(p.occurredAt);
+        if (Number.isFinite(t)) times.push(t);
+      }
+    }
+    const firstEventMs = times.length ? Math.min(...times) : null;
+    const lastEventMs = times.length ? Math.max(...times) : null;
+    return ratingLaneWindow(lane, nowMs, timeZone, { firstEventMs, lastEventMs });
+  }, [historyByTrack, lane, nowMs, timeZone]);
+
   const categoryLanePoints = useMemo(
     () =>
-      LANDSCAPE_TICKER_CATEGORIES.map((cat) => ({
-        ...cat,
-        points: filterPointsByLane(historyByTrack[cat.trackId] ?? [], lane),
-      })),
-    [historyByTrack, lane],
+      LANDSCAPE_TICKER_CATEGORIES.map((cat) => {
+        const full = historyByTrack[cat.trackId] ?? [];
+        return {
+          ...cat,
+          points: filterPointsByLane(full, lane, nowMs, timeZone),
+          carryInRating:
+            lane === 'overall' || !laneWindow
+              ? null
+              : lastRatingAfterBefore(full, laneWindow.startMs),
+        };
+      }),
+    [historyByTrack, lane, laneWindow, nowMs, timeZone],
   );
 
   const visibleIds = visibleCategoryIds(session);
@@ -155,10 +182,16 @@ function LandscapeTickerOverlay({
   }, [categoryLanePoints, visibleIds]);
 
   const dominanceBackToFront = visibleDominanceOrder(session);
-  const paintedIds = paintedDominanceIds(
-    dominanceBackToFront,
-    Object.fromEntries(categoryLanePoints.map((cat) => [cat.id, cat.points.length])),
+  const drawableById = Object.fromEntries(
+    categoryLanePoints.map((cat) => [
+      cat.id,
+      seriesIsDrawable({
+        pointCount: cat.points.length,
+        carryInRating: cat.carryInRating,
+      }),
+    ]),
   );
+  const paintedIds = paintedDominanceIds(dominanceBackToFront, drawableById);
   const paintedDominantCategory = paintedIds[paintedIds.length - 1] ?? null;
   const dominantCategory = paintedDominantCategory;
   const chartSeries = useMemo(() => {
@@ -167,6 +200,7 @@ function LandscapeTickerOverlay({
       label: cat.label,
       color: cat.color,
       points: cat.points,
+      carryInRating: cat.carryInRating,
       phase: categoryRevealPhase(session, cat.id),
       revealSerial:
         session.activeReveal?.categoryId === cat.id ? session.activeReveal.serial : null,
@@ -335,6 +369,10 @@ function LandscapeTickerOverlay({
                           const dominant = dominantCategory === cat.id;
                           const subject = session.activeReveal?.categoryId === cat.id;
                           const count = cat.points.length;
+                          const drawable = drawableById[cat.id] === true;
+                          const carryIn =
+                            typeof cat.carryInRating === 'number' &&
+                            Number.isFinite(cat.carryInRating);
                           return (
                             <button
                               key={cat.id}
@@ -347,6 +385,8 @@ function LandscapeTickerOverlay({
                               data-subject={subject ? 'true' : 'false'}
                               data-point-count={count}
                               data-empty={count === 0 ? 'true' : 'false'}
+                              data-drawable={drawable ? 'true' : 'false'}
+                              data-carry-in={carryIn ? 'true' : 'false'}
                               data-hero-revealed={session.heroRevealedIds.includes(cat.id) ? 'true' : 'false'}
                               onClick={() => toggleCategory(cat.id)}
                               className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
@@ -400,6 +440,10 @@ function LandscapeTickerOverlay({
                       <div className={styles.chartSlot}>
                         <LandscapeRatingTickerChart
                           series={chartSeries}
+                          lane={lane}
+                          timeZone={timeZone}
+                          nowMs={nowMs}
+                          window={laneWindow}
                           canLinkFinishedGames={canLinkFinishedGames}
                           reducedMotion={reducedMotion}
                           onRevealComplete={onRevealComplete}
@@ -429,7 +473,10 @@ function LandscapeTickerOverlay({
                               {p.ratingDelta})
                             </span>
                             <span className="mt-1 block text-xs text-gray-400" data-testid="landscape-ticker-event-meta">
-                              {new Date(p.occurredAt).toLocaleString()} {META_DOT} {p.result}
+                              {formatOccurredAtInZone(p.occurredAt, timeZone)} {META_DOT} {p.result}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-gray-500" data-testid="landscape-ticker-event-iso">
+                              {p.occurredAt}
                             </span>
                             {canLinkFinishedGames && p.gameId ? (
                               <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">

@@ -85,7 +85,7 @@ test.describe('profile rating ticker lane tabs (unit)', () => {
     const now = Date.parse('2026-06-07T12:00:00Z');
     const old = point({ id: 'old', occurredAt: '2020-01-01T12:00:00Z' });
     const recent = point({ id: 'recent', occurredAt: '2026-06-07T10:00:00Z' });
-    const dayOnly = filterPointsByLane([old, recent], 'day', now);
+    const dayOnly = filterPointsByLane([old, recent], 'day', now, 'UTC');
     expect(dayOnly.map((p) => p.id)).toEqual(['recent']);
     const overall = filterPointsByLane([old, recent], 'overall', now);
     expect(overall).toHaveLength(2);

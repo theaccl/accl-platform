@@ -8,6 +8,7 @@ import {
   landscapeTickerEmphasis,
   landscapeTickerStrokeStyle,
   paintedDominanceIds,
+  seriesIsDrawable,
 } from '../../lib/profile/landscapeTickerHierarchy';
 
 test.describe('landscape ticker stroke hierarchy', () => {
@@ -97,15 +98,28 @@ test.describe('landscape ticker stroke hierarchy', () => {
     ).toBe('settled-front');
   });
 
-  test('painted dominance excludes zero-point ids but keeps session order otherwise', () => {
+  test('painted dominance is drawable paths, including carry-in holds, excluding history-empty ids', () => {
     expect(
       paintedDominanceIds(['free_rapid', 'accl', 'free_blitz'], {
-        free_rapid: 2,
-        accl: 0,
-        free_blitz: 3,
+        free_rapid: true,
+        accl: false,
+        free_blitz: true,
       }),
     ).toEqual(['free_rapid', 'free_blitz']);
-    expect(paintedDominanceIds(['accl', 'tournament'], { accl: 0, tournament: 0 })).toEqual([]);
+    expect(paintedDominanceIds(['accl', 'tournament'], { accl: false, tournament: false })).toEqual(
+      [],
+    );
+    expect(
+      paintedDominanceIds(['free_rapid', 'free_blitz'], {
+        free_rapid: true,
+        free_blitz: true,
+      }),
+    ).toEqual(['free_rapid', 'free_blitz']);
+    expect(seriesIsDrawable({ pointCount: 2, carryInRating: null })).toBe(true);
+    expect(seriesIsDrawable({ pointCount: 0, carryInRating: 1500 })).toBe(true);
+    expect(seriesIsDrawable({ pointCount: 0, carryInRating: null })).toBe(false);
+    expect(seriesIsDrawable({ pointCount: 0, carryInRating: Number.NaN })).toBe(false);
+    expect(seriesIsDrawable({ pointCount: 0, carryInRating: Number.POSITIVE_INFINITY })).toBe(false);
   });
 
   test('correctness lane does not depend on React Bits or chart zoom/pan', () => {

@@ -95,7 +95,7 @@ test.describe('rating family comparison (unit)', () => {
       ],
       tournament: [],
     };
-    const series = filterMajorFamilySeriesByLane(buildMajorFamilySeriesData(history), 'week', now);
+    const series = filterMajorFamilySeriesByLane(buildMajorFamilySeriesData(history), 'week', now, 'UTC');
     const blitz = series.find((s) => s.trackId === 'free_blitz');
     expect(blitz?.points.map((p) => p.id)).toEqual(['recent']);
     expect(majorFamilyEmptyTrackIds(series)).toContain('tournament');
@@ -106,9 +106,9 @@ test.describe('rating family comparison (unit)', () => {
       point({ id: 'g1', ratingTrackId: 'free_rapid', occurredAt: '2026-05-01T12:00:00Z' }),
       point({ id: 'g2', ratingTrackId: 'free_rapid', occurredAt: '2026-05-20T12:00:00Z' }),
     ];
-    const filtered = filterPointsByLane(pts, 'month', Date.parse('2026-05-25T12:00:00Z'));
+    const filtered = filterPointsByLane(pts, 'month', Date.parse('2026-05-25T12:00:00Z'), 'UTC');
     expect(filtered.map((p) => p.id)).toEqual(['g1', 'g2']);
-    const dayOnly = filterPointsByLane(pts, 'day', Date.parse('2026-05-20T12:00:00Z'));
+    const dayOnly = filterPointsByLane(pts, 'day', Date.parse('2026-05-20T12:00:00Z'), 'UTC');
     expect(dayOnly.map((p) => p.id)).toEqual(['g2']);
   });
 

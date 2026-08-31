@@ -10,9 +10,13 @@ import {
 import {
   landscapeTickerPathFromPoints,
   landscapeTickerRatingDomain,
-  landscapeTickerTimeDomain,
+  toLandscapeTickerXMs,
   type LandscapeTickerPlotGeometry,
 } from '@/lib/profile/landscapeTickerPath';
+import { ticksForLaneWindow, type RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { formatOccurredAtInZone } from '@/lib/profile/ratingTickerTimeZone';
+import { RATING_LANE_EMPTY, RATING_TICKER_NO_HISTORY } from '@/components/profile/ratings/ratingTickerEmptyStates';
+import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 import {
   LANDSCAPE_TICKER_CASING_STROKE,
   landscapeTickerEmphasis,
@@ -35,6 +39,8 @@ export type LandscapeTickerChartSeries = {
   label: string;
   color: string;
   points: RatingHistoryPoint[];
+  /** Last real ratingAfter before the lane window; not a marker. */
+  carryInRating?: number | null;
   phase: 'hidden' | 'queued' | 'hero' | 'quiet' | 'instant' | 'settled';
   revealSerial: number | null;
   /** 0 = back-most; higher paints later / front-most. -1 = not yet introduced. */
@@ -43,12 +49,17 @@ export type LandscapeTickerChartSeries = {
 
 type Props = {
   series: LandscapeTickerChartSeries[];
+  lane: RatingLane;
+  timeZone: string;
+  nowMs: number;
+  window: RatingLaneWindow | null;
   canLinkFinishedGames: boolean;
   reducedMotion: boolean;
   onRevealComplete: (categoryId: LandscapeTickerCategoryId, serial: number) => void;
 };
 
-const PAD = 32;
+const PAD = 28;
+const AXIS_BAND = 22;
 const SPARK_DELAYS_MS = [90, 180, 270, 360] as const;
 
 type ActivePick = {
@@ -62,6 +73,10 @@ type NavPoint = ActivePick & { markerId: string };
 
 export function LandscapeRatingTickerChart({
   series,
+  lane,
+  timeZone,
+  nowMs,
+  window: laneWindow,
   canLinkFinishedGames,
   reducedMotion,
   onRevealComplete,
@@ -106,41 +121,65 @@ export function LandscapeRatingTickerChart({
     return () => ro.disconnect();
   }, []);
 
+  const axisBand = size.height < 160 ? 16 : AXIS_BAND;
+  const pad = size.height < 160 ? 20 : PAD;
+
   const geometry = useMemo((): LandscapeTickerPlotGeometry | null => {
+    if (!laneWindow) return null;
     const pointSets = visibleSeries.map((s) => s.points);
-    const time = landscapeTickerTimeDomain(pointSets);
-    const rating = landscapeTickerRatingDomain(pointSets);
-    if (!time || !rating) return null;
+    const extras = visibleSeries
+      .map((s) => s.carryInRating)
+      .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+    const rating = landscapeTickerRatingDomain(pointSets, extras) ?? { minR: 980, maxR: 1020 };
     return {
       width: size.width,
       height: size.height,
-      pad: PAD,
-      minT: time.minT,
-      maxT: time.maxT,
+      pad,
+      axisBand,
+      minT: laneWindow.startMs,
+      maxT: laneWindow.endMs,
       minR: rating.minR,
       maxR: rating.maxR,
     };
-  }, [visibleSeries, size.height, size.width]);
+  }, [visibleSeries, size.height, size.width, laneWindow, pad, axisBand]);
+
+  const hasRatingScale = useMemo(() => {
+    const extras = visibleSeries
+      .map((s) => s.carryInRating)
+      .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+    return landscapeTickerRatingDomain(visibleSeries.map((s) => s.points), extras) != null;
+  }, [visibleSeries]);
 
   const plotted = useMemo(() => {
     if (!geometry) return [];
     return visibleSeries.map((s) => {
-      const path = landscapeTickerPathFromPoints(s.points, geometry);
+      const path = landscapeTickerPathFromPoints(s.points, geometry, {
+        carryInRating: s.carryInRating,
+      });
       return { series: s, path };
     });
   }, [geometry, visibleSeries]);
 
-  const painted = useMemo(
-    () => plotted.filter((row): row is (typeof plotted)[number] & { path: NonNullable<(typeof plotted)[number]['path']> } =>
-      row.path != null,
-    ),
+  const drawable = useMemo(
+    () =>
+      plotted.filter(
+        (row): row is (typeof plotted)[number] & { path: NonNullable<(typeof plotted)[number]['path']> } =>
+          row.path != null,
+      ),
     [plotted],
   );
-  const paintedDominantId = painted[painted.length - 1]?.series.id ?? null;
+  const marked = useMemo(
+    () => drawable.filter((row) => row.path.plotted.length > 0),
+    [drawable],
+  );
+  const drawableDominantId = drawable[drawable.length - 1]?.series.id ?? null;
+  const dominantCarryInOnly = Boolean(
+    drawable.length > 0 && drawable[drawable.length - 1].path.plotted.length === 0,
+  );
 
   const navPoints = useMemo((): NavPoint[] => {
     const out: NavPoint[] = [];
-    for (const row of [...painted].reverse()) {
+    for (const row of [...marked].reverse()) {
       for (const pt of row.path.plotted) {
         out.push({
           seriesId: row.series.id,
@@ -152,12 +191,12 @@ export function LandscapeRatingTickerChart({
       }
     }
     return out;
-  }, [painted]);
+  }, [marked]);
 
   const activeReveal = visibleSeries.find(
     (s) => s.phase === 'hero' || s.phase === 'quiet' || s.phase === 'instant',
   );
-  const paintedReveal = painted.find(
+  const drawableReveal = drawable.find(
     (row) =>
       row.series.phase === 'hero' || row.series.phase === 'quiet' || row.series.phase === 'instant',
   );
@@ -165,7 +204,7 @@ export function LandscapeRatingTickerChart({
   const revealId = activeReveal?.id;
   const revealPhase = activeReveal?.phase;
   const revealTimerKey = landscapeTickerRevealTimerKey(revealSerial, revealPhase);
-  const revealIsDrawable = Boolean(paintedReveal && paintedReveal.series.id === revealId);
+  const revealIsDrawable = Boolean(drawableReveal && drawableReveal.series.id === revealId);
   const heroPulseSerial =
     !reducedMotion && revealPhase === 'hero' && revealIsDrawable && revealSerial != null
       ? revealSerial
@@ -201,11 +240,18 @@ export function LandscapeRatingTickerChart({
     );
   }, [heroPulseSerial, activeReveal?.id]);
 
-  const lineCount = painted.length;
+  const lineCount = drawable.length;
   const dramatic = !reducedMotion;
+  const ticks = useMemo(() => {
+    if (!laneWindow || !geometry) return [];
+    return ticksForLaneWindow(laneWindow, geometry.width - geometry.pad * 2);
+  }, [laneWindow, geometry]);
+  const seriesCount = visibleSeries.length;
   const chartLabel = active
-    ? `${active.label} rating ${active.point.ratingAfter}. Arrow keys move between points.`
-    : 'Landscape rating ticker plot. Arrow keys move between points.';
+    ? `${active.label} rating ${active.point.ratingAfter} at ${formatOccurredAtInZone(active.point.occurredAt, timeZone)}. Arrow keys move between rating events.`
+    : laneWindow
+      ? `Landscape rating ticker, ${lane} lane, ${timeZone}, ${laneWindow.caption}, ${seriesCount} visible ${seriesCount === 1 ? 'series' : 'series'}. Arrow keys move between rating events.`
+      : `Landscape rating ticker, ${lane} lane, ${timeZone}. ${RATING_TICKER_NO_HISTORY}`;
 
   function moveActive(delta: number) {
     if (navPoints.length === 0) return;
@@ -234,9 +280,18 @@ export function LandscapeRatingTickerChart({
         data-hero-pulse-serial={heroPulseSerial ?? 'none'}
         data-offset-path={offsetPathOk ? 'true' : 'false'}
         data-empty-open={visibleSeries.length === 0 ? 'true' : 'false'}
-        data-dominance-order={painted.map((row) => row.series.id).join(' ') || 'none'}
-        data-dominant-category={paintedDominantId ?? 'none'}
-        data-painted-count={painted.length}
+        data-dominance-order={drawable.map((row) => row.series.id).join(' ') || 'none'}
+        data-dominant-category={drawableDominantId ?? 'none'}
+        data-painted-count={drawable.length}
+        data-drawable-count={drawable.length}
+        data-marked-count={marked.length}
+        data-dominant-carry-in={dominantCarryInOnly ? 'true' : 'false'}
+        data-lane={lane}
+        data-time-zone={timeZone}
+        data-now-ms={String(nowMs)}
+        data-window-start={laneWindow ? String(laneWindow.startMs) : 'none'}
+        data-window-end={laneWindow ? String(laneWindow.endMs) : 'none'}
+        data-time-caption={laneWindow?.caption ?? RATING_TICKER_NO_HISTORY}
       >
         <svg
           viewBox={`0 0 ${size.width} ${size.height}`}
@@ -300,11 +355,11 @@ export function LandscapeRatingTickerChart({
             data-pulse-active={heroPulseSerial != null ? 'true' : 'false'}
           />
 
-          {geometry ? (
+          {geometry && hasRatingScale ? (
             <>
               <text
                 x={8}
-                y={PAD + 2}
+                y={pad + 2}
                 fill="#9ca3af"
                 fontSize="11"
                 className="tabular-nums"
@@ -314,7 +369,7 @@ export function LandscapeRatingTickerChart({
               </text>
               <text
                 x={8}
-                y={size.height - 14}
+                y={size.height - (geometry.axisBand ?? AXIS_BAND) - 4}
                 fill="#9ca3af"
                 fontSize="11"
                 className="tabular-nums"
@@ -324,13 +379,80 @@ export function LandscapeRatingTickerChart({
               </text>
             </>
           ) : null}
+
+          {geometry && laneWindow ? (
+            <g data-testid="landscape-ticker-x-axis" aria-hidden="true">
+              {ticks.map((tick) => {
+                const x = toLandscapeTickerXMs(tick.t, geometry);
+                const y1 = pad;
+                const y2 = size.height - (geometry.axisBand ?? AXIS_BAND);
+                return (
+                  <g key={`${tick.priority}-${tick.t}`}>
+                    {tick.priority !== 'endpoint' ? (
+                      <line
+                        x1={x}
+                        x2={x}
+                        y1={y1}
+                        y2={y2}
+                        stroke="#1e293b"
+                        strokeWidth="1"
+                        opacity={tick.priority === 'secondary' ? 0.35 : 0.5}
+                      />
+                    ) : null}
+                    <text
+                      x={x}
+                      y={size.height - 6}
+                      fill="#9ca3af"
+                      fontSize="9"
+                      textAnchor="middle"
+                      className="tabular-nums"
+                      data-testid={`landscape-ticker-x-tick-${tick.priority}`}
+                      data-tick-priority={tick.priority}
+                    >
+                      {tick.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
+
+          {laneWindow ? (
+            <text
+              x={size.width / 2}
+              y={11}
+              fill="#94a3b8"
+              fontSize="10"
+              textAnchor="middle"
+              data-testid="landscape-ticker-time-caption"
+            >
+              {laneWindow.caption}
+            </text>
+          ) : (
+            <text
+              x={size.width / 2}
+              y={size.height / 2}
+              fill="#9ca3af"
+              fontSize="12"
+              textAnchor="middle"
+              data-testid="landscape-ticker-time-caption"
+            >
+              {RATING_TICKER_NO_HISTORY}
+            </text>
+          )}
+          <desc data-testid="landscape-ticker-axis-description">
+            {laneWindow
+              ? `Time axis, ${lane} lane, timezone ${timeZone}, ${laneWindow.caption}. Keyboard navigation visits real rating events only. Inactive held periods are not focus stops.`
+              : `Time axis, ${lane} lane, timezone ${timeZone}. ${RATING_TICKER_NO_HISTORY}`}
+          </desc>
         </svg>
 
         <div className={styles.seriesStack} data-testid="landscape-ticker-series-stack">
-          {painted.map((row, paintIndex) => {
+          {drawable.map((row, paintIndex) => {
             const { series: s, path } = row;
-            const hero = s.phase === 'hero' && dramatic && path.plotted.length > 1;
-            const quiet = s.phase === 'quiet' && dramatic && path.plotted.length > 1;
+            const pathDrawable = path.d.includes(' L ');
+            const hero = s.phase === 'hero' && dramatic && pathDrawable;
+            const quiet = s.phase === 'quiet' && dramatic && pathDrawable;
             const heroMotion = hero && offsetPathOk;
             const glowClass = hero
               ? styles.heroGlow
@@ -343,11 +465,12 @@ export function LandscapeRatingTickerChart({
                 ? styles.quietCore
                 : styles.settledCore;
             const last = path.plotted[path.plotted.length - 1];
-            const frontMost = paintedDominantId === s.id;
+            const frontMost = drawableDominantId === s.id;
+            const carryInOnly = path.plotted.length === 0;
             const emphasis = landscapeTickerEmphasis({
               phase: s.phase,
               frontMost,
-              revealActive: Boolean(paintedReveal),
+              revealActive: Boolean(drawableReveal),
               reducedMotion,
             });
             const stroke = landscapeTickerStrokeStyle(emphasis);
@@ -389,6 +512,7 @@ export function LandscapeRatingTickerChart({
                 data-dominance-rank={s.dominanceRank ?? paintIndex}
                 data-paint-index={paintIndex}
                 data-dominant={frontMost ? 'true' : 'false'}
+                data-carry-in-only={carryInOnly ? 'true' : 'false'}
                 data-emphasis={emphasis}
                 data-recessed={emphasis === 'recessed' ? 'true' : 'false'}
                 data-core-width={stroke.core}
@@ -546,7 +670,7 @@ export function LandscapeRatingTickerChart({
                         role="img"
                         tabIndex={-1}
                         focusable="false"
-                        aria-label={`${s.label} rating ${pt.point.ratingAfter}`}
+                        aria-label={`${s.label} rating ${pt.point.ratingAfter} at ${formatOccurredAtInZone(pt.point.occurredAt, timeZone)}`}
                         onClick={() =>
                           setActive({
                             seriesId: s.id,
@@ -573,12 +697,12 @@ export function LandscapeRatingTickerChart({
           </p>
         ) : null}
 
-        {visibleSeries.length > 0 && painted.length === 0 ? (
+        {visibleSeries.length > 0 && drawable.length === 0 && laneWindow ? (
           <p
-            className="pointer-events-none absolute inset-0 m-0 flex items-center justify-center px-4 text-center text-sm text-gray-400"
+            className="pointer-events-none absolute inset-x-0 top-8 m-0 px-4 text-center text-sm text-gray-400"
             data-testid="landscape-ticker-zero-event-plot"
           >
-            No rating movement in this lane for the selected categories.
+            {RATING_LANE_EMPTY}
           </p>
         ) : null}
       </div>
@@ -606,7 +730,14 @@ export function LandscapeRatingTickerChart({
             </span>
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            {new Date(active.point.occurredAt).toLocaleString()} {'\u00B7'} {active.point.result}
+            <span data-testid="landscape-ticker-point-time">
+              {formatOccurredAtInZone(active.point.occurredAt, timeZone)}
+            </span>
+            {' \u00B7 '}
+            {active.point.result}
+          </p>
+          <p className="mt-0.5 text-[11px] text-gray-500" data-testid="landscape-ticker-point-iso">
+            {active.point.occurredAt}
           </p>
           {canLinkFinishedGames && active.point.gameId ? (
             <p className="mt-2 mb-0 flex flex-wrap gap-x-3 gap-y-1">

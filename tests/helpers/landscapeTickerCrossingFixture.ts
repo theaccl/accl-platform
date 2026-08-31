@@ -1,15 +1,14 @@
 /**
  * Test-only intersecting rating histories.
- * Not production ledger data. Chart math is unchanged.
+ * Not production ledger data.
  *
- * Shared times T0/T1/T2 so segments occupy the same x-span:
+ * Shared times T0/T1/T2:
  *   Blitz  1600 → 1400 → 1600
  *   Rapid  1400 → 1600 → 1400
  *   Daily  1550 → 1400 → 1550  (T1/1400 is an exact shared vertex with Blitz)
  *
- * Mid-segment crossings:
- *   Blitz×Rapid on [T0,T1] and [T1,T2] at rating 1500
- *   Daily×Rapid on [T0,T1] and [T1,T2]
+ * Compact comparison still uses linear polylines, so mid-segment u remains
+ * compact-only evidence. Landscape event-hold paths do not cross during holds.
  */
 import {
   landscapeTickerPathFromPoints,
@@ -148,6 +147,8 @@ function segmentMeet(
 
 export const BLITZ_RAPID_CROSS_U = 0.5;
 export const DAILY_RAPID_FIRST_CROSS_U = (1400 - 1550) / (1400 - 1550 - (1600 - 1400));
+/** Next real event vertex (T1), not a mid-hold interpolation. */
+export const SHARED_EVENT_SAMPLE_U = 1;
 
 export function landscapeTickerCrossingHits(): CrossingHit[] {
   const bz = LANDSCAPE_TICKER_CROSSING_HISTORY.free_blitz.map((p) => p.ratingAfter);

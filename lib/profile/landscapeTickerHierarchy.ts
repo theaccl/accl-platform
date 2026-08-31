@@ -101,12 +101,25 @@ export function landscapeTickerEmphasis(input: {
 }
 
 /**
- * Painted dominance excludes selected categories with no drawable points.
- * Session selection may still retain those ids.
+ * A series is drawable when it has a real in-window event or a legitimate
+ * carry-in hold. Truly history-empty series are not drawable and cannot be
+ * painted-dominant. Drawable is not the same as "has an in-window marker."
+ */
+export function seriesIsDrawable(input: {
+  pointCount?: number;
+  carryInRating?: number | null;
+}): boolean {
+  if ((input.pointCount ?? 0) > 0) return true;
+  return typeof input.carryInRating === 'number' && Number.isFinite(input.carryInRating);
+}
+
+/**
+ * Painted dominance is activation order over drawable paths only.
+ * Session selection may still retain history-empty ids; they leave no z-gap.
  */
 export function paintedDominanceIds(
   visibleOrder: readonly string[],
-  pointCountById: Readonly<Record<string, number>>,
+  drawableById: Readonly<Record<string, boolean>>,
 ): string[] {
-  return visibleOrder.filter((id) => (pointCountById[id] ?? 0) > 0);
+  return visibleOrder.filter((id) => drawableById[id] === true);
 }

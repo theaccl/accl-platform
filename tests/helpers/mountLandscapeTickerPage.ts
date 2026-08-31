@@ -72,6 +72,8 @@ export type MountTickerOptions = {
   empty?: boolean;
   open?: boolean;
   crossing?: boolean;
+  carryIn?: boolean;
+  carryInRapid?: boolean;
   reducedMotion?: boolean;
   forceOffsetPath?: boolean;
   viewport?: { width: number; height: number };
@@ -138,6 +140,8 @@ export async function mountLandscapeTicker(page: Page, opts: MountTickerOptions 
     empty: Boolean(opts.empty),
     open: opts.open !== false,
     crossing: Boolean(opts.crossing),
+    carryIn: Boolean(opts.carryIn),
+    carryInRapid: Boolean(opts.carryInRapid),
   };
   const offsetPathMock =
     opts.forceOffsetPath === false

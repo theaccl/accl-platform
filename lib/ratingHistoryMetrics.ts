@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Pure, ledger-derived metric + filter helpers for the Profile rating ticker.
  *
  * Phase 1 doctrine:
@@ -8,6 +8,8 @@
  *    and never touch Elo / settlement / the ledger writer.
  */
 
+import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { resolveTimeZone } from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 export type RatingLane = 'day' | 'week' | 'month' | 'year' | 'overall';
@@ -36,58 +38,52 @@ export const RATING_RESULT_FILTER_LABELS: Record<RatingResultFilter, string> = {
 export type WinLossDrawCounts = { wins: number; losses: number; draws: number };
 export type CurrentStreak = { kind: 'win' | 'loss' | 'draw'; length: number };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function sortChronological(points: RatingHistoryPoint[]): RatingHistoryPoint[] {
   return [...points].sort(
     (a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id),
   );
 }
 
-function isSameLocalDay(timeMs: number, nowMs: number): boolean {
-  const d = new Date(timeMs);
-  const n = new Date(nowMs);
-  return (
-    d.getFullYear() === n.getFullYear() &&
-    d.getMonth() === n.getMonth() &&
-    d.getDate() === n.getDate()
-  );
-}
-
-/** Trailing-window start (inclusive) for week/month/year. */
-function laneTrailingStartMs(lane: RatingLane, nowMs: number): number {
-  if (lane === 'week') return nowMs - 7 * DAY_MS;
-  if (lane === 'month') return nowMs - 30 * DAY_MS;
-  if (lane === 'year') {
-    const d = new Date(nowMs);
-    d.setFullYear(d.getFullYear() - 1);
-    return d.getTime();
-  }
-  return nowMs;
-}
-
 /**
- * Lane filter (view window only):
- *  - day:     points whose local calendar date equals `now`'s local date
- *  - week:    trailing 7 days  [now-7d, now]
- *  - month:   trailing 30 days [now-30d, now]
- *  - year:    trailing 12 months [now-1y, now]
- *  - overall: every loaded point
- * Lower/upper bounds inclusive; invalid timestamps are dropped.
+ * Lane filter (view window only). Calendar/ISO bounds in the resolved IANA zone:
+ *  - day:     player-zone calendar day containing `now`
+ *  - week:    ISO 8601 Monday–Sunday containing `now`
+ *  - month:   calendar month containing `now`
+ *  - year:    calendar year containing `now`
+ *  - overall: every loaded point with a valid timestamp
+ * Start inclusive, end exclusive. Invalid timestamps are dropped.
+ * Does not create ratings or touch Elo / settlement / the ledger writer.
  */
 export function filterPointsByLane(
   points: RatingHistoryPoint[],
   lane: RatingLane,
   now: number = Date.now(),
+  timeZone?: string,
 ): RatingHistoryPoint[] {
-  if (lane === 'overall') return [...points];
+  if (lane === 'overall') {
+    return points.filter((p) => Number.isFinite(Date.parse(p.occurredAt)));
+  }
+  const tz = resolveTimeZone(timeZone);
+  const window = ratingLaneWindow(lane, now, tz);
+  if (!window) return [];
   return points.filter((p) => {
     const t = Date.parse(p.occurredAt);
     if (!Number.isFinite(t)) return false;
-    if (lane === 'day') return isSameLocalDay(t, now);
-    const start = laneTrailingStartMs(lane, now);
-    return t >= start && t <= now;
+    return t >= window.startMs && t < window.endMs;
   });
+}
+
+/** Last real ratingAfter strictly before `startMs`. Null when no prior event exists. */
+export function lastRatingAfterBefore(
+  points: RatingHistoryPoint[],
+  startMs: number,
+): number | null {
+  const prior = sortChronological(points).filter((p) => {
+    const t = Date.parse(p.occurredAt);
+    return Number.isFinite(t) && t < startMs;
+  });
+  if (prior.length === 0) return null;
+  return prior[prior.length - 1].ratingAfter;
 }
 
 /** Result filter (chart only). `all` passes through; decisive filters exclude `event_settlement`. */
