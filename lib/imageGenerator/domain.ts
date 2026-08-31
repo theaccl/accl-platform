@@ -3,6 +3,9 @@ export const PROFILE_MOTION_ENTITLEMENT = 'profile_motion' as const;
 export const MAX_IMAGE_CANDIDATES = 4;
 export const CANDIDATE_REVIEW_HOURS = 24;
 export const CANDIDATE_SIGNED_URL_SECONDS = 60;
+export const REFERENCE_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+export const REFERENCE_IMAGE_MAX_DIMENSION = 4096;
+export const REFERENCE_IMAGE_MIN_DIMENSION = 256;
 
 export type ImageGenerationStatus =
   | 'queued'
@@ -25,8 +28,25 @@ export type ImageGenerationRequestRow = {
   model: string | null;
   candidate_count: number;
   idempotency_key: string;
+  reference_id: string | null;
   attempt_count: number;
   review_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImageGenerationReferenceRow = {
+  id: string;
+  owner_id: string;
+  status: 'ready' | 'cleanup_pending' | 'deleted' | 'rejected';
+  storage_path: string;
+  mime_type: 'image/png' | 'image/jpeg' | 'image/webp';
+  byte_size: number;
+  width: number;
+  height: number;
+  sha256: string;
+  expires_at: string;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 };

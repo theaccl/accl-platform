@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { extensionForMimeType } from '@/lib/imageGenerator/domain';
+import {
+  extensionForMimeType,
+  type ImageGenerationReferenceRow,
+} from '@/lib/imageGenerator/domain';
 import { parseClaimedRequest, type ImageGenerationProvider } from '@/lib/imageGenerator/provider';
 import {
   moderateImagePrompt,
@@ -18,6 +21,23 @@ export type ImageGenerationProcessResult = {
 };
 
 const MAX_QUEUE_ATTEMPTS = 3;
+
+async function disposeReferenceImage(
+  supabase: SupabaseClient,
+  referenceId: string | null,
+  storagePath: string | null
+): Promise<void> {
+  if (!referenceId || !storagePath) return;
+  const removed = await supabase.storage.from('image-generation-references').remove([storagePath]);
+  await supabase
+    .from('image_generation_references')
+    .update({
+      status: removed.error ? 'cleanup_pending' : 'deleted',
+      deleted_at: removed.error ? null : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', referenceId);
+}
 
 export function isTransientImageGenerationError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
@@ -52,15 +72,43 @@ export async function processOneImageGeneration(
   if (!request) return { claimed: false };
 
   const uploadedPaths: string[] = [];
+  let referenceStoragePath: string | null = null;
   try {
     const promptSafety = moderateImagePrompt(request.prompt);
     if (!promptSafety.allowed) throw new Error(`prompt_safety_rejected:${promptSafety.code}`);
+
+    let referenceImage:
+      | { bytes: Uint8Array; mimeType: 'image/png' | 'image/jpeg' | 'image/webp' }
+      | undefined;
+    if (request.reference_id) {
+      const referenceResult = await supabase
+        .from('image_generation_references')
+        .select('id,owner_id,status,storage_path,mime_type,byte_size,width,height,sha256,expires_at,deleted_at,created_at,updated_at')
+        .eq('id', request.reference_id)
+        .eq('owner_id', request.owner_id)
+        .eq('status', 'ready')
+        .maybeSingle();
+      const reference = referenceResult.data as ImageGenerationReferenceRow | null;
+      if (referenceResult.error || !reference || new Date(reference.expires_at).getTime() <= Date.now()) {
+        throw new Error('reference_image_unavailable');
+      }
+      referenceStoragePath = reference.storage_path;
+      const downloaded = await supabase.storage
+        .from('image-generation-references')
+        .download(reference.storage_path);
+      if (downloaded.error) throw new Error(`reference_download_failed:${downloaded.error.message}`);
+      referenceImage = {
+        bytes: new Uint8Array(await downloaded.data.arrayBuffer()),
+        mimeType: reference.mime_type,
+      };
+    }
 
     const generated = await provider.generate({
       prompt: request.prompt,
       candidateCount: request.candidate_count,
       requestId: request.id,
       ownerId: request.owner_id,
+      referenceImage,
     });
     for (let index = 0; index < generated.length; index++) {
       const candidate = generated[index];
@@ -102,6 +150,7 @@ export async function processOneImageGeneration(
     if (finalized.error || finalized.data !== true) {
       throw new Error(`request_finalize_failed:${finalized.error?.message ?? 'not_running'}`);
     }
+    await disposeReferenceImage(supabase, request.reference_id, referenceStoragePath);
     return {
       claimed: true,
       request_id: request.id,
@@ -126,6 +175,9 @@ export async function processOneImageGeneration(
       finalized.data && typeof finalized.data === 'object' && finalized.data.status === 'queued'
         ? 'queued'
         : 'failed';
+    if (finalStatus === 'failed') {
+      await disposeReferenceImage(supabase, request.reference_id, referenceStoragePath);
+    }
     return {
       claimed: true,
       request_id: request.id,

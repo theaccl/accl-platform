@@ -22,6 +22,10 @@ export interface ImageGenerationProvider {
     candidateCount: number;
     requestId: string;
     ownerId: string;
+    referenceImage?: {
+      bytes: Uint8Array;
+      mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+    };
   }): Promise<GeneratedImage[]>;
 }
 
@@ -46,6 +50,10 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
     candidateCount: number;
     requestId: string;
     ownerId: string;
+    referenceImage?: {
+      bytes: Uint8Array;
+      mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+    };
   }): Promise<GeneratedImage[]> {
     if (!Number.isInteger(input.candidateCount) || input.candidateCount < 1 || input.candidateCount > 4) {
       throw new Error('provider_candidate_count_invalid');
@@ -53,7 +61,9 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
 
     const result = await this.generateImageFn({
       model: this.model,
-      prompt: input.prompt,
+      prompt: input.referenceImage
+        ? { text: input.prompt, images: [input.referenceImage.bytes] }
+        : input.prompt,
       n: input.candidateCount,
       maxImagesPerCall: 4,
       size: IMAGE_GENERATION_SIZE,

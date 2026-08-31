@@ -62,6 +62,37 @@ test('provider requests four private, medium-quality, moderated square candidate
   });
 });
 
+test('provider uses the sanitized reference image together with the written direction', async () => {
+  let call: Record<string, unknown> | undefined;
+  const referenceBytes = new Uint8Array([82, 69, 70]);
+  const fakeGenerateImage = async (options: Record<string, unknown>) => {
+    call = options;
+    return {
+      images: Array.from({ length: 4 }, () => ({
+        uint8Array: new Uint8Array([137, 80, 78, 71]),
+        mediaType: 'image/png',
+      })),
+    };
+  };
+  const provider = new VercelGatewayImageGenerationProvider(
+    DEFAULT_IMAGE_GENERATION_MODEL,
+    fakeGenerateImage as never
+  );
+
+  await provider.generate({
+    prompt: 'Keep the silhouette and add a sovereign gold chess atmosphere',
+    candidateCount: 4,
+    requestId: 'request-with-reference',
+    ownerId: 'player-456',
+    referenceImage: { bytes: referenceBytes, mimeType: 'image/webp' },
+  });
+
+  expect(call?.prompt).toEqual({
+    text: 'Keep the silhouette and add a sovereign gold chess atmosphere',
+    images: [referenceBytes],
+  });
+});
+
 test('provider rejects an incomplete candidate response', async () => {
   const fakeGenerateImage = async () => ({
     images: [{ uint8Array: new Uint8Array([1]), mediaType: 'image/png' }],

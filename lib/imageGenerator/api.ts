@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const createGenerationSchema = z.object({
   prompt: z.string().trim().min(1).max(2000),
   candidate_count: z.number().int().min(1).max(4).default(4),
+  reference_id: z.string().uuid().nullable().optional(),
 });
 
 export const approveCandidateSchema = z.object({

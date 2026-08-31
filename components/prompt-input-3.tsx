@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Castle, Crown, Shield, Sparkles } from "lucide-react";
+import { Castle, Crown, ImagePlus, LockKeyhole, Shield, Sparkles, X } from "lucide-react";
 
 const SUGGESTIONS = [
   {
@@ -35,6 +36,11 @@ type PromptInput3Props = {
   busy?: boolean;
   disabled?: boolean;
   maxLength?: number;
+  referencePreviewUrl?: string | null;
+  referenceName?: string | null;
+  referenceError?: string | null;
+  onReferenceSelect?: (file: File) => void;
+  onReferenceRemove?: () => void;
 };
 
 export default function PromptInput3({
@@ -44,8 +50,14 @@ export default function PromptInput3({
   busy = false,
   disabled = false,
   maxLength = 2000,
+  referencePreviewUrl = null,
+  referenceName = null,
+  referenceError = null,
+  onReferenceSelect,
+  onReferenceRemove,
 }: PromptInput3Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -74,6 +86,43 @@ export default function PromptInput3({
   return (
     <div className="w-full">
       <div className="rounded-[var(--rb-r-2xl)] border border-[var(--accl-border-strong)] bg-[linear-gradient(145deg,var(--accl-bg-card),var(--accl-bg-elevated))] shadow-[var(--accl-shadow-card)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--accl-accent-gold)] focus-within:shadow-[0_0_0_1px_rgba(212,160,23,0.18),var(--accl-shadow-card)]">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="sr-only"
+          disabled={disabled || busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onReferenceSelect?.(file);
+            event.target.value = "";
+          }}
+        />
+        <div className="border-b border-[var(--accl-border-subtle)] p-3">
+          {referencePreviewUrl ? (
+            <div className="flex items-center gap-3 rounded-xl border border-[rgba(212,160,23,0.3)] bg-[rgba(212,160,23,0.07)] p-2.5">
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/30">
+                <Image src={referencePreviewUrl} alt="Selected private reference" fill sizes="64px" unoptimized className="object-cover" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">{referenceName ?? "Reference image"}</p>
+                <p className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--accl-text-muted)]"><LockKeyhole className="h-3 w-3 text-[var(--accl-accent-gold)]" aria-hidden /> Private · used to guide this generation only</p>
+              </div>
+              <button type="button" onClick={onReferenceRemove} disabled={disabled || busy} aria-label="Remove reference image" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 text-white/50 transition hover:border-red-400/40 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-40"><X className="h-4 w-4" aria-hidden /></button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={disabled || busy}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex w-full items-center gap-3 rounded-xl border border-dashed border-[var(--accl-border-strong)] bg-black/10 px-4 py-3 text-left transition hover:border-[var(--accl-accent-gold)] hover:bg-[rgba(212,160,23,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[rgba(212,160,23,0.1)] text-[var(--accl-accent-gold)]"><ImagePlus className="h-5 w-5" aria-hidden /></span>
+              <span><strong className="block text-sm text-white">Add reference image</strong><span className="mt-0.5 block text-[11px] text-[var(--accl-text-muted)]">Optional · PNG, JPEG, or WebP · up to 4 MB</span></span>
+            </button>
+          )}
+          {referenceError ? <p className="mt-2 px-1 text-xs text-red-300" role="alert">{referenceError}</p> : null}
+        </div>
         <label htmlFor="image-generator-prompt" className="sr-only">
           Describe the profile image you want ACCL to generate
         </label>

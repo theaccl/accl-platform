@@ -19,6 +19,27 @@ async function processRequest(request: Request, batch: number): Promise<Response
   if (!provider) return jsonResponse({ error: 'Image generation provider is not configured' }, 503);
 
   const supabase = createServiceRoleClient();
+  const expiredReferences = await supabase
+    .from('image_generation_references')
+    .select('id,storage_path')
+    .in('status', ['ready', 'cleanup_pending'])
+    .lte('expires_at', new Date().toISOString())
+    .order('expires_at')
+    .limit(20);
+  let referenceCleanupError: string | null = expiredReferences.error?.message ?? null;
+  if (!expiredReferences.error && (expiredReferences.data?.length ?? 0) > 0) {
+    const paths = expiredReferences.data!.map((row) => row.storage_path);
+    const removed = await supabase.storage.from('image-generation-references').remove(paths);
+    referenceCleanupError = removed.error?.message ?? null;
+    await supabase
+      .from('image_generation_references')
+      .update({
+        status: removed.error ? 'cleanup_pending' : 'deleted',
+        deleted_at: removed.error ? null : new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', expiredReferences.data!.map((row) => row.id));
+  }
   const recovered = await supabase.rpc('recover_stale_image_generation_requests', {
     p_stale_after_seconds: 360,
     p_limit: 10,
@@ -39,6 +60,7 @@ async function processRequest(request: Request, batch: number): Promise<Response
     model: provider.model,
     recovered_count: recoveredRows.length,
     recovery_cleanup_error: staleCleanup.error?.message ?? null,
+    reference_cleanup_error: referenceCleanupError,
     results,
   });
 }

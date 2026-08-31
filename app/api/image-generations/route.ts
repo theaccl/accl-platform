@@ -39,6 +39,7 @@ export async function POST(request: Request): Promise<Response> {
       p_prompt: parsed.data.prompt,
       p_candidate_count: parsed.data.candidate_count,
       p_idempotency_key: idempotencyKey,
+      p_reference_id: parsed.data.reference_id ?? null,
       p_provider: provider,
       p_model: model,
     });
