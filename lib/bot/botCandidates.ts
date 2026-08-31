@@ -33,6 +33,13 @@ export type BotCandidateBuildOptions = {
   onEngineFailure?: (error: unknown) => void;
 };
 
+export function shouldAuditBotEngineDegradation(
+  profile: Pick<BotDifficultyProfile, 'useEngine'>,
+  rationale: string,
+): boolean {
+  return profile.useEngine && rationale.startsWith('static-fallback:');
+}
+
 function withOpeningReference(
   fen: string,
   lines: BotCandidateLine[],

@@ -1,6 +1,9 @@
 import { Chess } from 'chess.js';
 
-import { buildBotCandidatesFromFen } from '@/lib/bot/botCandidates';
+import {
+  buildBotCandidatesFromFen,
+  shouldAuditBotEngineDegradation,
+} from '@/lib/bot/botCandidates';
 import { getBotDifficultyProfile, randomThinkTimeMs } from '@/lib/bot/botDifficulty';
 import {
   applySanitizedUciToBoard,
@@ -234,7 +237,7 @@ export async function commitBotGameTurn(
       };
     }
 
-    if (selected.rationale.startsWith('static-fallback:')) {
+    if (shouldAuditBotEngineDegradation(difficultyProfile, selected.rationale)) {
       auditApiLog('bot_move_engine_degraded', {
         game_id: shortId(gameId),
         difficulty: pre.botConfig.accl_bot_v1.difficulty,

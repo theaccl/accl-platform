@@ -6,7 +6,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 
-import { buildBotCandidatesFromFen } from '@/lib/bot/botCandidates';
+import {
+  buildBotCandidatesFromFen,
+  shouldAuditBotEngineDegradation,
+} from '@/lib/bot/botCandidates';
 import { getBotDifficultyProfile } from '@/lib/bot/botDifficulty';
 import { assessStaticBotMove } from '@/lib/bot/botMoveSafety';
 import { botOpeningReferenceMoves } from '@/lib/bot/botOpeningBook';
@@ -377,6 +380,48 @@ test.describe('Aggressive 1.d4 server-only opening reference', () => {
     const start = readFileSync(join(process.cwd(), 'app', 'api', 'bot', 'game', 'start', 'route.ts'), 'utf8');
     expect(start).toContain("source_type");
     expect(start).toContain('resolveAuthenticatedUser');
+  });
+});
+
+test.describe('bot engine degradation telemetry', () => {
+  test('does not report intentional non-engine static play', async () => {
+    const profile = getBotDifficultyProfile(1);
+    const candidates = await buildBotCandidatesFromFen(fenAfter(['d2d4']), profile);
+    const selected = selectBotMoveForStyle('balanced', candidates, 1, 0, () => 0);
+
+    expect(profile.useEngine).toBe(false);
+    expect(selected?.rationale).toContain('static-fallback:');
+    expect(shouldAuditBotEngineDegradation(profile, selected?.rationale ?? '')).toBe(false);
+  });
+
+  test('reports an engine-enabled profile only after evaluation falls back', async () => {
+    const profile = getBotDifficultyProfile(3);
+    let evaluationAttempts = 0;
+    const candidates = await buildBotCandidatesFromFen(fenAfter(['d2d4']), profile, {
+      evaluatePosition: async () => {
+        evaluationAttempts += 1;
+        throw new Error('synthetic_engine_failure');
+      },
+    });
+    const selected = selectBotMoveForStyle('balanced', candidates, 3, 0, () => 0);
+
+    expect(evaluationAttempts).toBe(1);
+    expect(selected?.rationale).toContain('static-fallback:');
+    expect(shouldAuditBotEngineDegradation(profile, selected?.rationale ?? '')).toBe(true);
+  });
+
+  test('does not report a healthy engine selection', async () => {
+    const profile = getBotDifficultyProfile(3);
+    const candidates = await buildBotCandidatesFromFen(fenAfter(['d2d4']), profile, {
+      evaluatePosition: async () => ({
+        bestMove: 'g8f6',
+        lines: [{ rank: 1, move: 'g8f6', scoreCp: 25 }],
+      }),
+    });
+    const selected = selectBotMoveForStyle('balanced', candidates, 3, 0, () => 0);
+
+    expect(selected?.rationale).toContain('engine-safe:');
+    expect(shouldAuditBotEngineDegradation(profile, selected?.rationale ?? '')).toBe(false);
   });
 });
 
