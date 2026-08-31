@@ -82,6 +82,36 @@ export async function processOneImageGeneration(
       bytes: Uint8Array;
       mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
     }> = [];
+    if (request.parent_saved_creation_id) {
+      const savedCreationResult = await supabase
+        .from('image_saved_creations')
+        .select('candidate_id')
+        .eq('id', request.parent_saved_creation_id)
+        .eq('owner_id', request.owner_id)
+        .eq('status', 'active')
+        .single();
+      if (savedCreationResult.error || !savedCreationResult.data) {
+        throw new Error('saved_creation_source_unavailable');
+      }
+      const savedCandidateResult = await supabase
+        .from('image_generation_candidates')
+        .select('storage_path,mime_type')
+        .eq('id', savedCreationResult.data.candidate_id)
+        .eq('owner_id', request.owner_id)
+        .eq('status', 'approved')
+        .single();
+      if (savedCandidateResult.error || !savedCandidateResult.data) {
+        throw new Error('saved_creation_candidate_unavailable');
+      }
+      const savedSource = await supabase.storage
+        .from('image-generation-candidates')
+        .download(savedCandidateResult.data.storage_path);
+      if (savedSource.error) throw new Error(`saved_creation_download_failed:${savedSource.error.message}`);
+      referenceImages.push({
+        bytes: new Uint8Array(await savedSource.data.arrayBuffer()),
+        mimeType: savedCandidateResult.data.mime_type,
+      });
+    }
     const referenceIds = [request.reference_id, request.reference_id_2].filter(
       (id): id is string => Boolean(id)
     );

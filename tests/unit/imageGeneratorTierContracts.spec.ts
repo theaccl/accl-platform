@@ -76,3 +76,19 @@ test('Plus and Pro guided refinements stay inside the original token-funded comm
   expect(recovery).toContain("failure_code = 'worker_interrupted'");
   expect(screen).toContain('without spending another token');
 });
+
+test('accepted creations preserve immutable Pro evolution lineage', async () => {
+  const sql = await source('supabase/migrations/20260831072000_saved_creation_lineage.sql');
+  const worker = await source('lib/imageGenerator/worker.ts');
+  const vault = await source('components/image-generator/SavedCreationsCard.tsx');
+
+  expect(sql).toContain('create table public.image_saved_creations');
+  expect(sql).toContain('parent_creation_id uuid references public.image_saved_creations');
+  expect(sql).toContain('root_creation_id uuid references public.image_saved_creations');
+  expect(sql).toContain('create trigger preserve_approved_image_creation_trigger');
+  expect(sql).toContain('furthering a saved creation requires Pro');
+  expect(sql).toContain("p_prompt, 5::smallint");
+  expect(worker).toContain('request.parent_saved_creation_id');
+  expect(worker).toContain(".from('image_saved_creations')");
+  expect(vault).toContain('Spend 1 token and further');
+});

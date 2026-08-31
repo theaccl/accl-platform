@@ -37,6 +37,7 @@ export type ImageGenerationRequestRow = {
   idempotency_key: string;
   reference_id: string | null;
   reference_id_2: string | null;
+  parent_saved_creation_id: string | null;
   attempt_count: number;
   review_expires_at: string | null;
   created_at: string;

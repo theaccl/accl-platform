@@ -1,6 +1,7 @@
 import NavigationBar from "@/components/NavigationBar";
 import HomeButton from "@/components/HomeButton";
 import { GenerationTokenCard } from "@/components/image-generator/GenerationTokenCard";
+import { SavedCreationsCard } from "@/components/image-generator/SavedCreationsCard";
 
 export default function VaultPage() {
   return (
@@ -11,6 +12,7 @@ export default function VaultPage() {
         <h1 className="text-3xl font-bold mb-4">VAULT</h1>
 
         <GenerationTokenCard />
+        <SavedCreationsCard />
 
         <div className="flex flex-col items-center gap-5 pt-3">
           <HomeButton label="FREE VAULT" route="/vault/free" comingSoon />
