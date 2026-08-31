@@ -33,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
         .maybeSingle(),
       supabase
         .from('internal_generator_unlimited_grants')
-        .select('status')
+        .select('status,user_id')
         .eq('email_normalized', normalizedEmail)
         .eq('status', 'active')
         .maybeSingle(),
@@ -50,7 +50,8 @@ export async function POST(request: Request): Promise<Response> {
       (!internalGrant.error &&
         normalizedEmail.length > 0 &&
         Boolean(user.email_confirmed_at) &&
-        internalGrant.data?.status === 'active') ||
+        internalGrant.data?.status === 'active' &&
+        (internalGrant.data.user_id === null || internalGrant.data.user_id === user.id)) ||
       (!tokenAccount.error && (tokenAccount.data?.balance ?? 0) > 0);
     if (!active) return jsonResponse({ error: 'Image Generator access is required' }, 403);
 

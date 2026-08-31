@@ -43,6 +43,19 @@ const economyMigration = readFileSync(
   ),
   'utf8'
 );
+const entitlementRoute = readFileSync(
+  join(process.cwd(), 'app', 'api', 'image-generations', 'entitlements', 'route.ts'),
+  'utf8'
+);
+const tokenCard = readFileSync(
+  join(process.cwd(), 'components', 'image-generator', 'GenerationTokenCard.tsx'),
+  'utf8'
+);
+const vaultPage = readFileSync(join(process.cwd(), 'app', 'vault', 'page.tsx'), 'utf8');
+const referenceRoute = readFileSync(
+  join(process.cwd(), 'app', 'api', 'image-generations', 'references', 'route.ts'),
+  'utf8'
+);
 
 test.describe('ACCL Generation Token and tier contract', () => {
   test('tier allowances match the locked doctrine', () => {
@@ -167,5 +180,30 @@ test.describe('ACCL Generation Token and tier contract', () => {
     expect(economyMigration).toContain(
       'grant execute on function public.mint_due_generation_token_allowances(integer)\n  to service_role'
     );
+  });
+
+  test('Vault exposes a privacy-safe recent Token Ledger and routes Use Token through Edit Profile', () => {
+    expect(entitlementRoute).toContain(
+      ".select('id,amount,balance_after,event_type,membership_tier,created_at')"
+    );
+    expect(entitlementRoute).toContain(".from('generation_token_ledger')");
+    expect(entitlementRoute).toContain(".eq('user_id', user.id)");
+    expect(entitlementRoute).toContain('.limit(12)');
+    expect(entitlementRoute).not.toContain(
+      ".select('id,amount,balance_after,event_type,source_key"
+    );
+    expect(tokenCard).toContain('Token Ledger');
+    expect(tokenCard).toContain('Recent Generation Token activity');
+    expect(tokenCard).toContain('Internal Unlimited tokens never decrease.');
+    expect(vaultPage).toContain('actionHref="/profile/edit#generation-token-card"');
+  });
+
+  test('Internal Unlimited API checks preserve the activated exact-user binding', () => {
+    for (const route of [entitlementRoute, referenceRoute]) {
+      expect(route).toContain(".select('status,user_id')");
+      expect(route).toContain(
+        'internalGrant.data.user_id === null || internalGrant.data.user_id === user.id'
+      );
+    }
   });
 });

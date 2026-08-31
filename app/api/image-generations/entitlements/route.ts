@@ -13,7 +13,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
   const supabase = createServiceRoleClient();
   const normalizedEmail = user.email?.trim().toLowerCase() ?? '';
-  const [result, tokenAccount, internalGrant] = await Promise.all([
+  const [result, tokenAccount, tokenLedger, internalGrant] = await Promise.all([
     supabase
       .from('membership_entitlements')
       .select('entitlement,status,valid_until,metadata')
@@ -25,8 +25,15 @@ export async function GET(request: Request): Promise<Response> {
       .eq('user_id', user.id)
       .maybeSingle(),
     supabase
+      .from('generation_token_ledger')
+      .select('id,amount,balance_after,event_type,membership_tier,created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(12),
+    supabase
       .from('internal_generator_unlimited_grants')
-      .select('status')
+      .select('status,user_id')
       .eq('email_normalized', normalizedEmail)
       .eq('status', 'active')
       .maybeSingle(),
@@ -40,11 +47,17 @@ export async function GET(request: Request): Promise<Response> {
     return jsonResponse({ error: 'Could not verify internal generator access' }, 500);
   }
   const internalUnlimited = Boolean(
-    normalizedEmail && user.email_confirmed_at && internalGrant.data?.status === 'active'
+    normalizedEmail &&
+      user.email_confirmed_at &&
+      internalGrant.data?.status === 'active' &&
+      (internalGrant.data.user_id === null || internalGrant.data.user_id === user.id)
   );
   const tier = resolveGeneratorMembershipTier(active, internalUnlimited);
   if (tokenAccount.error) {
     return jsonResponse({ error: 'Could not load Generation Token account' }, 500);
+  }
+  if (tokenLedger.error) {
+    return jsonResponse({ error: 'Could not load Generation Token ledger' }, 500);
   }
   const tokenSummary = tokenAccount.data ?? {
     balance: 0,
@@ -71,5 +84,6 @@ export async function GET(request: Request): Promise<Response> {
       ...tokenSummary,
       unlimited: false,
     },
+    generation_token_ledger: tokenLedger.data ?? [],
   });
 }
