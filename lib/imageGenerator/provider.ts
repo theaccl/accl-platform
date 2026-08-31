@@ -65,7 +65,9 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
         ? { text: input.prompt, images: [input.referenceImage.bytes] }
         : input.prompt,
       n: input.candidateCount,
-      maxImagesPerCall: 4,
+      // Some Gateway image providers only return one image per upstream call.
+      // Let the AI SDK split the four-candidate commission into compatible calls.
+      maxImagesPerCall: 1,
       size: IMAGE_GENERATION_SIZE,
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(180_000),
