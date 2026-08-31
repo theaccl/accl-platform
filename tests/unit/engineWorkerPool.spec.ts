@@ -242,6 +242,94 @@ test('healthy recycling warms replacement before retiring the old worker', async
   expect(pool.snapshot().workers.some((worker) => worker.id === 'worker-1')).toBe(false);
 });
 
+test('RSS threshold recycles a healthy worker and records the bounded reason', async () => {
+  const workers: FakeWorker[] = [];
+  const events: string[] = [];
+  const pool = new EngineWorkerPool(
+    async () => {
+      const worker = new FakeWorker(`worker-${workers.length + 1}`);
+      worker.rss = workers.length === 0 ? 513 : 1;
+      workers.push(worker);
+      return worker;
+    },
+    {
+      maxResidentMemoryBytes: 512,
+      observer: { recordPoolEvent: (event) => events.push(event) },
+      sleep: async () => {},
+    }
+  );
+  await pool.start();
+  const lease = await pool.acquire();
+  await lease?.settle('success');
+
+  expect(events).toEqual(['rss_recycle', 'replacement_attempt', 'replacement_success']);
+  expect(pool.snapshot().workers.map((worker) => worker.id).sort()).toEqual(['worker-2', 'worker-3']);
+  await pool.shutdown();
+});
+
+test('required process RSS measurement fails closed and replaces an unmeasurable worker', async () => {
+  const workers: FakeWorker[] = [];
+  const pool = new EngineWorkerPool(
+    async () => {
+      const worker = new FakeWorker(`worker-${workers.length + 1}`);
+      worker.rss = workers.length === 0 ? null : 1;
+      workers.push(worker);
+      return worker;
+    },
+    { requireResidentMemoryMeasurement: true, sleep: async () => {} }
+  );
+  await pool.start();
+
+  await expect(pool.acquire()).rejects.toThrow('engine_process_rss_unavailable');
+  expect(workers[0]?.prepareCalls).toBe(0);
+  expect(pool.snapshot().workers.map((worker) => worker.id).sort()).toEqual(['worker-2', 'worker-3']);
+  await pool.shutdown();
+});
+
+test('required RSS is rechecked after lease preparation and a disappearing measurement is never leased', async () => {
+  const workers: FakeWorker[] = [];
+  const pool = new EngineWorkerPool(
+    async () => {
+      const worker = new FakeWorker(`worker-${workers.length + 1}`);
+      if (workers.length === 0) {
+        worker.prepareLease = async () => {
+          worker.prepareCalls += 1;
+          worker.rss = null;
+          return inertTransport();
+        };
+      }
+      workers.push(worker);
+      return worker;
+    },
+    { requireResidentMemoryMeasurement: true, sleep: async () => {} }
+  );
+  await pool.start();
+
+  await expect(pool.acquire()).rejects.toThrow('engine_process_rss_unavailable');
+  expect(workers[0]?.prepareCalls).toBe(1);
+  expect(workers[0]?.terminateCalls).toBe(1);
+  expect(pool.snapshot().workers.map((worker) => worker.id).sort()).toEqual(['worker-2', 'worker-3']);
+  await pool.shutdown();
+});
+
+test('throwing telemetry observer cannot strand a recycle or alter capacity', async () => {
+  let creations = 0;
+  const pool = new EngineWorkerPool(
+    async () => new FakeWorker(`worker-${++creations}`),
+    {
+      maxCompletedSearches: 1,
+      observer: { recordPoolEvent: () => { throw new Error('telemetry_sink_failed'); } },
+      sleep: async () => {},
+    }
+  );
+  await pool.start();
+  const lease = await pool.acquire();
+  await expect(lease?.settle('success')).resolves.toBe(true);
+  expect(pool.snapshot().workers).toHaveLength(2);
+  expect(pool.snapshot().workers.every((worker) => worker.state === 'IDLE')).toBe(true);
+  await pool.shutdown();
+});
+
 test('healthy recycling reserves capacity before a concurrent acquire', async () => {
   let creations = 0;
   let releaseReplacement!: () => void;

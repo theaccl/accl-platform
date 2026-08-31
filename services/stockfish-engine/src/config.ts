@@ -20,6 +20,8 @@ export type EngineServiceConfig = {
   hashMiBPerWorker: 128;
   binaryPath: string | null;
   binarySha256: string | null;
+  maxResidentMemoryBytes: number | null;
+  imageDigest: string | null;
 };
 
 function exactInteger(
@@ -60,6 +62,15 @@ export function parseEngineServiceConfig(env: NodeJS.ProcessEnv): EngineServiceC
   if (environment === 'production' && !binaryPath) {
     throw new EngineServiceConfigError('STOCKFISH_BINARY_PATH');
   }
+  const rssRaw = env.STOCKFISH_MAX_RSS_BYTES?.trim();
+  const maxResidentMemoryBytes = rssRaw ? Number(rssRaw) : null;
+  if (maxResidentMemoryBytes !== null && (!Number.isSafeInteger(maxResidentMemoryBytes) || maxResidentMemoryBytes < 134_217_728 || maxResidentMemoryBytes > 2_147_483_648)) {
+    throw new EngineServiceConfigError('STOCKFISH_MAX_RSS_BYTES');
+  }
+  const imageDigest = env.ENGINE_IMAGE_DIGEST?.trim().toLowerCase() || null;
+  if (imageDigest !== null && !/^sha256:[a-f0-9]{64}$/.test(imageDigest)) {
+    throw new EngineServiceConfigError('ENGINE_IMAGE_DIGEST');
+  }
 
   return {
     environment: environment as EngineServiceConfig['environment'],
@@ -72,6 +83,8 @@ export function parseEngineServiceConfig(env: NodeJS.ProcessEnv): EngineServiceC
     hashMiBPerWorker: exactInteger(env, 'ENGINE_HASH_MIB_PER_WORKER', 128) as 128,
     binaryPath,
     binarySha256,
+    maxResidentMemoryBytes,
+    imageDigest,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   EngineWorkerPool,
   type PhysicalEngineWorker,
 } from '@/services/stockfish-engine/src/pool';
+import { EngineRuntimeTelemetry } from '@/services/stockfish-engine/src/observability';
 
 class CoordinatorWorker implements PhysicalEngineWorker {
   recoverCalls = 0;
@@ -89,6 +90,59 @@ test('coordinator reparses FEN service-side and returns the authoritative result
   const envelope = await coordinator.evaluate(request('success'));
   expect(envelope).toMatchObject({ ok: true, result: { positionKey: seenPositionKey } });
   expect(seenPositionKey).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -');
+  await coordinator.shutdown();
+});
+
+test('coordinator records bounded per-lane queue, search, total, and typed outcome telemetry', async () => {
+  const { pool } = await createPool();
+  let now = 100;
+  const telemetry = new EngineRuntimeTelemetry();
+  const coordinator = new EngineRuntimeCoordinator(
+    pool,
+    async ({ request: approved, position }) => {
+      now = 140;
+      return successResult(position, approved.limits);
+    },
+    { now: () => now, telemetry }
+  );
+
+  await expect(coordinator.evaluate(request('telemetry-success'))).resolves.toMatchObject({ ok: true });
+  coordinator.snapshot();
+  const metrics = telemetry.snapshot();
+  expect(metrics.outcomes['TRAINER_INTERACTIVE:success']).toBe(1);
+  expect(metrics.latencies['TRAINER_INTERACTIVE:queue']?.count).toBe(1);
+  expect(metrics.latencies['TRAINER_INTERACTIVE:search']?.sumMs).toBe(40);
+  expect(metrics.latencies['TRAINER_INTERACTIVE:total']?.sumMs).toBe(40);
+  expect(metrics.queueDepthByLane.TRAINER_INTERACTIVE).toBe(0);
+  await coordinator.shutdown();
+});
+
+test('queue and search telemetry do not overlap lease preparation time', async () => {
+  let now = 0;
+  const pool = new EngineWorkerPool(async () => {
+    const worker = new CoordinatorWorker('timed-worker');
+    worker.prepareLeaseImpl = async () => {
+      now = 50;
+      return { send() {}, subscribe: () => () => {}, close() {} };
+    };
+    return worker;
+  });
+  await pool.start();
+  const telemetry = new EngineRuntimeTelemetry();
+  const coordinator = new EngineRuntimeCoordinator(
+    pool,
+    async ({ request: approved, position }) => {
+      now = 70;
+      return successResult(position, approved.limits);
+    },
+    { now: () => now, telemetry }
+  );
+
+  await coordinator.evaluate(request('non-overlap'));
+  const metrics = telemetry.snapshot();
+  expect(metrics.latencies['TRAINER_INTERACTIVE:queue']?.sumMs).toBe(50);
+  expect(metrics.latencies['TRAINER_INTERACTIVE:search']?.sumMs).toBe(20);
+  expect(metrics.latencies['TRAINER_INTERACTIVE:total']?.sumMs).toBe(70);
   await coordinator.shutdown();
 });
 

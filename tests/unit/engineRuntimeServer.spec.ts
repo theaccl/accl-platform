@@ -10,6 +10,7 @@ function coordinator(
     circuitOpenUntilMs?: number | null;
     workerState?: 'IDLE' | 'LEASED' | 'RESETTING' | 'RETIRING' | 'TERMINATED';
     shuttingDown?: boolean;
+    requiresResidentMemoryMeasurement?: boolean;
     workers?: Array<{ id: string; state: string; completedSearches: number; residentMemoryBytes: number | null }>;
   } = {}
 ) {
@@ -35,13 +36,20 @@ function coordinator(
         },
         pool: {
           accepting,
+          requiresResidentMemoryMeasurement: snapshot.requiresResidentMemoryMeasurement ?? false,
           circuitOpenUntilMs: snapshot.circuitOpenUntilMs ?? null,
           workers:
             snapshot.workers ??
             (accepting
               ? [
                   {
-                    id: 'redacted-in-probe',
+                    id: 'redacted-in-probe-1',
+                    state: workerState,
+                    completedSearches: 0,
+                    residentMemoryBytes: 1,
+                  },
+                  {
+                    id: 'redacted-in-probe-2',
                     state: workerState,
                     completedSearches: 0,
                     residentMemoryBytes: 1,
@@ -147,6 +155,26 @@ test('readiness requires accepting pool, closed circuit, usable worker, and no s
   ).resolves.toMatchObject({ status: 503, body: { ok: false } });
   await expect(
     handleEngineHttpRequest(coordinator(unavailable, { workerState: 'RETIRING' }), ready)
+  ).resolves.toMatchObject({ status: 503, body: { ok: false } });
+  await expect(
+    handleEngineHttpRequest(
+      coordinator(unavailable, {
+        requiresResidentMemoryMeasurement: true,
+        workers: [
+          { id: 'one', state: 'IDLE', completedSearches: 0, residentMemoryBytes: null },
+          { id: 'two', state: 'IDLE', completedSearches: 0, residentMemoryBytes: null },
+        ],
+      }),
+      ready
+    )
+  ).resolves.toMatchObject({ status: 503, body: { ok: false } });
+  await expect(
+    handleEngineHttpRequest(
+      coordinator(unavailable, {
+        workers: [{ id: 'only-one', state: 'IDLE', completedSearches: 0, residentMemoryBytes: 1 }],
+      }),
+      ready
+    )
   ).resolves.toMatchObject({ status: 503, body: { ok: false } });
   await expect(
     handleEngineHttpRequest(coordinator(unavailable, { shuttingDown: true, workerState: 'IDLE' }), ready)
