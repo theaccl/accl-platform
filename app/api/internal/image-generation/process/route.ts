@@ -3,6 +3,7 @@ import {
   verifyImageGenerationWorkerRequest,
 } from '@/lib/imageGenerator/internalAuth';
 import { configuredImageGenerationProvider } from '@/lib/imageGenerator/provider';
+import { processImageRefinementBatch } from '@/lib/imageGenerator/refinementWorker';
 import { processImageGenerationBatch } from '@/lib/imageGenerator/worker';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
@@ -68,12 +69,34 @@ async function processRequest(request: Request, batch: number): Promise<Response
     staleStoragePaths.length > 0
       ? await supabase.storage.from('image-generation-candidates').remove(staleStoragePaths)
       : { error: null };
+  const recoveredRefinements = await supabase.rpc('recover_stale_image_generation_refinements', {
+    p_stale_after_seconds: 360,
+    p_limit: 10,
+  });
+  const recoveredRefinementRows = Array.isArray(recoveredRefinements.data)
+    ? recoveredRefinements.data
+    : [];
+  const staleRefinementStoragePaths = recoveredRefinementRows.flatMap((row) =>
+    row && typeof row === 'object' && Array.isArray(row.storage_paths)
+      ? row.storage_paths.filter((path: unknown): path is string => typeof path === 'string')
+      : []
+  );
+  const staleRefinementCleanup =
+    staleRefinementStoragePaths.length > 0
+      ? await supabase.storage
+          .from('image-generation-candidates')
+          .remove(staleRefinementStoragePaths)
+      : { error: null };
   const results = await processImageGenerationBatch(supabase, provider, batch);
+  const refinementResults = await processImageRefinementBatch(supabase, provider, batch);
   return jsonResponse({
     provider: provider.name,
     model: provider.model,
     recovered_count: recoveredRows.length,
     recovery_cleanup_error: staleCleanup.error?.message ?? null,
+    recovered_refinement_count: recoveredRefinementRows.length,
+    refinement_recovery_error: recoveredRefinements.error?.message ?? null,
+    refinement_recovery_cleanup_error: staleRefinementCleanup.error?.message ?? null,
     reference_cleanup_error: referenceCleanupError,
     weekly_token_mints: Array.isArray(weeklyMints.data) ? weeklyMints.data.length : 0,
     weekly_token_mint_error: weeklyMints.error?.message ?? null,
@@ -81,6 +104,7 @@ async function processRequest(request: Request, batch: number): Promise<Response
       result.error ? [result.error.message] : []
     ),
     results,
+    refinement_results: refinementResults,
   });
 }
 

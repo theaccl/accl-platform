@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Check, LockKeyhole, ShieldAlert, Sparkles } from "lucide-react";
+import { Check, LockKeyhole, ShieldAlert, Sparkles, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { CaptureProtectionDecision } from "@/lib/imageGenerator/captureProtection";
@@ -19,6 +19,10 @@ type CandidateReviewGridProps = {
   approvingId: string | null;
   approvedId: string | null;
   onAccept: (candidateId: string) => void;
+  canRefine?: boolean;
+  refinementLabel?: string;
+  selectedRefinementCandidateId?: string | null;
+  onRefine?: (candidateId: string) => void;
 };
 
 const NO_CAPTURE_DECISION: CaptureProtectionDecision = {
@@ -28,7 +32,16 @@ const NO_CAPTURE_DECISION: CaptureProtectionDecision = {
   reason: "none",
 };
 
-export function CandidateReviewGrid({ candidates, approvingId, approvedId, onAccept }: CandidateReviewGridProps) {
+export function CandidateReviewGrid({
+  candidates,
+  approvingId,
+  approvedId,
+  onAccept,
+  canRefine = false,
+  refinementLabel = "Guide refinement",
+  selectedRefinementCandidateId = null,
+  onRefine,
+}: CandidateReviewGridProps) {
   const [captureDecision, setCaptureDecision] = useState(NO_CAPTURE_DECISION);
 
   useEffect(() => {
@@ -61,6 +74,9 @@ export function CandidateReviewGrid({ candidates, approvingId, approvedId, onAcc
               </div>
               <div className="p-3">
                 <button type="button" disabled={approvingId != null || approvedId != null} onClick={() => onAccept(candidate.id)} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.1)] text-xs font-bold uppercase tracking-[0.08em] text-[var(--accl-accent-gold)] transition hover:bg-[var(--accl-accent-gold)] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40"><Sparkles className="h-4 w-4" aria-hidden />{approvingId === candidate.id ? "Accepting…" : accepted ? "Accepted" : "Accept candidate"}</button>
+                {canRefine && onRefine ? (
+                  <button type="button" disabled={approvingId != null || approvedId != null} onClick={() => onRefine(candidate.id)} className={`mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border text-xs font-bold uppercase tracking-[0.08em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40 ${selectedRefinementCandidateId === candidate.id ? "border-violet-300/60 bg-violet-400/20 text-violet-100" : "border-violet-400/25 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20"}`}><WandSparkles className="h-4 w-4" aria-hidden />{selectedRefinementCandidateId === candidate.id ? "Direction selected" : refinementLabel}</button>
+                ) : null}
               </div>
             </article>
           );

@@ -20,8 +20,9 @@ type GenerationResponse = {
 };
 
 type GenerationStatusResponse = {
-  generation?: { id: string; status: string };
+  generation?: { id: string; status: string; membership_tier?: GeneratorMembershipTier };
   candidates?: Array<Pick<ReviewCandidate, "id" | "ordinal" | "status">>;
+  refinements?: Array<{ id: string; source_candidate_id: string; ordinal: number; status: string }>;
   error?: string;
 };
 
@@ -72,6 +73,13 @@ export function ImageGeneratorCreateScreen() {
   const [tokenBalance, setTokenBalance] = useState<number | null>(0);
   const [unlimitedTokens, setUnlimitedTokens] = useState(false);
   const [canCommission, setCanCommission] = useState(false);
+  const [refinements, setRefinements] = useState<Array<{ id: string; source_candidate_id: string; ordinal: number; status: string }>>([]);
+  const [selectedRefinementCandidateId, setSelectedRefinementCandidateId] = useState<string | null>(null);
+  const [refinementGuidance, setRefinementGuidance] = useState("");
+  const [refinementBusy, setRefinementBusy] = useState(false);
+  const hasRefinementProcessing = refinements.some(
+    (item) => item.status === "queued" || item.status === "running"
+  );
 
   const rememberGenerationInUrl = useCallback((id: string | null) => {
     const url = new URL(window.location.href);
@@ -146,7 +154,7 @@ export function ImageGeneratorCreateScreen() {
   }, [loadAccess]);
 
   useEffect(() => {
-    if (!generationId || candidates.length > 0) return;
+    if (!generationId || (candidates.length > 0 && !hasRefinementProcessing)) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -163,6 +171,8 @@ export function ImageGeneratorCreateScreen() {
         if (!response.ok) throw new Error(payload.error ?? "generation_status_failed");
         const status = payload.generation?.status ?? "queued";
         setGenerationStatus(status);
+        const nextRefinements = payload.refinements ?? [];
+        setRefinements(nextRefinements);
 
         if (status === "review" && payload.candidates?.length) {
           const signedCandidates = await Promise.all(
@@ -178,7 +188,9 @@ export function ImageGeneratorCreateScreen() {
           );
           if (!cancelled) {
             setCandidates(signedCandidates);
-            setMessage("Your private candidates are ready. Choose the one you want to keep.");
+            const stillProcessing = nextRefinements.some((item) => item.status === "queued" || item.status === "running");
+            setMessage(stillProcessing ? "The atelier is preparing two guided candidates." : "Your private candidates are ready. Choose the one you want to keep.");
+            if (stillProcessing) timer = setTimeout(() => void poll(), 3000);
           }
           return;
         }
@@ -198,7 +210,7 @@ export function ImageGeneratorCreateScreen() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [candidates.length, generationId, loadAccess]);
+  }, [candidates.length, generationId, hasRefinementProcessing, loadAccess]);
 
   const selectReference = (file: File, slot: 'primary' | 'secondary' = 'primary') => {
     setReferenceError(null);
@@ -229,6 +241,9 @@ export function ImageGeneratorCreateScreen() {
     setGenerationStatus(null);
     setCandidates([]);
     setApprovedId(null);
+    setRefinements([]);
+    setSelectedRefinementCandidateId(null);
+    setRefinementGuidance("");
     setPlacementComplete(false);
     try {
       const sessionResult = await supabase.auth.getSession();
@@ -317,6 +332,48 @@ export function ImageGeneratorCreateScreen() {
     }
   };
 
+  const startRefinement = async () => {
+    const guidance = refinementGuidance.trim();
+    if (!generationId || !selectedRefinementCandidateId || !guidance || refinementBusy) return;
+    setRefinementBusy(true);
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      const token = sessionResult.data.session?.access_token?.trim();
+      if (!token) {
+        setAccess("signed_out");
+        setMessage("Your session ended. Sign in again to guide this direction.");
+        return;
+      }
+      const response = await fetch(`/api/image-generations/${generationId}/refinements`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": newIdempotencyKey(),
+        },
+        body: JSON.stringify({
+          source_candidate_id: selectedRefinementCandidateId,
+          guidance,
+        }),
+      });
+      const payload = (await response.json()) as {
+        refinement?: { id: string; source_candidate_id: string; ordinal: number; status: string };
+        error?: string;
+      };
+      if (!response.ok || !payload.refinement) {
+        throw new Error(payload.error ?? "guided_refinement_failed");
+      }
+      setRefinements((current) => [...current, payload.refinement!]);
+      setSelectedRefinementCandidateId(null);
+      setRefinementGuidance("");
+      setMessage("Guidance secured. The atelier is preparing two new private candidates without spending another token.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ACCL could not start that guided refinement.");
+    } finally {
+      setRefinementBusy(false);
+    }
+  };
+
   const placeAcceptedCandidate = async (
     placement: 'profile_image' | 'profile_background' | 'matching_set'
   ) => {
@@ -363,6 +420,8 @@ export function ImageGeneratorCreateScreen() {
   const candidateCount = tierContract?.initialCandidates ?? 3;
   const maxReferences = tierContract?.maxReferences ?? 1;
   const generationInProgress = generationId != null && candidates.length === 0 && !["failed", "cancelled", "expired"].includes(generationStatus ?? "");
+  const refinementAllowance = tierContract?.touchUpGuides ?? 0;
+  const canRefine = approvedId == null && !hasRefinementProcessing && refinements.length < refinementAllowance;
 
   return (
     <div className="relative isolate overflow-hidden rounded-[var(--accl-radius-2xl)] border border-[var(--accl-border-muted)] bg-[radial-gradient(circle_at_18%_0%,rgba(212,160,23,0.12),transparent_34%),linear-gradient(160deg,var(--accl-bg-elevated),var(--accl-bg-base)_66%)] shadow-[var(--accl-shadow-panel)]">
@@ -442,7 +501,21 @@ export function ImageGeneratorCreateScreen() {
         </div>
 
         {generationInProgress ? <CandidateBuildUp candidateCount={candidateCount} /> : null}
-        {candidates.length > 0 ? <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} /> : null}
+        {candidates.length > 0 ? <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={membershipTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} /> : null}
+        {selectedRefinementCandidateId && canRefine ? (
+          <section className="mt-5 rounded-2xl border border-violet-400/25 bg-violet-950/15 p-5" aria-labelledby="guided-refinement-title">
+            <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-violet-200">Included in this commission</p>
+            <h2 id="guided-refinement-title" className="mt-2 font-display text-2xl font-bold text-white">Guide this identity direction</h2>
+            <p className="mt-1 text-sm text-white/55">Describe one focused change. ACCL will add two private candidates to this same review pool without spending another token.</p>
+            <textarea value={refinementGuidance} onChange={(event) => setRefinementGuidance(event.target.value)} maxLength={1000} rows={3} placeholder="For example: keep the face and armor, deepen the electric-blue edge light, and simplify the background." className="mt-4 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-300/50 focus:ring-2 focus:ring-violet-400/20" />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => void startRefinement()} disabled={refinementBusy || refinementGuidance.trim().length === 0} className="min-h-11 rounded-xl bg-violet-300 px-5 text-sm font-bold text-violet-950 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{refinementBusy ? "Securing guidance…" : "Create two guided candidates"}</button>
+              <button type="button" onClick={() => { setSelectedRefinementCandidateId(null); setRefinementGuidance(""); }} disabled={refinementBusy} className="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/65 hover:text-white disabled:opacity-45">Cancel</button>
+              <span className="text-xs text-white/40">{Math.max(0, refinementAllowance - refinements.length)} guided request{refinementAllowance - refinements.length === 1 ? "" : "s"} remaining</span>
+            </div>
+          </section>
+        ) : null}
+        {hasRefinementProcessing ? <CandidateBuildUp candidateCount={2} /> : null}
         {approvedId ? (
           <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-950/10 p-5" aria-labelledby="placement-title">
             <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-emerald-300">Accepted identity</p>

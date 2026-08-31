@@ -18,6 +18,12 @@ export type ImageGenerationStatus =
   | 'expired';
 
 export type CandidateStatus = 'review' | 'approved' | 'rejected' | 'expired' | 'deleted';
+export type ImageGenerationRefinementStatus =
+  | 'queued'
+  | 'running'
+  | 'review'
+  | 'failed'
+  | 'cancelled';
 export type ProfileImageSurface = 'profile_image' | 'profile_background';
 
 export type ImageGenerationRequestRow = {
@@ -66,6 +72,22 @@ export type ImageGenerationCandidateRow = {
   height: number | null;
   moderation_status: 'pending' | 'approved' | 'rejected';
   created_at: string;
+};
+
+export type ImageGenerationRefinementRow = {
+  id: string;
+  request_id: string;
+  owner_id: string;
+  source_candidate_id: string;
+  ordinal: number;
+  guidance: string;
+  status: ImageGenerationRefinementStatus;
+  provider: string;
+  model: string | null;
+  candidate_ordinal_start: number;
+  attempt_count: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export function publicCandidate(candidate: ImageGenerationCandidateRow) {

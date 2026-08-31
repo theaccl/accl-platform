@@ -12,6 +12,11 @@ export const approveCandidateSchema = z.object({
   candidate_id: z.string().uuid(),
 });
 
+export const createRefinementSchema = z.object({
+  source_candidate_id: z.string().uuid(),
+  guidance: z.string().trim().min(1).max(1000),
+});
+
 export const placeProfileImageSchema = z.object({
   candidate_id: z.string().uuid(),
   surface: z.enum(['profile_image', 'profile_background']),

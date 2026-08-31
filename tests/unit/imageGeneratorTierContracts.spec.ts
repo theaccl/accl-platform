@@ -50,3 +50,29 @@ test('multi-reference provider input remains server-sanitized and private', asyn
   expect(worker).toContain('disposeReferenceImages(supabase, consumedReferences)');
   expect(provider).toContain('images: input.referenceImages.map((image) => image.bytes)');
 });
+
+test('Plus and Pro guided refinements stay inside the original token-funded commission', async () => {
+  const sql = await source(
+    'supabase/migrations/20260831070000_generation_guided_refinements.sql'
+  );
+  const api = await source('app/api/image-generations/[id]/refinements/route.ts');
+  const worker = await source('lib/imageGenerator/refinementWorker.ts');
+  const recovery = await source(
+    'supabase/migrations/20260831071000_refinement_stale_job_recovery.sql'
+  );
+  const screen = await source('components/image-generator/ImageGeneratorCreateScreen.tsx');
+
+  expect(sql).toContain("when 'plus' then 1");
+  expect(sql).toContain("when 'pro' then 4");
+  expect(sql).toContain("when 'internal_unlimited' then 4");
+  expect(sql).toContain("if v_candidate_start + 1 > 13");
+  expect(sql).toContain('guided refinement is still processing');
+  expect(sql).not.toContain('transition_generation_token_redemption');
+  expect(sql).not.toContain('commission_reservation');
+  expect(api).toContain("rpc('create_image_generation_refinement'");
+  expect(worker).toContain('candidateCount: 2');
+  expect(worker).toContain(".from('image-generation-candidates')");
+  expect(recovery).toContain('recover_stale_image_generation_refinements');
+  expect(recovery).toContain("failure_code = 'worker_interrupted'");
+  expect(screen).toContain('without spending another token');
+});
