@@ -2,7 +2,7 @@
 
 import NavigationBar from "@/components/NavigationBar";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Chess } from "chess.js";
 import type { Square } from "chess.js";
@@ -76,6 +76,7 @@ export default function FinishedGameDetailPage() {
   const [game, setGame] = useState<FinishedGameRow | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [displayNameById, setDisplayNameById] = useState<Record<string, string>>({});
+  const moveListRef = useRef<HTMLDivElement | null>(null);
 
   const sanForDisplay = useCallback((m: MoveLogRow) => {
     return isEnPassantMoveLog(m) ? `${m.san} e.p.` : m.san;
@@ -206,6 +207,15 @@ export default function FinishedGameDetailPage() {
   }, [boardPosition, game]);
 
   const maxReplayStep = moveLogs.length;
+
+  useEffect(() => {
+    if (replayStep === null || replayStep <= 0) return;
+
+    const activeMove = moveListRef.current?.querySelector<HTMLButtonElement>(
+      `button[data-replay-step="${replayStep}"]`
+    );
+    activeMove?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [replayStep]);
 
   const loginHref = gameId ? buildLoginRedirect(`/finished/${gameId}`) : "/login";
 
@@ -388,7 +398,11 @@ export default function FinishedGameDetailPage() {
                     <div className="px-3 py-2 border-b border-gray-800 text-xs text-gray-500">
                       Click a move to jump; use Final position for the stored end of the game.
                     </div>
-                    <div className="max-h-48 overflow-y-auto px-3 py-2 font-mono text-sm text-gray-200 leading-relaxed">
+                    <div
+                      ref={moveListRef}
+                      data-testid="finished-move-list-scroll"
+                      className="max-h-48 overflow-y-auto px-3 py-2 font-mono text-sm text-gray-200 leading-relaxed"
+                    >
                       {(() => {
                         let flat = 0;
                         return pairedRows.map((row: ReplayPairedRow) => {
@@ -398,12 +412,18 @@ export default function FinishedGameDetailPage() {
                           return (
                             <div key={row.num} className="mb-1">
                               <span className="text-gray-600 select-none">{row.num}. </span>
-                              <MoveSanButton label={row.white} active={hl(wIdx)} onPick={() => setReplayStep(wIdx + 1)} />
+                              <MoveSanButton
+                                label={row.white}
+                                step={wIdx + 1}
+                                active={hl(wIdx)}
+                                onPick={() => setReplayStep(wIdx + 1)}
+                              />
                               {row.black !== undefined && bIdx >= 0 ? (
                                 <>
                                   {" "}
                                   <MoveSanButton
                                     label={row.black}
+                                    step={bIdx + 1}
                                     active={hl(bIdx)}
                                     onPick={() => setReplayStep(bIdx + 1)}
                                   />
@@ -515,11 +535,23 @@ function ReplayBtn({
   );
 }
 
-function MoveSanButton({ label, active, onPick }: { label: string; active: boolean; onPick: () => void }) {
+function MoveSanButton({
+  label,
+  step,
+  active,
+  onPick,
+}: {
+  label: string;
+  step: number;
+  active: boolean;
+  onPick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onPick}
+      data-replay-step={step}
+      aria-current={active ? "step" : undefined}
       className={`px-1 rounded ${active ? "bg-amber-500/25 text-amber-100 font-semibold" : "text-gray-200 hover:bg-white/5"}`}
     >
       {label}
