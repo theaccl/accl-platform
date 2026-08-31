@@ -5,8 +5,10 @@ import { Check, Clock3, Crown, ImageIcon, LockKeyhole, ShieldCheck } from "lucid
 import { useCallback, useEffect, useState } from "react";
 
 import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-generator/CandidateReviewGrid";
+import { GenerationTokenCoin } from "@/components/image-generator/GenerationTokenCoin";
 import PromptInput3 from "@/components/prompt-input-3";
 import { REFERENCE_IMAGE_MAX_BYTES } from "@/lib/imageGenerator/domain";
+import type { GeneratorMembershipTier, GeneratorTierContract } from "@/lib/imageGenerator/membership";
 import { supabase } from "@/lib/supabaseClient";
 
 type AccessState = "loading" | "signed_out" | "free" | "pro" | "error";
@@ -60,6 +62,22 @@ export function ImageGeneratorCreateScreen() {
   const [candidates, setCandidates] = useState<ReviewCandidate[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvedId, setApprovedId] = useState<string | null>(null);
+  const [membershipTier, setMembershipTier] = useState<GeneratorMembershipTier>("free");
+  const [tierContract, setTierContract] = useState<GeneratorTierContract | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(0);
+  const [unlimitedTokens, setUnlimitedTokens] = useState(false);
+
+  const rememberGenerationInUrl = useCallback((id: string | null) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("generation", id);
+    else url.searchParams.delete("generation");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("generation");
+    if (id && GENERATION_ID_PATTERN.test(id)) setGenerationId(id);
+  }, []);
 
   const rememberGenerationInUrl = useCallback((id: string | null) => {
     const url = new URL(window.location.href);
@@ -101,7 +119,16 @@ export function ImageGeneratorCreateScreen() {
         return;
       }
       if (!response.ok) throw new Error("entitlement_lookup_failed");
-      const entitlements = (await response.json()) as { image_generator?: boolean };
+      const entitlements = (await response.json()) as {
+        image_generator?: boolean;
+        membership_tier?: GeneratorMembershipTier;
+        generator_contract?: GeneratorTierContract;
+        generation_tokens?: { balance?: number | null; unlimited?: boolean };
+      };
+      setMembershipTier(entitlements.membership_tier ?? "free");
+      setTierContract(entitlements.generator_contract ?? null);
+      setTokenBalance(entitlements.generation_tokens?.balance ?? 0);
+      setUnlimitedTokens(entitlements.generation_tokens?.unlimited === true);
       setAccess(entitlements.image_generator ? "pro" : "free");
     } catch {
       setAccess("error");
@@ -284,7 +311,7 @@ export function ImageGeneratorCreateScreen() {
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <section aria-labelledby="image-generator-title">
             <div className="mb-7 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(212,160,23,0.36)] bg-[rgba(212,160,23,0.1)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accl-accent-gold)]"><Crown className="h-3.5 w-3.5" aria-hidden /> ACCL Pro</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(212,160,23,0.36)] bg-[rgba(212,160,23,0.1)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accl-accent-gold)]"><Crown className="h-3.5 w-3.5" aria-hidden /> ACCL Generator</span>
               <span className="text-xs text-[var(--accl-text-muted)]">Sovereign Atelier · private candidate studio</span>
             </div>
             <h1 id="image-generator-title" className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">Create your chess identity</h1>
@@ -313,12 +340,19 @@ export function ImageGeneratorCreateScreen() {
           </section>
 
           <aside className="self-start rounded-[var(--accl-radius-xl)] border border-[var(--accl-border-muted)] bg-[rgba(7,8,12,0.54)] p-5" aria-label="How image generation works">
-            <p className="font-display text-lg font-semibold uppercase tracking-[0.08em] text-white">Your commission</p>
+            <div className="flex items-center gap-3 border-b border-[var(--accl-border-subtle)] pb-4">
+              <GenerationTokenCoin size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-lg font-semibold uppercase tracking-[0.08em] text-white">Your commission</p>
+                <p className="mt-1 text-xs text-[var(--accl-text-muted)]">{membershipTier === "free" ? "Free" : membershipTier === "plus" ? "Plus" : membershipTier === "internal_unlimited" ? "Internal Unlimited" : "Pro"} contract · {unlimitedTokens ? "∞ tokens" : `${tokenBalance} token${tokenBalance === 1 ? "" : "s"}`} in Vault</p>
+              </div>
+            </div>
             <ul className="mt-5 space-y-5">
               <li className="flex gap-3"><ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">Reference + direction</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Your image guides the composition. Your description steers the result.</p></div></li>
               <li className="flex gap-3"><Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">Four private candidates</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Review your options for up to 24 hours.</p></div></li>
               <li className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">Nothing publishes automatically</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Only the candidate you accept can move toward profile placement.</p></div></li>
             </ul>
+            {tierContract ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-[var(--accl-text-muted)]">Your membership contract includes {tierContract.initialCandidates} opening choices. The current staging adapter remains capped at four until the expanded review rounds are connected.</p> : null}
             <p className="mt-6 border-t border-[var(--accl-border-subtle)] pt-4 text-[11px] leading-relaxed text-[var(--accl-text-faint)]">Reference images are sanitized, stored privately, used for this request only, and removed after generation.</p>
           </aside>
         </div>

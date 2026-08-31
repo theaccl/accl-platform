@@ -1,24 +1,67 @@
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
+import {
+  GENERATOR_TIER_CONTRACTS,
+  resolveGeneratorMembershipTier,
+} from '@/lib/imageGenerator/membership';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request): Promise<Response> {
   const user = await resolveAuthenticatedUser(request);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
-  const result = await createServiceRoleClient()
-    .from('membership_entitlements')
-    .select('entitlement,status,valid_until')
-    .eq('user_id', user.id)
-    .eq('status', 'active');
+  const supabase = createServiceRoleClient();
+  const normalizedEmail = user.email?.trim().toLowerCase() ?? '';
+  const [result, tokenAccount, internalGrant] = await Promise.all([
+    supabase
+      .from('membership_entitlements')
+      .select('entitlement,status,valid_until,metadata')
+      .eq('user_id', user.id)
+      .eq('status', 'active'),
+    supabase
+      .from('generation_token_accounts')
+      .select('balance,lifetime_earned,lifetime_spent')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('internal_generator_unlimited_grants')
+      .select('status')
+      .eq('email_normalized', normalizedEmail)
+      .eq('status', 'active')
+      .maybeSingle(),
+  ]);
   if (result.error) return jsonResponse({ error: 'Could not load entitlements' }, 500);
   const now = Date.now();
   const active = (result.data ?? []).filter(
     (item) => !item.valid_until || new Date(item.valid_until).getTime() > now
   );
+  if (internalGrant.error) {
+    return jsonResponse({ error: 'Could not verify internal generator access' }, 500);
+  }
+  const internalUnlimited = Boolean(
+    normalizedEmail && user.email_confirmed_at && internalGrant.data?.status === 'active'
+  );
+  const tier = resolveGeneratorMembershipTier(active, internalUnlimited);
+  if (tokenAccount.error) {
+    return jsonResponse({ error: 'Could not load Generation Token account' }, 500);
+  }
   return jsonResponse({
-    image_generator: active.some((item) => item.entitlement === 'image_generator'),
-    profile_motion: active.some((item) => item.entitlement === 'profile_motion'),
+    image_generator: internalUnlimited || active.some((item) => item.entitlement === 'image_generator'),
+    profile_motion: internalUnlimited || active.some((item) => item.entitlement === 'profile_motion'),
+    internal_unlimited: internalUnlimited,
+    membership_tier: tier,
+    generator_contract: GENERATOR_TIER_CONTRACTS[tier],
+    generation_tokens: internalUnlimited ? {
+      balance: null,
+      lifetime_earned: tokenAccount.data?.lifetime_earned ?? 0,
+      lifetime_spent: tokenAccount.data?.lifetime_spent ?? 0,
+      unlimited: true,
+    } : tokenAccount.data ?? {
+      balance: 0,
+      lifetime_earned: 0,
+      lifetime_spent: 0,
+      unlimited: false,
+    },
   });
 }

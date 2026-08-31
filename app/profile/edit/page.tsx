@@ -6,6 +6,7 @@ import type { User } from '@supabase/supabase-js';
 
 import NavigationBar from '@/components/NavigationBar';
 import EditProfileForm from '@/components/profile/EditProfileForm';
+import { GenerationTokenCard } from '@/components/image-generator/GenerationTokenCard';
 import { ProfileUsernameCallout } from '@/components/profile/ProfileUsernameCallout';
 import { useProfileUsername } from '@/hooks/useProfileUsername';
 import { loadOrCreateOwnProfile } from '@/lib/loadOwnProfileForAccount';
@@ -111,6 +112,10 @@ export default function EditProfilePage() {
         </div>
 
         <ProfileUsernameCallout username={profileUsername} accountEmail={user.email ?? null} />
+
+        <div className="mt-6">
+          <GenerationTokenCard compact />
+        </div>
 
         <div className="mt-8">
           {profileLoading ? (

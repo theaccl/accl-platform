@@ -5,7 +5,7 @@ import { ImageGeneratorCreateScreen } from "@/components/image-generator/ImageGe
 
 export const metadata: Metadata = {
   title: "Image Generator | ACCL",
-  description: "Create private profile-image candidates with ACCL Pro.",
+  description: "Create private profile-image candidates with ACCL Generation Tokens.",
 };
 
 export default function ImageGeneratorPage() {

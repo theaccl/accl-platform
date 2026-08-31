@@ -2,6 +2,8 @@
 
 This branch implements the non-visual foundation. React Bits is intentionally not required until the candidate-review and presentation layer is built.
 
+> **Future product doctrine:** The owner-approved Generation Token, Vault, Free/Plus/Pro, matching-set, motion-visibility, and shared cosmetic-progression rules are locked in [`docs/image-generator/ACCL_GENERATION_TOKEN_AND_MEMBERSHIP_DOCTRINE.md`](image-generator/ACCL_GENERATION_TOKEN_AND_MEMBERSHIP_DOCTRINE.md). That doctrine supersedes the early Pro-only product assumptions below for future engineering. The current Slice 1 runtime remains unchanged until the later work is explicitly approved and implemented.
+
 ## Locked product behavior
 
 - `image_generator` is the Pro entitlement.

@@ -23,17 +23,30 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const supabase = createServiceRoleClient();
-    const entitlement = await supabase
-      .from('membership_entitlements')
-      .select('status,valid_until')
-      .eq('user_id', user.id)
-      .eq('entitlement', 'image_generator')
-      .maybeSingle();
+    const normalizedEmail = user.email?.trim().toLowerCase() ?? '';
+    const [entitlement, internalGrant] = await Promise.all([
+      supabase
+        .from('membership_entitlements')
+        .select('status,valid_until')
+        .eq('user_id', user.id)
+        .eq('entitlement', 'image_generator')
+        .maybeSingle(),
+      supabase
+        .from('internal_generator_unlimited_grants')
+        .select('status')
+        .eq('email_normalized', normalizedEmail)
+        .eq('status', 'active')
+        .maybeSingle(),
+    ]);
     const active =
-      !entitlement.error &&
-      entitlement.data?.status === 'active' &&
-      (!entitlement.data.valid_until || new Date(entitlement.data.valid_until).getTime() > Date.now());
-    if (!active) return jsonResponse({ error: 'Image Generator requires an active Pro entitlement' }, 403);
+      (!entitlement.error &&
+        entitlement.data?.status === 'active' &&
+        (!entitlement.data.valid_until || new Date(entitlement.data.valid_until).getTime() > Date.now())) ||
+      (!internalGrant.error &&
+        normalizedEmail.length > 0 &&
+        Boolean(user.email_confirmed_at) &&
+        internalGrant.data?.status === 'active');
+    if (!active) return jsonResponse({ error: 'Image Generator access is required' }, 403);
 
     let sanitized;
     try {
