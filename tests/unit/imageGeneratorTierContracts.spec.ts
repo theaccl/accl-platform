@@ -92,3 +92,18 @@ test('accepted creations preserve immutable Pro evolution lineage', async () => 
   expect(worker).toContain(".from('image_saved_creations')");
   expect(vault).toContain('Spend 1 token and further');
 });
+
+test('one central motion policy protects audience and reduced-motion boundaries', async () => {
+  const policy = await source('lib/imageGenerator/motionPolicy.ts');
+  const route = await source('app/api/profiles/[id]/motion-policy/route.ts');
+
+  expect(policy).toContain("input.tier === 'free'");
+  expect(policy).toContain("input.tier === 'plus'");
+  expect(policy).toContain("input.context !== 'owner_profile'");
+  expect(policy).toContain("input.context === 'chat' || input.context === 'game'");
+  expect(policy).toContain("input.surface !== 'profile_icon'");
+  expect(policy).toContain("requiresStillFallback: true");
+  expect(policy).toContain("if (input.reducedMotion)");
+  expect(route).toContain("rpc('effective_image_generator_tier'");
+  expect(route).toContain('explicitlyAuthorizedPublicSurface: false');
+});
