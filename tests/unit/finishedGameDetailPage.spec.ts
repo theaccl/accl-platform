@@ -40,4 +40,13 @@ test.describe("/finished/[id] detail page (static)", () => {
     expect(src).toContain("toggleReplayPlayback");
     expect(src).toContain('testId="game-finished-replay-playback"');
   });
+
+  test("finished replay keeps the active notation move visible", () => {
+    const src = readFileSync(pagePath, "utf8");
+    expect(src).toContain("moveListRef");
+    expect(src).toContain('data-testid="finished-move-list-scroll"');
+    expect(src).toContain('data-replay-step={step}');
+    expect(src).toContain('activeMove?.scrollIntoView({ block: "nearest", inline: "nearest" });');
+    expect(src).toContain("}, [replayStep]);");
+  });
 });
