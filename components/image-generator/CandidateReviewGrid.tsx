@@ -2,10 +2,13 @@
 
 import Image from "next/image";
 import { Check, LockKeyhole, ShieldAlert, Sparkles, WandSparkles } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 
 import type { CaptureProtectionDecision } from "@/lib/imageGenerator/captureProtection";
 import { WebCaptureProtectionAdapter } from "@/lib/imageGenerator/webCaptureProtectionAdapter";
+import BlurHighlight from "@/components/blur-highlight";
+import Flicker from "@/components/flicker";
 
 export type ReviewCandidate = {
   id: string;
@@ -43,6 +46,7 @@ export function CandidateReviewGrid({
   onRefine,
 }: CandidateReviewGridProps) {
   const [captureDecision, setCaptureDecision] = useState(NO_CAPTURE_DECISION);
+  const prefersReducedMotion = useReducedMotion() === true;
 
   useEffect(() => {
     const adapter = new WebCaptureProtectionAdapter({ onDecision: setCaptureDecision });
@@ -51,11 +55,12 @@ export function CandidateReviewGrid({
   }, []);
 
   return (
-    <section className="mt-8 border-t border-[var(--accl-border-subtle)] pt-8" aria-labelledby="private-candidates-title">
+    <section className="relative isolate mt-8 overflow-hidden rounded-3xl border border-[var(--accl-border-subtle)] bg-black/10 px-4 py-8 sm:px-6" aria-labelledby="private-candidates-title">
+      {!prefersReducedMotion ? <Flicker className="-z-10 opacity-20" spacing={38} particleSize={1} colorPalette={["#d4a017", "#7c3aed"]} glowColor="#d4a017" overlay={0.84} overlayColor="#08070b" rate={0.18} flickerChance={0.16} /> : null}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.17em] text-[var(--accl-accent-gold)]"><LockKeyhole className="h-4 w-4" aria-hidden /> Private review</p>
-          <h2 id="private-candidates-title" className="mt-2 font-display text-3xl font-bold text-white">Choose your winning image</h2>
+          <h2 id="private-candidates-title" className="mt-2 font-display text-3xl font-bold text-white"><BlurHighlight highlightedBits={["winning image"]} highlightColor="rgba(212,160,23,0.24)" blurAmount={prefersReducedMotion ? 0 : 8} inactiveOpacity={prefersReducedMotion ? 1 : 0.3} blurDuration={prefersReducedMotion ? 0.01 : 0.72} highlightDuration={prefersReducedMotion ? 0.01 : 0.9} viewportOptions={{ once: true, amount: 0.35 }}>Choose your winning image</BlurHighlight></h2>
           <p className="mt-1 text-sm text-[var(--accl-text-muted)]">Accept one candidate. The remaining options will be rejected automatically.</p>
         </div>
         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-white/45">{candidates.length} private candidates · 24-hour window</span>

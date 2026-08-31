@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { Check, Clock3, Crown, ImageIcon, ImagePlus, LockKeyhole, ShieldCheck, X } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 
 import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-generator/CandidateReviewGrid";
@@ -28,15 +30,18 @@ type GenerationStatusResponse = {
 
 const REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const GENERATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BlurredRays = dynamic(() => import("@/components/blurred-rays"), { ssr: false });
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `image-generator-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function CandidateBuildUp({ candidateCount }: { candidateCount: number }) {
+function CandidateBuildUp({ candidateCount, reducedMotion }: { candidateCount: number; reducedMotion: boolean }) {
   return (
-    <section className="mt-8 border-t border-[var(--accl-border-subtle)] pt-8" aria-live="polite">
+    <section className="relative mt-8 overflow-hidden rounded-3xl border border-[var(--accl-border-subtle)] bg-black/20 px-4 py-8 sm:px-6" aria-live="polite">
+      {!reducedMotion ? <div className="pointer-events-none absolute inset-0 opacity-35" aria-hidden><BlurredRays speed={0.28} flickerRate={0.55} rayCount={18} raySpacing={0.32} rayThickness={0.22} edgeSoftness={0.8} bloom={2.1} brightness={0.85} backgroundColor="#09070d" opacity={0.75} /></div> : null}
+      <div className="relative z-10">
       <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-[var(--accl-accent-gold)]">The atelier is creating</p>
       <h2 className="mt-2 font-display text-3xl font-bold text-white">Preparing {candidateCount} private candidates</h2>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -47,11 +52,13 @@ function CandidateBuildUp({ candidateCount }: { candidateCount: number }) {
           </div>
         ))}
       </div>
+      </div>
     </section>
   );
 }
 
 export function ImageGeneratorCreateScreen() {
+  const prefersReducedMotion = useReducedMotion() === true;
   const [prompt, setPrompt] = useState("");
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [secondaryReferenceFile, setSecondaryReferenceFile] = useState<File | null>(null);
@@ -77,9 +84,19 @@ export function ImageGeneratorCreateScreen() {
   const [selectedRefinementCandidateId, setSelectedRefinementCandidateId] = useState<string | null>(null);
   const [refinementGuidance, setRefinementGuidance] = useState("");
   const [refinementBusy, setRefinementBusy] = useState(false);
+  const [largeMotionViewport, setLargeMotionViewport] = useState(false);
   const hasRefinementProcessing = refinements.some(
     (item) => item.status === "queued" || item.status === "running"
   );
+  const presentationMotionEnabled = !prefersReducedMotion && largeMotionViewport;
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const update = () => setLargeMotionViewport(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   const rememberGenerationInUrl = useCallback((id: string | null) => {
     const url = new URL(window.location.href);
@@ -500,7 +517,7 @@ export function ImageGeneratorCreateScreen() {
           </aside>
         </div>
 
-        {generationInProgress ? <CandidateBuildUp candidateCount={candidateCount} /> : null}
+        {generationInProgress ? <CandidateBuildUp candidateCount={candidateCount} reducedMotion={!presentationMotionEnabled} /> : null}
         {candidates.length > 0 ? <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={membershipTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} /> : null}
         {selectedRefinementCandidateId && canRefine ? (
           <section className="mt-5 rounded-2xl border border-violet-400/25 bg-violet-950/15 p-5" aria-labelledby="guided-refinement-title">
@@ -515,7 +532,7 @@ export function ImageGeneratorCreateScreen() {
             </div>
           </section>
         ) : null}
-        {hasRefinementProcessing ? <CandidateBuildUp candidateCount={2} /> : null}
+        {hasRefinementProcessing ? <CandidateBuildUp candidateCount={2} reducedMotion={!presentationMotionEnabled} /> : null}
         {approvedId ? (
           <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-950/10 p-5" aria-labelledby="placement-title">
             <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-emerald-300">Accepted identity</p>

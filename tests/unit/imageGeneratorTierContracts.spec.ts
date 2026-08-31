@@ -107,3 +107,19 @@ test('one central motion policy protects audience and reduced-motion boundaries'
   expect(route).toContain("rpc('effective_image_generator_tier'");
   expect(route).toContain('explicitlyAuthorizedPublicSurface: false');
 });
+
+test('licensed presentation effects remain lazy, reduced-motion safe, and mobile bounded', async () => {
+  const screen = await source('components/image-generator/ImageGeneratorCreateScreen.tsx');
+  const review = await source('components/image-generator/CandidateReviewGrid.tsx');
+  const rays = await source('components/blurred-rays.tsx');
+
+  expect(screen).toContain('dynamic(() => import("@/components/blurred-rays")');
+  expect(screen).toContain('useReducedMotion() === true');
+  expect(screen).toContain('window.matchMedia("(min-width: 768px)")');
+  expect(screen).toContain('presentationMotionEnabled');
+  expect(review).toContain('BlurHighlight');
+  expect(review).toContain('<Flicker');
+  expect(review).toContain('!prefersReducedMotion');
+  expect(rays).toContain('dpr={[1, 1.5]}');
+  expect(rays).toContain('powerPreference: "low-power"');
+});
