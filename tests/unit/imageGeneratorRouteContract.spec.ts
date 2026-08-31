@@ -6,12 +6,14 @@ async function source(path: string): Promise<string> {
   return readFile(join(process.cwd(), path), 'utf8');
 }
 
-test('create route requires authentication, idempotency, and the entitlement RPC', async () => {
+test('create route requires authentication, idempotency, and server-derived tier limits', async () => {
   const code = await source('app/api/image-generations/route.ts');
   expect(code).toContain('resolveAuthenticatedUser(request)');
   expect(code).toContain("request.headers.get('idempotency-key')");
   expect(code).toContain("rpc('create_image_generation_request'");
-  expect(code).toContain('active Pro entitlement');
+  expect(code).toContain("rpc('effective_image_generator_tier'");
+  expect(code).toContain("tier === 'free' ? 3 : tier === 'plus' ? 4 : 5");
+  expect(code).toContain('insufficient_generation_tokens');
 });
 
 test('candidate access uses an expiring private signed URL', async () => {
@@ -37,4 +39,6 @@ test('worker refuses to claim jobs until both secret and provider are configured
   expect(code).toContain('verifyImageGenerationWorkerRequest(request)');
   expect(code).toContain('configuredImageGenerationProvider()');
   expect(code).toContain('processImageGenerationBatch(');
+  expect(code).toContain("rpc('mint_due_generation_token_allowances'");
+  expect(code).toContain("rpc('transition_generation_token_redemption'");
 });

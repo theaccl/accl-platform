@@ -55,7 +55,7 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
       mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
     };
   }): Promise<GeneratedImage[]> {
-    if (!Number.isInteger(input.candidateCount) || input.candidateCount < 1 || input.candidateCount > 4) {
+    if (!Number.isInteger(input.candidateCount) || input.candidateCount < 1 || input.candidateCount > 5) {
       throw new Error('provider_candidate_count_invalid');
     }
 

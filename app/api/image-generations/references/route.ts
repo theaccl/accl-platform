@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const supabase = createServiceRoleClient();
     const normalizedEmail = user.email?.trim().toLowerCase() ?? '';
-    const [entitlement, internalGrant] = await Promise.all([
+    const [entitlement, internalGrant, tokenAccount] = await Promise.all([
       supabase
         .from('membership_entitlements')
         .select('status,valid_until')
@@ -37,6 +37,11 @@ export async function POST(request: Request): Promise<Response> {
         .eq('email_normalized', normalizedEmail)
         .eq('status', 'active')
         .maybeSingle(),
+      supabase
+        .from('generation_token_accounts')
+        .select('balance')
+        .eq('user_id', user.id)
+        .maybeSingle(),
     ]);
     const active =
       (!entitlement.error &&
@@ -45,7 +50,8 @@ export async function POST(request: Request): Promise<Response> {
       (!internalGrant.error &&
         normalizedEmail.length > 0 &&
         Boolean(user.email_confirmed_at) &&
-        internalGrant.data?.status === 'active');
+        internalGrant.data?.status === 'active') ||
+      (!tokenAccount.error && (tokenAccount.data?.balance ?? 0) > 0);
     if (!active) return jsonResponse({ error: 'Image Generator access is required' }, 403);
 
     let sanitized;

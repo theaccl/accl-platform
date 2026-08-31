@@ -43,9 +43,9 @@ export function CandidateReviewGrid({ candidates, approvingId, approvedId, onAcc
         <div>
           <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.17em] text-[var(--accl-accent-gold)]"><LockKeyhole className="h-4 w-4" aria-hidden /> Private review</p>
           <h2 id="private-candidates-title" className="mt-2 font-display text-3xl font-bold text-white">Choose your winning image</h2>
-          <p className="mt-1 text-sm text-[var(--accl-text-muted)]">Accept one candidate. The other three will be rejected automatically.</p>
+          <p className="mt-1 text-sm text-[var(--accl-text-muted)]">Accept one candidate. The remaining options will be rejected automatically.</p>
         </div>
-        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-white/45">4 private candidates · 24-hour window</span>
+        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-white/45">{candidates.length} private candidates · 24-hour window</span>
       </div>
 
       <div className="relative mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

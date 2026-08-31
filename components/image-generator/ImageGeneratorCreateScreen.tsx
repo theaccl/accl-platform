@@ -32,15 +32,15 @@ function newIdempotencyKey(): string {
   return `image-generator-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function CandidateBuildUp() {
+function CandidateBuildUp({ candidateCount }: { candidateCount: number }) {
   return (
     <section className="mt-8 border-t border-[var(--accl-border-subtle)] pt-8" aria-live="polite">
       <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-[var(--accl-accent-gold)]">The atelier is creating</p>
-      <h2 className="mt-2 font-display text-3xl font-bold text-white">Preparing four private candidates</h2>
+      <h2 className="mt-2 font-display text-3xl font-bold text-white">Preparing {candidateCount} private candidates</h2>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((ordinal) => (
+        {Array.from({ length: candidateCount }, (_, index) => index + 1).map((ordinal) => (
           <div key={ordinal} className="relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(212,160,23,0.06),rgba(124,58,237,0.08),rgba(7,8,12,0.8))]">
-            <div className="absolute inset-0 animate-pulse bg-[radial-gradient(circle_at_35%_30%,rgba(255,255,255,0.12),transparent_32%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_30%,rgba(255,255,255,0.12),transparent_32%)] motion-safe:animate-pulse" />
             <span className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-black/30 font-mono text-xs text-white/45">0{ordinal}</span>
           </div>
         ))}
@@ -66,18 +66,7 @@ export function ImageGeneratorCreateScreen() {
   const [tierContract, setTierContract] = useState<GeneratorTierContract | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(0);
   const [unlimitedTokens, setUnlimitedTokens] = useState(false);
-
-  const rememberGenerationInUrl = useCallback((id: string | null) => {
-    const url = new URL(window.location.href);
-    if (id) url.searchParams.set("generation", id);
-    else url.searchParams.delete("generation");
-    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, []);
-
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("generation");
-    if (id && GENERATION_ID_PATTERN.test(id)) setGenerationId(id);
-  }, []);
+  const [canCommission, setCanCommission] = useState(false);
 
   const rememberGenerationInUrl = useCallback((id: string | null) => {
     const url = new URL(window.location.href);
@@ -121,6 +110,7 @@ export function ImageGeneratorCreateScreen() {
       if (!response.ok) throw new Error("entitlement_lookup_failed");
       const entitlements = (await response.json()) as {
         image_generator?: boolean;
+        can_commission?: boolean;
         membership_tier?: GeneratorMembershipTier;
         generator_contract?: GeneratorTierContract;
         generation_tokens?: { balance?: number | null; unlimited?: boolean };
@@ -129,6 +119,7 @@ export function ImageGeneratorCreateScreen() {
       setTierContract(entitlements.generator_contract ?? null);
       setTokenBalance(entitlements.generation_tokens?.balance ?? 0);
       setUnlimitedTokens(entitlements.generation_tokens?.unlimited === true);
+      setCanCommission(entitlements.can_commission === true);
       setAccess(entitlements.image_generator ? "pro" : "free");
     } catch {
       setAccess("error");
@@ -178,6 +169,7 @@ export function ImageGeneratorCreateScreen() {
         }
         if (["failed", "cancelled", "expired"].includes(status)) {
           setMessage(status === "expired" ? "This private review window expired." : "This generation could not be completed. Please try again.");
+          if (status === "failed" || status === "cancelled") void loadAccess();
           return;
         }
         timer = setTimeout(() => void poll(), 3000);
@@ -191,7 +183,7 @@ export function ImageGeneratorCreateScreen() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [candidates.length, generationId]);
+  }, [candidates.length, generationId, loadAccess]);
 
   const selectReference = (file: File) => {
     setReferenceError(null);
@@ -211,7 +203,7 @@ export function ImageGeneratorCreateScreen() {
 
   const createCandidates = async () => {
     const cleanPrompt = prompt.trim();
-    if (!cleanPrompt || access !== "pro" || busy) return;
+    if (!cleanPrompt || access !== "pro" || !canCommission || busy) return;
     setBusy(true);
     setMessage(null);
     setGenerationId(null);
@@ -252,7 +244,7 @@ export function ImageGeneratorCreateScreen() {
           "Content-Type": "application/json",
           "Idempotency-Key": newIdempotencyKey(),
         },
-        body: JSON.stringify({ prompt: cleanPrompt, candidate_count: 4, reference_id: referenceId }),
+        body: JSON.stringify({ prompt: cleanPrompt, reference_id: referenceId }),
       });
       const payload = (await response.json()) as GenerationResponse;
       if (!response.ok) {
@@ -266,7 +258,12 @@ export function ImageGeneratorCreateScreen() {
       setGenerationId(id);
       rememberGenerationInUrl(id);
       setGenerationStatus(payload.generation?.status ?? "queued");
-      setMessage("Your reference and description are secured. The atelier is preparing four private candidates.");
+      const candidateCount = tierContract?.initialCandidates ?? 3;
+      setMessage(`Your reference and description are secured. The atelier is preparing ${candidateCount} private candidates.`);
+      if (!unlimitedTokens) {
+        setTokenBalance((current) => Math.max(0, (current ?? 0) - 1));
+        setCanCommission((tokenBalance ?? 0) > 1);
+      }
     } catch {
       setMessage("ACCL could not reach the generator. Please try again in a moment.");
     } finally {
@@ -301,7 +298,8 @@ export function ImageGeneratorCreateScreen() {
     }
   };
 
-  const formDisabled = access !== "pro" || generationId !== null;
+  const formDisabled = access !== "pro" || !canCommission || generationId !== null;
+  const candidateCount = tierContract?.initialCandidates ?? 3;
   const generationInProgress = generationId != null && candidates.length === 0 && !["failed", "cancelled", "expired"].includes(generationStatus ?? "");
 
   return (
@@ -315,7 +313,7 @@ export function ImageGeneratorCreateScreen() {
               <span className="text-xs text-[var(--accl-text-muted)]">Sovereign Atelier · private candidate studio</span>
             </div>
             <h1 id="image-generator-title" className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">Create your chess identity</h1>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--accl-text-muted)] sm:text-lg">Add a reference image, describe how you want ACCL to reinterpret it, or use both. Four private candidates will appear here for your approval.</p>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--accl-text-muted)] sm:text-lg">Add a reference image, describe how you want ACCL to reinterpret it, or use both. Your private candidates will appear here for approval.</p>
             <div className="mt-8">
               <PromptInput3
                 value={prompt}
@@ -331,10 +329,11 @@ export function ImageGeneratorCreateScreen() {
               />
             </div>
             <div className="mt-5 min-h-14" aria-live="polite">
-              {access === "loading" && <p className="text-sm text-[var(--accl-text-muted)]">Checking Pro access…</p>}
+              {access === "loading" && <p className="text-sm text-[var(--accl-text-muted)]">Checking generator access…</p>}
               {access === "signed_out" && <p className="text-sm text-[var(--accl-text-secondary)]"><Link href="/login?next=/image-generator" className="font-semibold text-[var(--accl-accent-gold)] underline underline-offset-4">Sign in</Link>{" "}to use the Image Generator.</p>}
-              {access === "free" && <div className="flex flex-wrap items-center gap-3 rounded-[var(--accl-radius-lg)] border border-[rgba(239,68,68,0.3)] bg-[rgba(127,29,29,0.14)] px-4 py-3 text-sm text-red-100"><LockKeyhole className="h-4 w-4 shrink-0" aria-hidden /><span>Image generation requires an active ACCL Pro membership.</span><Link href="/account" className="ml-auto font-semibold underline underline-offset-4">View membership</Link></div>}
-              {access === "error" && <button type="button" onClick={() => void loadAccess()} className="text-sm font-semibold text-[var(--accl-accent-gold)] underline underline-offset-4">Could not verify Pro access. Try again.</button>}
+              {access === "free" && <div className="flex flex-wrap items-center gap-3 rounded-[var(--accl-radius-lg)] border border-[rgba(239,68,68,0.3)] bg-[rgba(127,29,29,0.14)] px-4 py-3 text-sm text-red-100"><LockKeyhole className="h-4 w-4 shrink-0" aria-hidden /><span>Earn or receive an ACCL Generation Token to open a commission.</span><Link href="/vault" className="ml-auto font-semibold underline underline-offset-4">View Vault</Link></div>}
+              {access === "pro" && !canCommission && <div className="flex flex-wrap items-center gap-3 rounded-[var(--accl-radius-lg)] border border-amber-400/25 bg-amber-950/15 px-4 py-3 text-sm text-amber-100"><LockKeyhole className="h-4 w-4 shrink-0" aria-hidden /><span>You have no available Generation Tokens right now.</span><Link href="/vault" className="ml-auto font-semibold underline underline-offset-4">View Vault</Link></div>}
+              {access === "error" && <button type="button" onClick={() => void loadAccess()} className="text-sm font-semibold text-[var(--accl-accent-gold)] underline underline-offset-4">Could not verify generator access. Try again.</button>}
               {message && <div className={`flex items-start gap-2 rounded-[var(--accl-radius-lg)] border px-4 py-3 text-sm ${generationId ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-100" : "border-red-500/30 bg-red-950/20 text-red-100"}`}>{generationId ? <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : null}<span>{message}</span></div>}
             </div>
           </section>
@@ -349,15 +348,15 @@ export function ImageGeneratorCreateScreen() {
             </div>
             <ul className="mt-5 space-y-5">
               <li className="flex gap-3"><ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">Reference + direction</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Your image guides the composition. Your description steers the result.</p></div></li>
-              <li className="flex gap-3"><Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">Four private candidates</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Review your options for up to 24 hours.</p></div></li>
+              <li className="flex gap-3"><Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">{candidateCount} private candidates</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Review your options for up to 24 hours.</p></div></li>
               <li className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accl-accent-gold)]" aria-hidden /><div><p className="text-sm font-semibold text-white">Nothing publishes automatically</p><p className="mt-1 text-xs leading-relaxed text-[var(--accl-text-muted)]">Only the candidate you accept can move toward profile placement.</p></div></li>
             </ul>
-            {tierContract ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-[var(--accl-text-muted)]">Your membership contract includes {tierContract.initialCandidates} opening choices. The current staging adapter remains capped at four until the expanded review rounds are connected.</p> : null}
+            {tierContract ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-[var(--accl-text-muted)]">Your {tierContract.label} contract includes {tierContract.initialCandidates} opening choices. One token is reserved when you confirm and refunded if no reviewable result is produced.</p> : null}
             <p className="mt-6 border-t border-[var(--accl-border-subtle)] pt-4 text-[11px] leading-relaxed text-[var(--accl-text-faint)]">Reference images are sanitized, stored privately, used for this request only, and removed after generation.</p>
           </aside>
         </div>
 
-        {generationInProgress ? <CandidateBuildUp /> : null}
+        {generationInProgress ? <CandidateBuildUp candidateCount={candidateCount} /> : null}
         {candidates.length > 0 ? <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} /> : null}
       </div>
     </div>

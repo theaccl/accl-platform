@@ -9,12 +9,14 @@ import {
   CANDIDATE_REVIEW_HOURS,
   CANDIDATE_SIGNED_URL_SECONDS,
   extensionForMimeType,
+  MAX_INITIAL_IMAGE_CANDIDATES,
   MAX_IMAGE_CANDIDATES,
 } from '../../lib/imageGenerator/domain';
 import { parseClaimedRequest } from '../../lib/imageGenerator/provider';
 
-test('Slice 1 generation limits stay locked', () => {
-  expect(MAX_IMAGE_CANDIDATES).toBe(4);
+test('expanded membership generation limits stay locked', () => {
+  expect(MAX_INITIAL_IMAGE_CANDIDATES).toBe(5);
+  expect(MAX_IMAGE_CANDIDATES).toBe(13);
   expect(CANDIDATE_REVIEW_HOURS).toBe(24);
   expect(CANDIDATE_SIGNED_URL_SECONDS).toBe(60);
 });

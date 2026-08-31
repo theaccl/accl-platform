@@ -111,3 +111,24 @@ test('provider rejects an incomplete candidate response', async () => {
     })
   ).rejects.toThrow('provider_candidate_count_invalid');
 });
+
+test('provider supports the five opening concepts in a Pro commission', async () => {
+  const fakeGenerateImage = async () => ({
+    images: Array.from({ length: 5 }, () => ({
+      uint8Array: new Uint8Array([137, 80, 78, 71]),
+      mediaType: 'image/png',
+    })),
+  });
+  const provider = new VercelGatewayImageGenerationProvider(
+    DEFAULT_IMAGE_GENERATION_MODEL,
+    fakeGenerateImage as never
+  );
+
+  const images = await provider.generate({
+    prompt: 'A coordinated sovereign chess identity',
+    candidateCount: 5,
+    requestId: 'pro-request-123',
+    ownerId: 'player-456',
+  });
+  expect(images).toHaveLength(5);
+});

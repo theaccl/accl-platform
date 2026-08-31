@@ -19,6 +19,9 @@ async function processRequest(request: Request, batch: number): Promise<Response
   if (!provider) return jsonResponse({ error: 'Image generation provider is not configured' }, 503);
 
   const supabase = createServiceRoleClient();
+  const weeklyMints = await supabase.rpc('mint_due_generation_token_allowances', {
+    p_limit: 50,
+  });
   const expiredReferences = await supabase
     .from('image_generation_references')
     .select('id,storage_path')
@@ -45,6 +48,17 @@ async function processRequest(request: Request, batch: number): Promise<Response
     p_limit: 10,
   });
   const recoveredRows = Array.isArray(recovered.data) ? recovered.data : [];
+  const terminalRecoveries = recoveredRows.filter(
+    (row) => row && typeof row === 'object' && row.status === 'failed' && typeof row.request_id === 'string'
+  );
+  const recoveryRefunds = await Promise.all(
+    terminalRecoveries.map((row) =>
+      supabase.rpc('transition_generation_token_redemption', {
+        p_request_id: row.request_id,
+        p_action: 'refund',
+      })
+    )
+  );
   const staleStoragePaths = recoveredRows.flatMap((row) =>
     row && typeof row === 'object' && Array.isArray(row.storage_paths)
       ? row.storage_paths.filter((path: unknown): path is string => typeof path === 'string')
@@ -61,6 +75,11 @@ async function processRequest(request: Request, batch: number): Promise<Response
     recovered_count: recoveredRows.length,
     recovery_cleanup_error: staleCleanup.error?.message ?? null,
     reference_cleanup_error: referenceCleanupError,
+    weekly_token_mints: Array.isArray(weeklyMints.data) ? weeklyMints.data.length : 0,
+    weekly_token_mint_error: weeklyMints.error?.message ?? null,
+    recovery_refund_errors: recoveryRefunds.flatMap((result) =>
+      result.error ? [result.error.message] : []
+    ),
     results,
   });
 }

@@ -32,12 +32,18 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const supabase = createServiceRoleClient();
+    const tierResult = await supabase.rpc('effective_image_generator_tier', {
+      p_user_id: user.id,
+    });
+    if (tierResult.error) return jsonResponse({ error: 'Could not verify generator access' }, 500);
+    const tier = typeof tierResult.data === 'string' ? tierResult.data : 'free';
+    const candidateCount = tier === 'free' ? 3 : tier === 'plus' ? 4 : 5;
     const provider = IMAGE_GENERATION_PROVIDER;
     const model = process.env.ACCL_IMAGE_GENERATION_MODEL?.trim() || DEFAULT_IMAGE_GENERATION_MODEL;
     const result = await supabase.rpc('create_image_generation_request', {
       p_owner_id: user.id,
       p_prompt: parsed.data.prompt,
-      p_candidate_count: parsed.data.candidate_count,
+      p_candidate_count: candidateCount,
       p_idempotency_key: idempotencyKey,
       p_reference_id: parsed.data.reference_id ?? null,
       p_provider: provider,
@@ -45,7 +51,13 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (result.error) {
       if (result.error.code === '42501' || result.error.message.includes('entitlement required')) {
-        return jsonResponse({ error: 'Image Generator requires an active Pro entitlement' }, 403);
+        return jsonResponse({ error: 'Image Generator access is required' }, 403);
+      }
+      if (result.error.message.includes('insufficient generation tokens')) {
+        return jsonResponse(
+          { error: 'You need one ACCL Generation Token to begin this commission', code: 'insufficient_generation_tokens' },
+          409
+        );
       }
       if (result.error.message.includes('idempotency key reused')) {
         return jsonResponse({ error: 'Idempotency-Key was already used for a different request' }, 409);

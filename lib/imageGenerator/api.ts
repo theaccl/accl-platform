@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const createGenerationSchema = z.object({
   prompt: z.string().trim().min(1).max(2000),
-  candidate_count: z.number().int().min(1).max(4).default(4),
+  // The server derives the actual count from the effective membership tier.
+  candidate_count: z.number().int().min(1).max(5).optional(),
   reference_id: z.string().uuid().nullable().optional(),
 });
 

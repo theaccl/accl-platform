@@ -34,6 +34,15 @@ const pendingAllowlistMigration = readFileSync(
   ),
   'utf8'
 );
+const economyMigration = readFileSync(
+  join(
+    process.cwd(),
+    'supabase',
+    'migrations',
+    '20260831060000_generation_token_economy_enforcement.sql'
+  ),
+  'utf8'
+);
 
 test.describe('ACCL Generation Token and tier contract', () => {
   test('tier allowances match the locked doctrine', () => {
@@ -118,5 +127,43 @@ test.describe('ACCL Generation Token and tier contract', () => {
     expect(pendingAllowlistMigration).toContain('u.email_confirmed_at is not null');
     expect(pendingAllowlistMigration).toContain('g.email_normalized = lower(u.email)');
     expect(pendingAllowlistMigration).toContain('(g.user_id is null or g.user_id = u.id)');
+  });
+
+  test('commissions reserve, spend, and refund tokens atomically', () => {
+    expect(economyMigration).toContain('create table public.generation_token_redemptions');
+    expect(economyMigration).toContain("'commission_reservation'");
+    expect(economyMigration).toContain("perform public.transition_generation_token_redemption(v_id, 'spend')");
+    expect(economyMigration).toContain(
+      "perform public.transition_generation_token_redemption(p_request_id, 'refund')"
+    );
+    expect(economyMigration).toContain('reserved = reserved + v_token_cost');
+    expect(economyMigration).toContain('reserved = reserved - v_redemption.token_cost');
+  });
+
+  test('weekly mint hierarchy tops Plus to two and Pro to four without stacking', () => {
+    expect(economyMigration).toContain("v_target := case v_tier when 'plus' then 2 when 'pro' then 4 else 0 end");
+    expect(economyMigration).toContain('v_delta := greatest(v_target - v_existing, 0)');
+    expect(economyMigration).toContain("'plus_weekly_mint'");
+    expect(economyMigration).toContain("'pro_weekly_mint'");
+  });
+
+  test('rating milestones mint once from a new historical peak', () => {
+    expect(economyMigration).toContain('after update of peak_rank_band');
+    expect(economyMigration).toContain("'rating_milestone_mint'");
+    expect(economyMigration).toContain(
+      "'rating-milestone:' || new.user_id::text || ':' || new.peak_rank_band"
+    );
+  });
+
+  test('token economy functions and tables remain server-controlled', () => {
+    expect(economyMigration).toContain(
+      'alter table public.generation_token_redemptions enable row level security'
+    );
+    expect(economyMigration).toContain(
+      'revoke all on function public.transition_generation_token_redemption(uuid, text)'
+    );
+    expect(economyMigration).toContain(
+      'grant execute on function public.mint_due_generation_token_allowances(integer)\n  to service_role'
+    );
   });
 });

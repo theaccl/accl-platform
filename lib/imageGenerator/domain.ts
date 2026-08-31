@@ -1,6 +1,7 @@
 export const IMAGE_GENERATOR_ENTITLEMENT = 'image_generator' as const;
 export const PROFILE_MOTION_ENTITLEMENT = 'profile_motion' as const;
-export const MAX_IMAGE_CANDIDATES = 4;
+export const MAX_IMAGE_CANDIDATES = 13;
+export const MAX_INITIAL_IMAGE_CANDIDATES = 5;
 export const CANDIDATE_REVIEW_HOURS = 24;
 export const CANDIDATE_SIGNED_URL_SECONDS = 60;
 export const REFERENCE_IMAGE_MAX_BYTES = 4 * 1024 * 1024;

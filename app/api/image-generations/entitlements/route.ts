@@ -21,7 +21,7 @@ export async function GET(request: Request): Promise<Response> {
       .eq('status', 'active'),
     supabase
       .from('generation_token_accounts')
-      .select('balance,lifetime_earned,lifetime_spent')
+      .select('balance,reserved,lifetime_earned,lifetime_spent')
       .eq('user_id', user.id)
       .maybeSingle(),
     supabase
@@ -46,21 +46,29 @@ export async function GET(request: Request): Promise<Response> {
   if (tokenAccount.error) {
     return jsonResponse({ error: 'Could not load Generation Token account' }, 500);
   }
+  const tokenSummary = tokenAccount.data ?? {
+    balance: 0,
+    reserved: 0,
+    lifetime_earned: 0,
+    lifetime_spent: 0,
+  };
+  const hasPaidGeneratorTier = tier === 'plus' || tier === 'pro';
+  const canCommission = internalUnlimited || tokenSummary.balance > 0;
   return jsonResponse({
-    image_generator: internalUnlimited || active.some((item) => item.entitlement === 'image_generator'),
+    image_generator: internalUnlimited || hasPaidGeneratorTier || tokenSummary.balance > 0,
+    can_commission: canCommission,
     profile_motion: internalUnlimited || active.some((item) => item.entitlement === 'profile_motion'),
     internal_unlimited: internalUnlimited,
     membership_tier: tier,
     generator_contract: GENERATOR_TIER_CONTRACTS[tier],
     generation_tokens: internalUnlimited ? {
       balance: null,
+      reserved: tokenSummary.reserved,
       lifetime_earned: tokenAccount.data?.lifetime_earned ?? 0,
       lifetime_spent: tokenAccount.data?.lifetime_spent ?? 0,
       unlimited: true,
-    } : tokenAccount.data ?? {
-      balance: 0,
-      lifetime_earned: 0,
-      lifetime_spent: 0,
+    } : {
+      ...tokenSummary,
       unlimited: false,
     },
   });
