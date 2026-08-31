@@ -84,13 +84,40 @@ test('provider uses the sanitized reference image together with the written dire
     candidateCount: 4,
     requestId: 'request-with-reference',
     ownerId: 'player-456',
-    referenceImage: { bytes: referenceBytes, mimeType: 'image/webp' },
+    referenceImages: [{ bytes: referenceBytes, mimeType: 'image/webp' }],
   });
 
   expect(call?.prompt).toEqual({
     text: 'Keep the silhouette and add a sovereign gold chess atmosphere',
     images: [referenceBytes],
   });
+});
+
+test('provider sends two sanitized Pro references in one guided request', async () => {
+  let call: Record<string, unknown> | undefined;
+  const references = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])];
+  const fakeGenerateImage = async (options: Record<string, unknown>) => {
+    call = options;
+    return {
+      images: Array.from({ length: 5 }, () => ({
+        uint8Array: new Uint8Array([137, 80, 78, 71]),
+        mediaType: 'image/png',
+      })),
+    };
+  };
+  const provider = new VercelGatewayImageGenerationProvider(
+    DEFAULT_IMAGE_GENERATION_MODEL,
+    fakeGenerateImage as never
+  );
+  await provider.generate({
+    prompt: 'Coordinate both references',
+    candidateCount: 5,
+    requestId: 'two-reference-request',
+    ownerId: 'player-456',
+    referenceImages: references.map((bytes) => ({ bytes, mimeType: 'image/webp' })),
+  });
+
+  expect(call?.prompt).toEqual({ text: 'Coordinate both references', images: references });
 });
 
 test('provider rejects an incomplete candidate response', async () => {

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { placeProfileImageSchema, parseJsonBody } from '@/lib/imageGenerator/api';
 import { createProfileStillDerivative } from '@/lib/imageGenerator/derivatives';
 import type { ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
@@ -43,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const bucket = parsed.data.surface === 'profile_image' ? 'profile-avatars' : 'profile-backgrounds';
-    const path = `${user.id}/generated/${candidate.id}/${derivative.version}-${parsed.data.surface}.${derivative.extension}`;
+    const path = `${user.id}/generated/${candidate.id}/${derivative.version}-${parsed.data.surface}-${randomUUID()}.${derivative.extension}`;
     const published = await supabase.storage.from(bucket).upload(path, derivative.bytes, {
       contentType: derivative.mimeType,
       cacheControl: '31536000',
@@ -63,6 +65,13 @@ export async function POST(request: Request): Promise<Response> {
       p_derivative_version: derivative.version,
     });
     if (placed.error) {
+      await supabase.storage.from(bucket).remove([path]);
+      if (placed.error.message.includes('either icon or background')) {
+        return jsonResponse(
+          { error: 'This commission can be placed as either an icon or a background, not both' },
+          403
+        );
+      }
       return jsonResponse({ error: 'Could not finish profile imagery placement' }, 409);
     }
     return jsonResponse({ placement: placed.data });

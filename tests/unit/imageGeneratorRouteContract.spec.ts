@@ -10,7 +10,7 @@ test('create route requires authentication, idempotency, and server-derived tier
   const code = await source('app/api/image-generations/route.ts');
   expect(code).toContain('resolveAuthenticatedUser(request)');
   expect(code).toContain("request.headers.get('idempotency-key')");
-  expect(code).toContain("rpc('create_image_generation_request'");
+  expect(code).toContain("rpc('create_image_generation_request_with_references'");
   expect(code).toContain("rpc('effective_image_generator_tier'");
   expect(code).toContain("tier === 'free' ? 3 : tier === 'plus' ? 4 : 5");
   expect(code).toContain('insufficient_generation_tokens');

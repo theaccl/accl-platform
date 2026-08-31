@@ -22,10 +22,10 @@ export interface ImageGenerationProvider {
     candidateCount: number;
     requestId: string;
     ownerId: string;
-    referenceImage?: {
+    referenceImages?: Array<{
       bytes: Uint8Array;
       mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
-    };
+    }>;
   }): Promise<GeneratedImage[]>;
 }
 
@@ -50,10 +50,10 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
     candidateCount: number;
     requestId: string;
     ownerId: string;
-    referenceImage?: {
+    referenceImages?: Array<{
       bytes: Uint8Array;
       mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
-    };
+    }>;
   }): Promise<GeneratedImage[]> {
     if (!Number.isInteger(input.candidateCount) || input.candidateCount < 1 || input.candidateCount > 5) {
       throw new Error('provider_candidate_count_invalid');
@@ -61,8 +61,8 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
 
     const result = await this.generateImageFn({
       model: this.model,
-      prompt: input.referenceImage
-        ? { text: input.prompt, images: [input.referenceImage.bytes] }
+      prompt: input.referenceImages?.length
+        ? { text: input.prompt, images: input.referenceImages.map((image) => image.bytes) }
         : input.prompt,
       n: input.candidateCount,
       // Some Gateway image providers only return one image per upstream call.

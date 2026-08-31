@@ -5,6 +5,7 @@ export const createGenerationSchema = z.object({
   // The server derives the actual count from the effective membership tier.
   candidate_count: z.number().int().min(1).max(5).optional(),
   reference_id: z.string().uuid().nullable().optional(),
+  reference_ids: z.array(z.string().uuid()).max(2).optional(),
 });
 
 export const approveCandidateSchema = z.object({

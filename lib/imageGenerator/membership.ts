@@ -7,6 +7,7 @@ export type GeneratorTierContract = {
   initialCandidates: number;
   touchUpGuides: number;
   imagesPerTouchUp: number;
+  maxReferences: number;
   placement: 'icon_or_background' | 'matching_icon_and_background';
   ownerMotion: boolean;
   visitorMotion: boolean;
@@ -22,6 +23,7 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     initialCandidates: 3,
     touchUpGuides: 0,
     imagesPerTouchUp: 0,
+    maxReferences: 1,
     placement: 'icon_or_background',
     ownerMotion: false,
     visitorMotion: false,
@@ -35,6 +37,7 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     initialCandidates: 4,
     touchUpGuides: 1,
     imagesPerTouchUp: 2,
+    maxReferences: 1,
     placement: 'icon_or_background',
     ownerMotion: true,
     visitorMotion: false,
@@ -48,6 +51,7 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     initialCandidates: 5,
     touchUpGuides: 4,
     imagesPerTouchUp: 2,
+    maxReferences: 2,
     placement: 'matching_icon_and_background',
     ownerMotion: true,
     visitorMotion: true,
@@ -61,6 +65,7 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     initialCandidates: 5,
     touchUpGuides: 4,
     imagesPerTouchUp: 2,
+    maxReferences: 2,
     placement: 'matching_icon_and_background',
     ownerMotion: true,
     visitorMotion: true,

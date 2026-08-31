@@ -38,14 +38,16 @@ export async function POST(request: Request): Promise<Response> {
     if (tierResult.error) return jsonResponse({ error: 'Could not verify generator access' }, 500);
     const tier = typeof tierResult.data === 'string' ? tierResult.data : 'free';
     const candidateCount = tier === 'free' ? 3 : tier === 'plus' ? 4 : 5;
+    const referenceIds = parsed.data.reference_ids ??
+      (parsed.data.reference_id ? [parsed.data.reference_id] : []);
     const provider = IMAGE_GENERATION_PROVIDER;
     const model = process.env.ACCL_IMAGE_GENERATION_MODEL?.trim() || DEFAULT_IMAGE_GENERATION_MODEL;
-    const result = await supabase.rpc('create_image_generation_request', {
+    const result = await supabase.rpc('create_image_generation_request_with_references', {
       p_owner_id: user.id,
       p_prompt: parsed.data.prompt,
       p_candidate_count: candidateCount,
       p_idempotency_key: idempotencyKey,
-      p_reference_id: parsed.data.reference_id ?? null,
+      p_reference_ids: referenceIds,
       p_provider: provider,
       p_model: model,
     });

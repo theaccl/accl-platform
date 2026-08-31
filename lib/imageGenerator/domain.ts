@@ -30,6 +30,7 @@ export type ImageGenerationRequestRow = {
   candidate_count: number;
   idempotency_key: string;
   reference_id: string | null;
+  reference_id_2: string | null;
   attempt_count: number;
   review_expires_at: string | null;
   created_at: string;

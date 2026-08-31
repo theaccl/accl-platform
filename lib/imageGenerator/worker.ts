@@ -22,13 +22,14 @@ export type ImageGenerationProcessResult = {
 
 const MAX_QUEUE_ATTEMPTS = 3;
 
-async function disposeReferenceImage(
+async function disposeReferenceImages(
   supabase: SupabaseClient,
-  referenceId: string | null,
-  storagePath: string | null
+  references: Array<{ id: string; storagePath: string }>
 ): Promise<void> {
-  if (!referenceId || !storagePath) return;
-  const removed = await supabase.storage.from('image-generation-references').remove([storagePath]);
+  if (references.length === 0) return;
+  const removed = await supabase.storage
+    .from('image-generation-references')
+    .remove(references.map((reference) => reference.storagePath));
   await supabase
     .from('image_generation_references')
     .update({
@@ -36,7 +37,7 @@ async function disposeReferenceImage(
       deleted_at: removed.error ? null : new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', referenceId);
+    .in('id', references.map((reference) => reference.id));
 }
 
 export function isTransientImageGenerationError(error: unknown): boolean {
@@ -72,19 +73,23 @@ export async function processOneImageGeneration(
   if (!request) return { claimed: false };
 
   const uploadedPaths: string[] = [];
-  let referenceStoragePath: string | null = null;
+  const consumedReferences: Array<{ id: string; storagePath: string }> = [];
   try {
     const promptSafety = moderateImagePrompt(request.prompt);
     if (!promptSafety.allowed) throw new Error(`prompt_safety_rejected:${promptSafety.code}`);
 
-    let referenceImage:
-      | { bytes: Uint8Array; mimeType: 'image/png' | 'image/jpeg' | 'image/webp' }
-      | undefined;
-    if (request.reference_id) {
+    const referenceImages: Array<{
+      bytes: Uint8Array;
+      mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+    }> = [];
+    const referenceIds = [request.reference_id, request.reference_id_2].filter(
+      (id): id is string => Boolean(id)
+    );
+    for (const referenceId of referenceIds) {
       const referenceResult = await supabase
         .from('image_generation_references')
         .select('id,owner_id,status,storage_path,mime_type,byte_size,width,height,sha256,expires_at,deleted_at,created_at,updated_at')
-        .eq('id', request.reference_id)
+        .eq('id', referenceId)
         .eq('owner_id', request.owner_id)
         .eq('status', 'ready')
         .maybeSingle();
@@ -92,15 +97,15 @@ export async function processOneImageGeneration(
       if (referenceResult.error || !reference || new Date(reference.expires_at).getTime() <= Date.now()) {
         throw new Error('reference_image_unavailable');
       }
-      referenceStoragePath = reference.storage_path;
+      consumedReferences.push({ id: reference.id, storagePath: reference.storage_path });
       const downloaded = await supabase.storage
         .from('image-generation-references')
         .download(reference.storage_path);
       if (downloaded.error) throw new Error(`reference_download_failed:${downloaded.error.message}`);
-      referenceImage = {
+      referenceImages.push({
         bytes: new Uint8Array(await downloaded.data.arrayBuffer()),
         mimeType: reference.mime_type,
-      };
+      });
     }
 
     const generated = await provider.generate({
@@ -108,7 +113,7 @@ export async function processOneImageGeneration(
       candidateCount: request.candidate_count,
       requestId: request.id,
       ownerId: request.owner_id,
-      referenceImage,
+      referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
     });
     for (let index = 0; index < generated.length; index++) {
       const candidate = generated[index];
@@ -150,7 +155,7 @@ export async function processOneImageGeneration(
     if (finalized.error || finalized.data !== true) {
       throw new Error(`request_finalize_failed:${finalized.error?.message ?? 'not_running'}`);
     }
-    await disposeReferenceImage(supabase, request.reference_id, referenceStoragePath);
+    await disposeReferenceImages(supabase, consumedReferences);
     return {
       claimed: true,
       request_id: request.id,
@@ -176,7 +181,7 @@ export async function processOneImageGeneration(
         ? 'queued'
         : 'failed';
     if (finalStatus === 'failed') {
-      await disposeReferenceImage(supabase, request.reference_id, referenceStoragePath);
+      await disposeReferenceImages(supabase, consumedReferences);
     }
     return {
       claimed: true,

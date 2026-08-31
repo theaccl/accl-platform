@@ -52,12 +52,14 @@ test.describe('ACCL Generation Token and tier contract', () => {
       initialCandidates: 4,
       touchUpGuides: 1,
       imagesPerTouchUp: 2,
+      maxReferences: 1,
     });
     expect(GENERATOR_TIER_CONTRACTS.pro).toMatchObject({
       weeklyTokens: 4,
       initialCandidates: 5,
       touchUpGuides: 4,
       imagesPerTouchUp: 2,
+      maxReferences: 2,
       placement: 'matching_icon_and_background',
     });
   });

@@ -41,6 +41,7 @@ type PromptInput3Props = {
   referenceError?: string | null;
   onReferenceSelect?: (file: File) => void;
   onReferenceRemove?: () => void;
+  candidateCount?: number;
 };
 
 export default function PromptInput3({
@@ -55,6 +56,7 @@ export default function PromptInput3({
   referenceError = null,
   onReferenceSelect,
   onReferenceRemove,
+  candidateCount = 4,
 }: PromptInput3Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,7 +154,7 @@ export default function PromptInput3({
             className="ml-auto inline-flex min-h-10 items-center justify-center gap-2 rounded-[var(--rb-r-md)] bg-[var(--accl-accent-gold)] px-5 text-sm font-bold text-black transition-[transform,filter,opacity] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--accl-bg-card)] disabled:pointer-events-none disabled:opacity-40"
           >
             <Sparkles className="h-4 w-4" aria-hidden />
-            {busy ? "Creating…" : "Create 4 candidates"}
+            {busy ? "Creating…" : `Create ${candidateCount} candidates`}
           </button>
         </div>
       </div>

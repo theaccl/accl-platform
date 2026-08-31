@@ -24,13 +24,14 @@ test('reference image migration keeps uploads private and binds each reference t
   expect(sql).not.toContain('create policy image_generation_references_storage');
 });
 
-test('reference route authenticates, checks Pro access, sanitizes, and writes only to private storage', async () => {
+test('reference route authenticates, checks generator access, sanitizes, and writes only to private storage', async () => {
   const code = await readFile(
     join(process.cwd(), 'app/api/image-generations/references/route.ts'),
     'utf8'
   );
   expect(code).toContain('resolveAuthenticatedUser(request)');
   expect(code).toContain(".eq('entitlement', 'image_generator')");
+  expect(code).toContain(".from('generation_token_accounts')");
   expect(code).toContain('sanitizeReferenceImage(');
   expect(code).toContain(".from('image-generation-references')");
   expect(code).toContain("'Cache-Control': 'private, no-store'");
@@ -41,8 +42,9 @@ test('worker downloads the private reference for generation and disposes it afte
   expect(code).toContain(".from('image_generation_references')");
   expect(code).toContain(".from('image-generation-references')");
   expect(code).toContain('.download(reference.storage_path)');
-  expect(code).toContain('referenceImage,');
-  expect(code).toContain('disposeReferenceImage(supabase, request.reference_id, referenceStoragePath)');
+  expect(code).toContain('referenceImages: referenceImages.length > 0');
+  expect(code).toContain('disposeReferenceImages(supabase, consumedReferences)');
+  expect(code).toContain(".in('id', references.map((reference) => reference.id))");
   expect(code).toContain("status: removed.error ? 'cleanup_pending' : 'deleted'");
 });
 

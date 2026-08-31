@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Clock3, Crown, ImageIcon, LockKeyhole, ShieldCheck } from "lucide-react";
+import Image from "next/image";
+import { Check, Clock3, Crown, ImageIcon, ImagePlus, LockKeyhole, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-generator/CandidateReviewGrid";
@@ -52,7 +53,9 @@ function CandidateBuildUp({ candidateCount }: { candidateCount: number }) {
 export function ImageGeneratorCreateScreen() {
   const [prompt, setPrompt] = useState("");
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [secondaryReferenceFile, setSecondaryReferenceFile] = useState<File | null>(null);
   const [referencePreviewUrl, setReferencePreviewUrl] = useState<string | null>(null);
+  const [secondaryReferencePreviewUrl, setSecondaryReferencePreviewUrl] = useState<string | null>(null);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [access, setAccess] = useState<AccessState>("loading");
   const [busy, setBusy] = useState(false);
@@ -62,6 +65,8 @@ export function ImageGeneratorCreateScreen() {
   const [candidates, setCandidates] = useState<ReviewCandidate[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvedId, setApprovedId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState<'profile_image' | 'profile_background' | 'matching_set' | null>(null);
+  const [placementComplete, setPlacementComplete] = useState(false);
   const [membershipTier, setMembershipTier] = useState<GeneratorMembershipTier>("free");
   const [tierContract, setTierContract] = useState<GeneratorTierContract | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(0);
@@ -89,6 +94,16 @@ export function ImageGeneratorCreateScreen() {
     setReferencePreviewUrl(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
   }, [referenceFile]);
+
+  useEffect(() => {
+    if (!secondaryReferenceFile) {
+      setSecondaryReferencePreviewUrl(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(secondaryReferenceFile);
+    setSecondaryReferencePreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [secondaryReferenceFile]);
 
   const loadAccess = useCallback(async () => {
     setAccess("loading");
@@ -185,19 +200,22 @@ export function ImageGeneratorCreateScreen() {
     };
   }, [candidates.length, generationId, loadAccess]);
 
-  const selectReference = (file: File) => {
+  const selectReference = (file: File, slot: 'primary' | 'secondary' = 'primary') => {
     setReferenceError(null);
     if (!REFERENCE_MIME_TYPES.has(file.type)) {
       setReferenceError("Choose a PNG, JPEG, or WebP image.");
-      setReferenceFile(null);
+      if (slot === 'primary') setReferenceFile(null);
+      else setSecondaryReferenceFile(null);
       return;
     }
     if (file.size > REFERENCE_IMAGE_MAX_BYTES) {
       setReferenceError("The reference image must be 4 MB or smaller.");
-      setReferenceFile(null);
+      if (slot === 'primary') setReferenceFile(null);
+      else setSecondaryReferenceFile(null);
       return;
     }
-    setReferenceFile(file);
+    if (slot === 'primary') setReferenceFile(file);
+    else setSecondaryReferenceFile(file);
     setMessage(null);
   };
 
@@ -211,6 +229,7 @@ export function ImageGeneratorCreateScreen() {
     setGenerationStatus(null);
     setCandidates([]);
     setApprovedId(null);
+    setPlacementComplete(false);
     try {
       const sessionResult = await supabase.auth.getSession();
       const token = sessionResult.data.session?.access_token?.trim();
@@ -220,10 +239,10 @@ export function ImageGeneratorCreateScreen() {
         return;
       }
 
-      let referenceId: string | null = null;
-      if (referenceFile) {
+      const referenceIds: string[] = [];
+      for (const file of [referenceFile, secondaryReferenceFile].filter((item): item is File => Boolean(item))) {
         const formData = new FormData();
-        formData.set("reference", referenceFile);
+        formData.set("reference", file);
         const uploadResponse = await fetch("/api/image-generations/references", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
@@ -234,7 +253,7 @@ export function ImageGeneratorCreateScreen() {
           setMessage(uploadPayload.error ?? "ACCL could not prepare that reference image. Please try another image.");
           return;
         }
-        referenceId = uploadPayload.reference.id;
+        referenceIds.push(uploadPayload.reference.id);
       }
 
       const response = await fetch("/api/image-generations", {
@@ -244,7 +263,7 @@ export function ImageGeneratorCreateScreen() {
           "Content-Type": "application/json",
           "Idempotency-Key": newIdempotencyKey(),
         },
-        body: JSON.stringify({ prompt: cleanPrompt, reference_id: referenceId }),
+        body: JSON.stringify({ prompt: cleanPrompt, reference_ids: referenceIds }),
       });
       const payload = (await response.json()) as GenerationResponse;
       if (!response.ok) {
@@ -298,8 +317,51 @@ export function ImageGeneratorCreateScreen() {
     }
   };
 
+  const placeAcceptedCandidate = async (
+    placement: 'profile_image' | 'profile_background' | 'matching_set'
+  ) => {
+    if (!approvedId || placing || placementComplete) return;
+    setPlacing(placement);
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      const token = sessionResult.data.session?.access_token?.trim();
+      if (!token) {
+        setAccess('signed_out');
+        setMessage('Your session ended. Sign in again to place this image.');
+        return;
+      }
+      const response = await fetch(
+        placement === 'matching_set' ? '/api/profile/imagery/set' : '/api/profile/imagery',
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            placement === 'matching_set'
+              ? { candidate_id: approvedId }
+              : { candidate_id: approvedId, surface: placement }
+          ),
+        }
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? 'profile_placement_failed');
+      setPlacementComplete(true);
+      setMessage(
+        placement === 'matching_set'
+          ? 'Your coordinated profile icon and background are now placed.'
+          : placement === 'profile_image'
+            ? 'Your accepted image is now placed as your profile icon.'
+            : 'Your accepted image is now placed as your profile background.'
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'ACCL could not place that image.');
+    } finally {
+      setPlacing(null);
+    }
+  };
+
   const formDisabled = access !== "pro" || !canCommission || generationId !== null;
   const candidateCount = tierContract?.initialCandidates ?? 3;
+  const maxReferences = tierContract?.maxReferences ?? 1;
   const generationInProgress = generationId != null && candidates.length === 0 && !["failed", "cancelled", "expired"].includes(generationStatus ?? "");
 
   return (
@@ -326,7 +388,30 @@ export function ImageGeneratorCreateScreen() {
                 referenceError={referenceError}
                 onReferenceSelect={selectReference}
                 onReferenceRemove={() => { setReferenceFile(null); setReferenceError(null); }}
+                candidateCount={candidateCount}
               />
+              {maxReferences > 1 ? (
+                <div className="mt-3 rounded-xl border border-dashed border-white/15 bg-black/10 p-3">
+                  {secondaryReferencePreviewUrl ? (
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-white/10">
+                        <Image src={secondaryReferencePreviewUrl} alt="Second selected private reference" fill sizes="56px" unoptimized className="object-cover" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-white">{secondaryReferenceFile?.name}</p>
+                        <p className="mt-1 text-[11px] text-[var(--accl-text-muted)]">Second private Pro reference</p>
+                      </div>
+                      <button type="button" onClick={() => setSecondaryReferenceFile(null)} disabled={formDisabled || busy} aria-label="Remove second reference image" className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-white/55 hover:border-red-400/40 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-40"><X className="h-4 w-4" aria-hidden /></button>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer items-center gap-3 text-sm text-white/70">
+                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-500/10 text-violet-200"><ImagePlus className="h-4 w-4" aria-hidden /></span>
+                      <span><strong className="block text-white">Add second Pro reference</strong><span className="text-[11px] text-[var(--accl-text-muted)]">Optional · private · up to 4 MB</span></span>
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={formDisabled || busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) selectReference(file, 'secondary'); event.target.value = ''; }} />
+                    </label>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className="mt-5 min-h-14" aria-live="polite">
               {access === "loading" && <p className="text-sm text-[var(--accl-text-muted)]">Checking generator access…</p>}
@@ -358,6 +443,23 @@ export function ImageGeneratorCreateScreen() {
 
         {generationInProgress ? <CandidateBuildUp candidateCount={candidateCount} /> : null}
         {candidates.length > 0 ? <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} /> : null}
+        {approvedId ? (
+          <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-950/10 p-5" aria-labelledby="placement-title">
+            <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-emerald-300">Accepted identity</p>
+            <h2 id="placement-title" className="mt-2 font-display text-2xl font-bold text-white">Place your finished imagery</h2>
+            <p className="mt-1 text-sm text-white/55">ACCL publishes optimized still derivatives. Your private candidate original remains protected.</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {membershipTier === 'pro' || membershipTier === 'internal_unlimited' ? (
+                <button type="button" disabled={placing != null || placementComplete} onClick={() => void placeAcceptedCandidate('matching_set')} className="min-h-11 rounded-xl bg-[var(--accl-accent-gold)] px-5 text-sm font-bold text-black transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{placing === 'matching_set' ? 'Placing matching set…' : placementComplete ? 'Matching set placed' : 'Place matching icon + background'}</button>
+              ) : (
+                <>
+                  <button type="button" disabled={placing != null || placementComplete} onClick={() => void placeAcceptedCandidate('profile_image')} className="min-h-11 rounded-xl bg-[var(--accl-accent-gold)] px-5 text-sm font-bold text-black transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{placing === 'profile_image' ? 'Placing icon…' : placementComplete ? 'Placement complete' : 'Use as profile icon'}</button>
+                  <button type="button" disabled={placing != null || placementComplete} onClick={() => void placeAcceptedCandidate('profile_background')} className="min-h-11 rounded-xl border border-[var(--accl-accent-gold)]/40 bg-[var(--accl-accent-gold)]/10 px-5 text-sm font-bold text-[var(--accl-accent-gold)] transition hover:bg-[var(--accl-accent-gold)]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{placing === 'profile_background' ? 'Placing background…' : placementComplete ? 'Placement complete' : 'Use as profile background'}</button>
+                </>
+              )}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );
