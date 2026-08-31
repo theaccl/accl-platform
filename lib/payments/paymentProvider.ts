@@ -41,6 +41,7 @@ export type FinancialWebhookResult =
       status: 'incomplete' | 'incomplete_expired' | 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid' | 'paused';
       cancelAtPeriodEnd: boolean;
       currentPeriodEnd: string | null;
+      subscriptionStartedAt: string;
     };
 
 export type IncomingWebhookResult = FinancialWebhookResult;
@@ -124,6 +125,7 @@ function stubProvider(): PaymentProvider {
         status?: string;
         cancel_at_period_end?: boolean;
         current_period_end?: string;
+        subscription_started_at?: string;
         created_at?: string;
       };
       try {
@@ -134,8 +136,13 @@ function stubProvider(): PaymentProvider {
       const t = data.type ?? '';
       if (t.startsWith('customer.subscription.')) {
         const userId = data.user_id ?? data.metadata?.accl_user_id;
+        const subscriptionStartedAt =
+          data.subscription_started_at ?? data.metadata?.subscription_started_at;
         if (!userId || !data.subscription_id || !data.status) {
           return { kind: 'ignored', eventId: data.event_id ?? 'stub_evt', detail: 'subscription_metadata_missing' };
+        }
+        if (!subscriptionStartedAt) {
+          return { kind: 'ignored', eventId: data.event_id ?? 'stub_evt', detail: 'subscription_start_missing' };
         }
         return {
           kind: 'pro_subscription_changed',
@@ -148,6 +155,7 @@ function stubProvider(): PaymentProvider {
           status: data.status as Extract<FinancialWebhookResult, { kind: 'pro_subscription_changed' }>['status'],
           cancelAtPeriodEnd: data.cancel_at_period_end ?? false,
           currentPeriodEnd: data.current_period_end ?? null,
+          subscriptionStartedAt,
         };
       }
       if (t === 'payment_intent.payment_failed' && data.id) {
@@ -306,6 +314,7 @@ async function loadStripeProvider(): Promise<PaymentProvider> {
             status: subscription.status,
             cancelAtPeriodEnd: subscription.cancel_at_period_end,
             currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000).toISOString() : null,
+            subscriptionStartedAt: new Date(subscription.start_date * 1000).toISOString(),
           };
         }
         default:

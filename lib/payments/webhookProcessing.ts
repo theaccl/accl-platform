@@ -103,6 +103,7 @@ export async function executeProSubscriptionChanged(
     p_status: parsed.status,
     p_cancel_at_period_end: parsed.cancelAtPeriodEnd,
     p_current_period_end: parsed.currentPeriodEnd,
+    p_subscription_started_at: parsed.subscriptionStartedAt,
   });
   if (error) {
     auditApiLog('pro_subscription_webhook', {

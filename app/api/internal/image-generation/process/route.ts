@@ -16,13 +16,24 @@ async function processRequest(request: Request, batch: number): Promise<Response
     return jsonResponse({ error: 'Image generation worker secret is not configured' }, 503);
   }
   if (!verifyImageGenerationWorkerRequest(request)) return jsonResponse({ error: 'Unauthorized' }, 401);
-  const provider = configuredImageGenerationProvider();
-  if (!provider) return jsonResponse({ error: 'Image generation provider is not configured' }, 503);
-
   const supabase = createServiceRoleClient();
-  const weeklyMints = await supabase.rpc('mint_due_generation_token_allowances', {
-    p_limit: 50,
-  });
+  const [weeklyMints, anniversaryMints] = await Promise.all([
+    supabase.rpc('mint_due_generation_token_allowances', { p_limit: 50 }),
+    supabase.rpc('mint_due_pro_anniversary_generation_tokens', { p_limit: 50 }),
+  ]);
+  const mintSummary = {
+    weekly_token_mints: Array.isArray(weeklyMints.data) ? weeklyMints.data.length : 0,
+    weekly_token_mint_error: weeklyMints.error?.message ?? null,
+    anniversary_token_mints: Array.isArray(anniversaryMints.data) ? anniversaryMints.data.length : 0,
+    anniversary_token_mint_error: anniversaryMints.error?.message ?? null,
+  };
+  const provider = configuredImageGenerationProvider();
+  if (!provider) {
+    return jsonResponse(
+      { error: 'Image generation provider is not configured', ...mintSummary },
+      503
+    );
+  }
   const expiredReferences = await supabase
     .from('image_generation_references')
     .select('id,storage_path')
@@ -98,8 +109,7 @@ async function processRequest(request: Request, batch: number): Promise<Response
     refinement_recovery_error: recoveredRefinements.error?.message ?? null,
     refinement_recovery_cleanup_error: staleRefinementCleanup.error?.message ?? null,
     reference_cleanup_error: referenceCleanupError,
-    weekly_token_mints: Array.isArray(weeklyMints.data) ? weeklyMints.data.length : 0,
-    weekly_token_mint_error: weeklyMints.error?.message ?? null,
+    ...mintSummary,
     recovery_refund_errors: recoveryRefunds.flatMap((result) =>
       result.error ? [result.error.message] : []
     ),

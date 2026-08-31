@@ -15,6 +15,8 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 - Accepted candidates remain private saved creations with immutable parent/root lineage. Pro/Internal Unlimited may spend a new commission token to further a saved creation.
 - Placement publishes a still derivative. Candidate originals remain in the private bucket.
 - Motion visibility is resolved server-side by membership, surface, and viewer audience. Reduced-motion preferences always receive the still fallback.
+- Weekly Plus/Pro minting and Pro anniversary minting are server-authoritative, idempotent, and replacement-based. Anniversary timing comes from the provider subscription start, not a browser-supplied date.
+- Gateway provider cost and placement-derivative work are recorded against the owning commission. Server-only controls can stop generation, cap attempts, and enforce a per-commission provider-cost ceiling.
 
 ## Server configuration
 
@@ -84,3 +86,13 @@ The feature preview for commit `85530af` was verified Ready before and after the
 7. `openai/gpt-image-2` was restored, the feature preview was redeployed to Ready, and the disposable player, queued request, entitlement, and token rows were removed. No candidate objects were created by this checkpoint.
 
 The remaining live checkpoint is to invoke the trusted preview worker once through an authorized credential path, verify all four private candidates together, test a different authenticated user against candidate access, remove the resulting objects, and confirm the preview model remains `openai/gpt-image-2`.
+
+## Token issuance and cost-control staging checkpoint — 2026-08-31
+
+- The feature preview for commit `2654a75` built successfully and reached Ready.
+- The consolidated cost-control migration is applied only to disposable staging. Provider and derivative receipts are server-only, immutable to application code, and guarded by idempotency keys.
+- Disposable transactional probes verified cost-ceiling enforcement, mismatched-idempotency rejection, no unaudited provider retry, and complete rollback of probe rows.
+- Pro anniversary timing now comes from Stripe's subscription start timestamp. The trusted mint pass runs independently of provider availability, grants five tokens once per completed year, and selects one effective active Pro subscription per player so overlapping rows do not stack benefits.
+- A rollback-only staging probe with two active subscription rows produced one five-token anniversary grant, one immutable ledger event, and no second-run grant. Anonymous and authenticated roles cannot execute the anniversary mint functions; only the service role can.
+- Supabase security and performance advisors report no findings against the new cost-control or anniversary functions. Fresh supporting indexes may remain informationally unused until staging traffic exercises them.
+- The browser presentation check passed against the feature alias under reduced-motion mode with no page errors. Production remains untouched.

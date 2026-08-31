@@ -5,7 +5,7 @@
 **Locked:** August 31, 2026
 
 **Scope:** Generation Tokens, the Sovereign Atelier, the Vault, membership generation allowances, profile imagery, animation visibility, saved-creation evolution, and shared cosmetic progression
-**Implementation status:** Documentation lock only; engineering must implement this doctrine in a later approved phase
+**Implementation status:** Implementation and disposable-staging validation are in progress on `feature/image-generator-slice-1`; production remains unchanged and the complete live provider flow is not yet declared finished
 
 ---
 
