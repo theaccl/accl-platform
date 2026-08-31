@@ -1,18 +1,20 @@
 # Image Generator Slice 1 foundation
 
-This branch implements the non-visual foundation. React Bits is intentionally not required until the candidate-review and presentation layer is built.
+This branch implements the Generation Token economy, Free/Plus/Pro/Internal Unlimited contracts, private candidate workflow, guided refinements, saved-creation lineage, placement derivatives, audience-aware motion policy, and the React Bits candidate presentation layer.
 
-> **Future product doctrine:** The owner-approved Generation Token, Vault, Free/Plus/Pro, matching-set, motion-visibility, and shared cosmetic-progression rules are locked in [`docs/image-generator/ACCL_GENERATION_TOKEN_AND_MEMBERSHIP_DOCTRINE.md`](image-generator/ACCL_GENERATION_TOKEN_AND_MEMBERSHIP_DOCTRINE.md). That doctrine supersedes the early Pro-only product assumptions below for future engineering. The current Slice 1 runtime remains unchanged until the later work is explicitly approved and implemented.
+The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOKEN_AND_MEMBERSHIP_DOCTRINE.md`](image-generator/ACCL_GENERATION_TOKEN_AND_MEMBERSHIP_DOCTRINE.md). This foundation document describes the implemented runtime and must not be used to re-open settled membership rules.
 
-## Locked product behavior
+## Implemented product behavior
 
-- `image_generator` is the Pro entitlement.
-- One request may produce 1â€“4 private candidates.
+- A Generation Token commissions one opening generation. Internal Unlimited commissions are still written to the audit ledger at zero displayed cost.
+- Free receives 3 opening candidates, Plus receives 4, and Pro/Internal Unlimited receive 5.
+- Free and Plus accept one private reference and place either an icon or background. Pro/Internal Unlimited accept two references and may place a matching icon/background set.
+- Plus receives one guided touch-up producing 2 more candidates. Pro/Internal Unlimited receive up to four guided refinements producing 2 candidates each.
 - Candidate review lasts 24 hours.
 - Exactly one candidate may be approved. The approval transaction rejects the remaining candidates.
-- An accepted candidate may be placed only as `profile_image` or `profile_background`.
+- Accepted candidates remain private saved creations with immutable parent/root lineage. Pro/Internal Unlimited may spend a new commission token to further a saved creation.
 - Placement publishes a still derivative. Candidate originals remain in the private bucket.
-- Community surfaces remain still-only. Profile-only motion is represented as a separate `profile_motion` entitlement but is disabled in Slice 1.
+- Motion visibility is resolved server-side by membership, surface, and viewer audience. Reduced-motion preferences always receive the still fallback.
 
 ## Server configuration
 
@@ -42,7 +44,7 @@ The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024Ã
 
 ## API flow
 
-1. `POST /api/image-generations` with a Bearer token, an `Idempotency-Key` header, and `{ "prompt": "...", "candidate_count": 4 }`.
+1. `POST /api/image-generations` with a Bearer token, an `Idempotency-Key` header, and the doctrine-defined candidate count for the player's effective tier.
 2. A trusted scheduler calls `POST /api/internal/image-generation/process` with `x-accl-image-generation-secret`.
 3. `GET /api/image-generations/:id` polls request and candidate metadata.
 4. `POST /api/image-generations/:id/candidates/:candidateId/access` creates a private, 60-second signed URL.
@@ -67,4 +69,18 @@ The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024Ã
 6. Create placement derivatives.
 7. Run the complete staging flow.
 
-The foundation and advisor-hardening migrations have been applied and validated in the zero-user ACCL staging Supabase project. Production remains untouched.
+The foundation, token-economy, tier-contract, refinement, saved-lineage, and advisor-hardening migrations have been applied and validated in the disposable ACCL staging Supabase project. Production remains untouched.
+
+## Controlled live staging checkpoint â€” 2026-08-31
+
+The feature preview for commit `85530af` was verified Ready before and after the following controlled run:
+
+1. The branch-scoped preview model was temporarily changed from `openai/gpt-image-2` to the current Gateway slug `prodia/flux-fast-schnell`.
+2. A clearly identified disposable Plus player received one audited test token.
+3. The public API authenticated the player, reported the Plus contract, and accepted exactly one idempotent four-candidate commission with HTTP 202.
+4. The request stored `membership_tier = plus`, `candidate_count = 4`, `token_state = reserved`, and the temporary Flux model.
+5. The owner could read the queued request. An anonymous reader received HTTP 401, and an unauthenticated worker invocation also received HTTP 401.
+6. The provider call was deliberately not bypassed: preview deployments do not run Vercel Cron, and the worker credential is an unrevealable server secret. Rotating that credential requires action-time authorization.
+7. `openai/gpt-image-2` was restored, the feature preview was redeployed to Ready, and the disposable player, queued request, entitlement, and token rows were removed. No candidate objects were created by this checkpoint.
+
+The remaining live checkpoint is to invoke the trusted preview worker once through an authorized credential path, verify all four private candidates together, test a different authenticated user against candidate access, remove the resulting objects, and confirm the preview model remains `openai/gpt-image-2`.
