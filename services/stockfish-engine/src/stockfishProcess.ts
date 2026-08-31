@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 import type { EngineTransport } from '@/lib/chess/engine/types';
@@ -42,6 +42,26 @@ export type StockfishProcessOptions = {
     options: { graceMs: number; killWatchdogMs: number }
   ) => Promise<'exited' | 'timeout'>;
 };
+
+export function parseLinuxProcessRssBytes(status: string): number | null {
+  const match = /^VmRSS:\s+(\d+)\s+kB\s*$/m.exec(status);
+  if (!match?.[1]) return null;
+  const bytes = Number(match[1]) * 1024;
+  return Number.isSafeInteger(bytes) && bytes >= 0 ? bytes : null;
+}
+
+export function readLinuxProcessRssBytes(
+  pid: number,
+  readStatus: (path: string, encoding: BufferEncoding) => string = readFileSync,
+  platform: NodeJS.Platform = process.platform
+): number | null {
+  if (platform !== 'linux' || !Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    return parseLinuxProcessRssBytes(readStatus(`/proc/${pid}/status`, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
 export function consumeEngineStdout(
   pending: string,
@@ -209,8 +229,8 @@ export class StockfishProcess implements PhysicalEngineWorker {
   }
 
   residentMemoryBytes(): number | null {
-    // Node has no portable, process-scoped RSS API for an arbitrary child.
-    return null;
+    const pid = this.child?.pid;
+    return pid === undefined ? null : readLinuxProcessRssBytes(pid);
   }
 
   async terminate(): Promise<void> {

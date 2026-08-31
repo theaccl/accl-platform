@@ -2,6 +2,10 @@ FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c
 
 FROM node-runtime-source AS payload
 
+ARG ACCL_SOURCE_REVISION
+RUN case "$ACCL_SOURCE_REVISION" in (*[!0-9a-f]*|'') exit 1;; esac \
+    && test "${#ACCL_SOURCE_REVISION}" -eq 40
+
 COPY --chown=0:0 --chmod=0555 services/stockfish-engine/dist/index.js /payload/app/index.js
 COPY --chown=0:0 --chmod=0444 services/stockfish-engine/dist/licenses.txt /payload/app/licenses.txt
 COPY --chown=0:0 --chmod=0555 services/stockfish-engine/build-input/stockfish /payload/opt/stockfish/stockfish
@@ -12,9 +16,11 @@ RUN find /payload/usr/share/doc/accl-stockfish -type d -exec chmod 0555 {} + \
 
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
 
+ARG ACCL_SOURCE_REVISION
+
 LABEL org.opencontainers.image.title="ACCL Stockfish Engine Runtime" \
       org.opencontainers.image.description="Private bounded Stockfish runtime for ACCL" \
-      org.opencontainers.image.revision="5d679638dfd2c0816afd86b9d49598aa7610ab9c"
+      org.opencontainers.image.revision="$ACCL_SOURCE_REVISION"
 
 ENV NODE_ENV=production \
     PORT=8080 \

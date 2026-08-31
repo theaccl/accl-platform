@@ -4,10 +4,14 @@ import { EngineRuntimeCoordinator } from '@/services/stockfish-engine/src/coordi
 import {
   EngineServiceConfigError,
   parseEngineServiceConfig,
+  STOCKFISH_BIG_NNUE_SHA256,
+  STOCKFISH_SMALL_NNUE_SHA256,
+  STOCKFISH_UPSTREAM_COMMIT,
   type EngineServiceConfig,
 } from '@/services/stockfish-engine/src/config';
 import { createEngineNodeServer } from '@/services/stockfish-engine/src/nodeServer';
 import { EngineWorkerPool } from '@/services/stockfish-engine/src/pool';
+import { EngineRuntimeTelemetry, EngineTelemetryExporter } from '@/services/stockfish-engine/src/observability';
 import {
   createEngineServiceShutdown,
   installEngineShutdownSignals,
@@ -34,20 +38,47 @@ export function createProductionEngineServiceRuntime(
     throw new EngineServiceConfigError('STOCKFISH_BINARY_IDENTITY');
   }
 
+  const telemetry = new EngineRuntimeTelemetry(
+    {
+      engineCommit: STOCKFISH_UPSTREAM_COMMIT,
+      bigNnueSha256: STOCKFISH_BIG_NNUE_SHA256,
+      smallNnueSha256: STOCKFISH_SMALL_NNUE_SHA256,
+      imageDigest: config.imageDigest ?? 'unassigned',
+      cloudRunRevision: boundedRevision(env.K_REVISION),
+    },
+    { emitEvent: (record) => process.stdout.write(`${record}\n`) }
+  );
   const pool = new EngineWorkerPool(
     createProductionStockfishWorkerFactory({
       executablePath: config.binaryPath,
       executableSha256: config.binarySha256,
-    })
+    }),
+    {
+      maxResidentMemoryBytes: config.maxResidentMemoryBytes ?? Number.POSITIVE_INFINITY,
+      requireResidentMemoryMeasurement: config.environment === 'production',
+      observer: telemetry,
+    }
   );
-  const coordinator = new EngineRuntimeCoordinator(pool, executeStockfishLease);
+  const coordinator = new EngineRuntimeCoordinator(pool, executeStockfishLease, { telemetry });
+  const exporter = new EngineTelemetryExporter(telemetry, () => {
+    const snapshot = coordinator.snapshot();
+    telemetry.refreshPool(snapshot.pool);
+  });
   const server = createEngineNodeServer(coordinator, {
     requestTimeoutMs: config.requestTimeoutSeconds * 1_000,
   });
-  const shutdown = createEngineServiceShutdown(server, coordinator, {
+  const shutdownInner = createEngineServiceShutdown(server, coordinator, {
     timeoutMs: ENGINE_SHUTDOWN_TIMEOUT_MS,
   });
   let started = false;
+  const shutdown = async () => {
+    try {
+      return await shutdownInner();
+    } finally {
+      exporter.emit();
+      exporter.stop();
+    }
+  };
 
   return {
     config,
@@ -57,6 +88,7 @@ export function createProductionEngineServiceRuntime(
       try {
         await pool.start();
         const address = await listen(server, config.port);
+        exporter.start();
         started = true;
         return address;
       } catch (error) {
@@ -66,6 +98,11 @@ export function createProductionEngineServiceRuntime(
     },
     shutdown,
   };
+}
+
+function boundedRevision(value: string | undefined): string {
+  const revision = value?.trim() || 'local';
+  return /^[a-z0-9][a-z0-9-]{0,62}$/.test(revision) ? revision : 'invalid';
 }
 
 export async function runProductionEngineService(env: NodeJS.ProcessEnv = process.env): Promise<void> {

@@ -9,11 +9,31 @@ import { parsePosition } from '@/lib/chess/position';
 import { executeStockfishLease } from '@/services/stockfish-engine/src/stockfishExecutor';
 import {
   consumeEngineStdout,
+  parseLinuxProcessRssBytes,
+  readLinuxProcessRssBytes,
   StockfishProcess,
   StockfishProcessError,
   waitForManagedProcessExit,
   type StockfishProcessOptions,
 } from '@/services/stockfish-engine/src/stockfishProcess';
+
+test('Linux child RSS parser returns bytes and rejects missing or malformed values', () => {
+  expect(parseLinuxProcessRssBytes('Name:\tstockfish\nVmRSS:\t  12345 kB\n')).toBe(12_641_280);
+  expect(parseLinuxProcessRssBytes('Name:\tstockfish\n')).toBeNull();
+  expect(parseLinuxProcessRssBytes('VmRSS:\tnot-a-number kB\n')).toBeNull();
+});
+
+test('process RSS reader is Linux-only, process-scoped, and failure-safe', () => {
+  const paths: string[] = [];
+  const bytes = readLinuxProcessRssBytes(4321, (path) => {
+    paths.push(String(path));
+    return 'VmRSS:\t2048 kB\n';
+  }, 'linux');
+  expect(bytes).toBe(2_097_152);
+  expect(paths).toEqual(['/proc/4321/status']);
+  expect(readLinuxProcessRssBytes(4321, () => { throw new Error('gone'); }, 'linux')).toBeNull();
+  expect(readLinuxProcessRssBytes(4321, () => 'VmRSS:\t1 kB\n', 'win32')).toBeNull();
+});
 
 const fixture = path.resolve(process.cwd(), 'tests/fixtures/fakeUciEngine.mjs');
 
