@@ -49,7 +49,7 @@ test('provider requests four private, medium-quality, moderated square candidate
   expect(call).toMatchObject({
     model: 'openai/gpt-image-2',
     n: 4,
-    maxImagesPerCall: 4,
+    maxImagesPerCall: 1,
     size: '1024x1024',
     maxRetries: 2,
     providerOptions: {
