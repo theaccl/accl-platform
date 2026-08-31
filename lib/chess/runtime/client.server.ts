@@ -285,7 +285,7 @@ async function readBoundedResponseText(
   if (!response.body) return '';
 
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const bytes = new Uint8Array(MAX_ENGINE_RESPONSE_BYTES);
   let byteLength = 0;
   let complete = false;
   let cancelled = false;
@@ -306,13 +306,13 @@ async function readBoundedResponseText(
       }
       if (!next.value) continue;
 
-      byteLength += next.value.byteLength;
-      if (byteLength > MAX_ENGINE_RESPONSE_BYTES) {
+      if (next.value.byteLength > MAX_ENGINE_RESPONSE_BYTES - byteLength) {
         const error = new Error('engine_runtime_response_too_large');
         cancel(error);
         throw error;
       }
-      chunks.push(next.value);
+      bytes.set(next.value, byteLength);
+      byteLength += next.value.byteLength;
     }
   } catch (error) {
     cancel(error);
@@ -321,13 +321,7 @@ async function readBoundedResponseText(
     reader.releaseLock();
   }
 
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
+  return new TextDecoder().decode(bytes.subarray(0, byteLength));
 }
 
 function createGoogleEngineRuntimeAuthorizationProvider(

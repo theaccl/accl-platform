@@ -342,6 +342,71 @@ test('authenticated transport cancels a streaming response immediately above one
   expect(pullCalls).toBe(2);
 });
 
+test('authenticated transport counts multibyte response content in UTF-8 bytes', async () => {
+  const content = 'é'.repeat(524_289);
+  const encoded = new TextEncoder().encode(content);
+  let cancelCalls = 0;
+  expect(content.length).toBeLessThan(1024 * 1024);
+  expect(encoded.byteLength).toBeGreaterThan(1024 * 1024);
+
+  const transport = createEngineRuntimeRemoteTransport({
+    env: lockedEnvironment,
+    authorizationProvider: async () => 'Bearer google-id-token',
+    fetchImpl: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoded);
+          },
+          cancel() {
+            cancelCalls += 1;
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      ),
+  });
+
+  await expect(transport(request)).resolves.toEqual({
+    ok: false,
+    error: { code: 'ENGINE_PROTOCOL_ERROR', retryable: false },
+  });
+  expect(cancelCalls).toBe(1);
+});
+
+test('caller cancellation while reading a response body cancels and settles distinctly', async () => {
+  let bodyStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    bodyStarted = resolve;
+  });
+  let cancelCalls = 0;
+  const transport = createEngineRuntimeRemoteTransport({
+    env: lockedEnvironment,
+    authorizationProvider: async () => 'Bearer google-id-token',
+    fetchImpl: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start() {
+            bodyStarted();
+          },
+          cancel() {
+            cancelCalls += 1;
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      ),
+  });
+  const controller = new AbortController();
+  const evaluation = transport(request, controller.signal);
+  await started;
+  controller.abort();
+
+  await expect(evaluation).resolves.toEqual({
+    ok: false,
+    error: { code: 'ENGINE_REQUEST_CANCELLED', retryable: false },
+  });
+  expect(cancelCalls).toBe(1);
+});
+
 test('client total deadline includes actor-limiter wait and settles before the running peer', async () => {
   let releaseFirst!: () => void;
   const firstBarrier = new Promise<void>((resolve) => {
