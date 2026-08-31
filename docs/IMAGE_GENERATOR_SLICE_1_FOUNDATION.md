@@ -11,12 +11,14 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 - Free and Plus accept one private reference and place either an icon or background. Pro/Internal Unlimited accept two references and may place a matching icon/background set.
 - Plus receives one guided touch-up producing 2 more candidates. Pro/Internal Unlimited receive up to four guided refinements producing 2 candidates each.
 - Candidate review lasts 24 hours.
+- The review boundary fails closed at the API deadline: expired review candidates cannot receive new signed URLs, queued refinements cannot start after expiry, and the trusted maintenance pass persists expired request/candidate state without deleting private objects before a retention policy is approved.
 - Exactly one candidate may be approved. The approval transaction rejects the remaining candidates.
 - Accepted candidates remain private saved creations with immutable parent/root lineage. Pro/Internal Unlimited may spend a new commission token to further a saved creation.
 - Placement publishes a still derivative. Candidate originals remain in the private bucket.
 - Motion visibility is resolved server-side by membership, surface, and viewer audience. Reduced-motion preferences always receive the still fallback.
 - Weekly Plus/Pro minting and Pro anniversary minting are server-authoritative, idempotent, and replacement-based. Anniversary timing comes from the provider subscription start, not a browser-supplied date.
 - Gateway provider cost and placement-derivative work are recorded against the owning commission. Server-only controls can stop generation, cap attempts, and enforce a per-commission provider-cost ceiling.
+- Token minting, stale-job recovery/refunds, reference cleanup, and review-expiry maintenance run even when the image-generation provider is unavailable; only new provider work is blocked by missing provider configuration.
 
 ## Server configuration
 
@@ -72,6 +74,8 @@ The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024Ã
 7. Run the complete staging flow.
 
 The foundation, token-economy, tier-contract, refinement, saved-lineage, and advisor-hardening migrations have been applied and validated in the disposable ACCL staging Supabase project. Production remains untouched.
+
+The local `image_generation_review_expiry_recovery` migration is prepared for the next approved staging review stack. It has not been applied remotely.
 
 ## Controlled live staging checkpoint â€” 2026-08-31
 

@@ -9,6 +9,7 @@ import {
   CANDIDATE_REVIEW_HOURS,
   CANDIDATE_SIGNED_URL_SECONDS,
   extensionForMimeType,
+  imageGenerationReviewExpired,
   MAX_INITIAL_IMAGE_CANDIDATES,
   MAX_IMAGE_CANDIDATES,
 } from '../../lib/imageGenerator/domain';
@@ -43,6 +44,15 @@ test('published derivatives use safe extensions', () => {
   expect(extensionForMimeType('image/png')).toBe('png');
   expect(extensionForMimeType('image/jpeg')).toBe('jpg');
   expect(extensionForMimeType('image/webp')).toBe('webp');
+});
+
+test('review expiry is fail-closed at the exact server deadline', () => {
+  const deadline = '2026-08-31T18:00:00.000Z';
+  expect(imageGenerationReviewExpired('review', deadline, Date.parse(deadline) - 1)).toBe(false);
+  expect(imageGenerationReviewExpired('review', deadline, Date.parse(deadline))).toBe(true);
+  expect(imageGenerationReviewExpired('approved', deadline, Date.parse(deadline) + 1)).toBe(false);
+  expect(imageGenerationReviewExpired('review', null, Date.parse(deadline) + 1)).toBe(true);
+  expect(imageGenerationReviewExpired('review', 'not-a-date', Date.parse(deadline) + 1)).toBe(true);
 });
 
 test('worker only accepts a running claimed request', () => {

@@ -1,4 +1,9 @@
-import { publicCandidate, type ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
+import {
+  imageGenerationReviewExpired,
+  publicCandidate,
+  type ImageGenerationCandidateRow,
+  type ImageGenerationStatus,
+} from '@/lib/imageGenerator/domain';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
@@ -32,9 +37,19 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     .eq('owner_id', user.id)
     .order('ordinal');
   if (refinementsResult.error) return jsonResponse({ error: 'Could not load guided refinements' }, 500);
+  const reviewExpired = imageGenerationReviewExpired(
+    generationResult.data.status as ImageGenerationStatus,
+    generationResult.data.review_expires_at
+  );
   return jsonResponse({
-    generation: generationResult.data,
-    candidates: ((candidatesResult.data ?? []) as ImageGenerationCandidateRow[]).map(publicCandidate),
+    generation: reviewExpired
+      ? { ...generationResult.data, status: 'expired' }
+      : generationResult.data,
+    candidates: ((candidatesResult.data ?? []) as ImageGenerationCandidateRow[]).map((candidate) =>
+      publicCandidate(reviewExpired && candidate.status === 'review'
+        ? { ...candidate, status: 'expired' }
+        : candidate)
+    ),
     refinements: refinementsResult.data ?? [],
   });
 }

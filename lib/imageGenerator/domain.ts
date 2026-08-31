@@ -108,6 +108,17 @@ export function publicCandidate(candidate: ImageGenerationCandidateRow) {
   };
 }
 
+export function imageGenerationReviewExpired(
+  status: ImageGenerationStatus,
+  reviewExpiresAt: string | null,
+  nowMs = Date.now()
+): boolean {
+  if (status !== 'review') return false;
+  if (!reviewExpiresAt) return true;
+  const expiresAtMs = Date.parse(reviewExpiresAt);
+  return !Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs;
+}
+
 export function extensionForMimeType(mimeType: ImageGenerationCandidateRow['mime_type']): string {
   if (mimeType === 'image/jpeg') return 'jpg';
   if (mimeType === 'image/webp') return 'webp';

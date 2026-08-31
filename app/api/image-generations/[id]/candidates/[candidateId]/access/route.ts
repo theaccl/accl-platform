@@ -23,6 +23,18 @@ export async function POST(
     .maybeSingle();
   if (candidateResult.error) return jsonResponse({ error: 'Could not authorize candidate' }, 500);
   if (!candidateResult.data) return jsonResponse({ error: 'Candidate not found' }, 404);
+  if (candidateResult.data.status === 'review') {
+    const activeReview = await supabase
+      .from('image_generation_requests')
+      .select('id')
+      .eq('id', id)
+      .eq('owner_id', user.id)
+      .eq('status', 'review')
+      .gt('review_expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (activeReview.error) return jsonResponse({ error: 'Could not authorize review window' }, 500);
+    if (!activeReview.data) return jsonResponse({ error: 'Candidate not found' }, 404);
+  }
   const signed = await supabase.storage
     .from('image-generation-candidates')
     .createSignedUrl(candidateResult.data.storage_path, CANDIDATE_SIGNED_URL_SECONDS);

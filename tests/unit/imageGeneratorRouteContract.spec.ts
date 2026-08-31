@@ -22,6 +22,8 @@ test('candidate access uses an expiring private signed URL', async () => {
   );
   expect(code).toContain(".from('image-generation-candidates')");
   expect(code).toContain('.createSignedUrl(');
+  expect(code).toContain(".eq('status', 'review')");
+  expect(code).toContain(".gt('review_expires_at', new Date().toISOString())");
   expect(code).toContain("'Cache-Control': 'private, no-store'");
 });
 

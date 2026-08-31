@@ -27,13 +27,6 @@ async function processRequest(request: Request, batch: number): Promise<Response
     anniversary_token_mints: Array.isArray(anniversaryMints.data) ? anniversaryMints.data.length : 0,
     anniversary_token_mint_error: anniversaryMints.error?.message ?? null,
   };
-  const provider = configuredImageGenerationProvider();
-  if (!provider) {
-    return jsonResponse(
-      { error: 'Image generation provider is not configured', ...mintSummary },
-      503
-    );
-  }
   const expiredReferences = await supabase
     .from('image_generation_references')
     .select('id,storage_path')
@@ -98,21 +91,38 @@ async function processRequest(request: Request, batch: number): Promise<Response
           .from('image-generation-candidates')
           .remove(staleRefinementStoragePaths)
       : { error: null };
-  const results = await processImageGenerationBatch(supabase, provider, batch);
-  const refinementResults = await processImageRefinementBatch(supabase, provider, batch);
-  return jsonResponse({
-    provider: provider.name,
-    model: provider.model,
+  const expiredReviews = await supabase.rpc('expire_due_image_generation_reviews', {
+    p_limit: 50,
+  });
+  const expiredReviewRows = Array.isArray(expiredReviews.data) ? expiredReviews.data : [];
+  const maintenanceSummary = {
     recovered_count: recoveredRows.length,
+    recovery_error: recovered.error?.message ?? null,
     recovery_cleanup_error: staleCleanup.error?.message ?? null,
     recovered_refinement_count: recoveredRefinementRows.length,
     refinement_recovery_error: recoveredRefinements.error?.message ?? null,
     refinement_recovery_cleanup_error: staleRefinementCleanup.error?.message ?? null,
+    expired_review_count: expiredReviewRows.length,
+    review_expiry_error: expiredReviews.error?.message ?? null,
     reference_cleanup_error: referenceCleanupError,
     ...mintSummary,
     recovery_refund_errors: recoveryRefunds.flatMap((result) =>
       result.error ? [result.error.message] : []
     ),
+  };
+  const provider = configuredImageGenerationProvider();
+  if (!provider) {
+    return jsonResponse(
+      { error: 'Image generation provider is not configured', ...maintenanceSummary },
+      503
+    );
+  }
+  const results = await processImageGenerationBatch(supabase, provider, batch);
+  const refinementResults = await processImageRefinementBatch(supabase, provider, batch);
+  return jsonResponse({
+    provider: provider.name,
+    model: provider.model,
+    ...maintenanceSummary,
     results,
     refinement_results: refinementResults,
   });
