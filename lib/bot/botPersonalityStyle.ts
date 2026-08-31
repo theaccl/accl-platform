@@ -207,13 +207,25 @@ export function selectBotMoveForStyle(
 ): { move: string; rationale: string } | null {
   const safe = buildSafeBotShortlist(lines, difficulty);
   if (safe.length === 0) return null;
+
+  // Checkmate ends the game, so it must remain authoritative before any
+  // personality preference or intentional inaccuracy can reorder the safe
+  // shortlist. Mate scores cross the legacy engine boundary as null and
+  // therefore cannot rely on centipawn ordering alone.
+  const forcedMate = [...safe]
+    .filter((line) => line.features?.mate)
+    .sort(engineOrder)[0];
+  if (forcedMate) {
+    const evidence = forcedMate.source === 'engine' ? 'engine-safe' : 'static-fallback';
+    return {
+      move: forcedMate.move,
+      rationale: `${evidence}:forced-mate-l${difficulty}`,
+    };
+  }
+
   const ordered = style === 'chaos' ? safe : styleOrder(style, safe, difficulty);
 
-  // Humanized error must not throw away a forced win already identified by the
-  // engine/static features.
-  const inaccuracy = ordered[0]?.features?.mate
-    ? null
-    : maybeBlunderPick(ordered, blunderProbability, random);
+  const inaccuracy = maybeBlunderPick(ordered, blunderProbability, random);
   const picked = inaccuracy ?? (style === 'chaos' ? ordered[Math.floor(random() * ordered.length)] : ordered[0]);
   if (!picked) return null;
 

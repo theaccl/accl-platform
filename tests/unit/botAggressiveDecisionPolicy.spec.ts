@@ -133,15 +133,32 @@ test.describe('Aggressive bot shared safe-shortlist policy', () => {
     expect(selectBotMoveForStyle('aggressive', [leastBad, worse], 6, 1, () => 0)?.move).toBe('g8f6');
   });
 
-  test('humanized inaccuracy cannot discard an available forced mate', () => {
+  test('personality ordering and humanized inaccuracy cannot discard an available forced mate', () => {
     const mate = featureLine('h5h7', 0, { check: true, mate: true });
     mate.scoreCp = null;
     mate.engineScoreCp = null;
     mate.engineRank = 1;
-    const alternative = featureLine('h5e5', 250, { check: true });
+    const alternative = featureLine('h5e5', 250, {
+      development: true,
+      centerControl: true,
+      kingPressure: true,
+      opponentReplyCount: 1,
+    });
     alternative.engineRank = 2;
 
-    expect(selectBotMoveForStyle('aggressive', [mate, alternative], 3, 1, () => 0)?.move).toBe('h5h7');
+    const styles: BotPersonalityStyle[] = [
+      'balanced',
+      'aggressive',
+      'defensive',
+      'trap',
+      'endgame',
+      'chaos',
+    ];
+    for (const style of styles) {
+      const selected = selectBotMoveForStyle(style, [mate, alternative], 3, 1, () => 0.99);
+      expect(selected?.move, style).toBe('h5h7');
+      expect(selected?.rationale, style).toBe('engine-safe:forced-mate-l3');
+    }
   });
 
   test('Aggressive selects an alternate only when a near-equal PV proves a stronger plan', () => {
