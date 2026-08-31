@@ -83,9 +83,13 @@ export class EngineWorkerPool {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly replacementFailures: number[] = [];
+  private readonly maintenanceTasks = new Set<Promise<unknown>>();
+  private readonly maintenanceStop: Promise<void>;
+  private resolveMaintenanceStop: () => void = () => {};
   private accepting = false;
   private circuitOpenUntilMs: number | null = null;
   private replenishment: Promise<void> | null = null;
+  private pendingCapacity = 0;
 
   constructor(
     private readonly factory: PhysicalEngineWorkerFactory,
@@ -97,6 +101,9 @@ export class EngineWorkerPool {
     this.maxResidentMemoryBytes = options.maxResidentMemoryBytes ?? Number.POSITIVE_INFINITY;
     this.now = options.now ?? (() => performance.now());
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.maintenanceStop = new Promise<void>((resolve) => {
+      this.resolveMaintenanceStop = resolve;
+    });
   }
 
   async start(): Promise<void> {
@@ -116,8 +123,9 @@ export class EngineWorkerPool {
   }
 
   async acquire(): Promise<EngineWorkerLease | null> {
-    if (!this.accepting || this.isCircuitOpen()) return null;
+    if (!this.canLease()) return null;
     await this.replenishCapacity();
+    if (!this.canLease()) return null;
     const slot = this.slots.find((candidate) => candidate.state === 'IDLE');
     if (!slot) return null;
 
@@ -129,6 +137,11 @@ export class EngineWorkerPool {
       await this.replaceFailedSlot(slot);
       throw error;
     }
+    if (!this.canLease()) {
+      transport.close();
+      await this.runMaintenance(() => this.resetPreparedSlot(slot));
+      return null;
+    }
 
     let settled = false;
     return {
@@ -138,7 +151,7 @@ export class EngineWorkerPool {
         if (settled) return false;
         settled = true;
         transport.close();
-        await this.settleSlot(slot, outcome);
+        await this.runMaintenance(() => this.settleSlot(slot, outcome));
         return true;
       },
     };
@@ -146,7 +159,8 @@ export class EngineWorkerPool {
 
   async shutdown(): Promise<void> {
     this.accepting = false;
-    await this.replenishment;
+    this.resolveMaintenanceStop();
+    await this.drainMaintenance();
     await this.retryRetainedTerminations();
   }
 
@@ -205,6 +219,17 @@ export class EngineWorkerPool {
     await this.replaceFailedSlot(slot);
   }
 
+  private async resetPreparedSlot(slot: WorkerSlot): Promise<void> {
+    if (!this.slots.includes(slot) || slot.state === 'TERMINATED') return;
+    slot.state = 'RESETTING';
+    try {
+      await slot.worker.resetAfterLease();
+      slot.state = 'IDLE';
+    } catch {
+      await this.replaceFailedSlot(slot);
+    }
+  }
+
   private shouldRecycle(slot: WorkerSlot): boolean {
     const rss = slot.worker.residentMemoryBytes();
     return (
@@ -215,8 +240,19 @@ export class EngineWorkerPool {
   }
 
   /** Warm replacement first, then retire the healthy old worker. */
-  private async recycleHealthySlot(slot: WorkerSlot): Promise<void> {
-    if (this.slots.some((candidate) => candidate !== slot && candidate.orphaned && candidate.state === 'RETIRING')) {
+  private recycleHealthySlot(slot: WorkerSlot): Promise<void> {
+    return this.runMaintenance(() =>
+      this.withCapacityReservation(() => this.recycleHealthySlotReserved(slot))
+    );
+  }
+
+  private async recycleHealthySlotReserved(slot: WorkerSlot): Promise<void> {
+    if (
+      this.slots.some(
+        (candidate) =>
+          candidate !== slot && candidate.orphaned && candidate.state === 'RETIRING'
+      )
+    ) {
       slot.state = 'IDLE';
       this.openCircuit();
       return;
@@ -254,7 +290,13 @@ export class EngineWorkerPool {
     replacement.state = 'IDLE';
   }
 
-  private async replaceFailedSlot(slot: WorkerSlot): Promise<void> {
+  private replaceFailedSlot(slot: WorkerSlot): Promise<void> {
+    return this.runMaintenance(() =>
+      this.withCapacityReservation(() => this.replaceFailedSlotReserved(slot))
+    );
+  }
+
+  private async replaceFailedSlotReserved(slot: WorkerSlot): Promise<void> {
     slot.state = 'RETIRING';
     try {
       await slot.worker.terminate();
@@ -265,6 +307,7 @@ export class EngineWorkerPool {
       return;
     }
     this.removeSlot(slot);
+    if (!this.accepting) return;
     try {
       await this.createWarmSlotWithRetry({ promote: true });
     } catch {
@@ -282,7 +325,7 @@ export class EngineWorkerPool {
       if (this.replenishment === replenishment) this.replenishment = null;
     });
     this.replenishment = replenishment;
-    await replenishment;
+    await this.trackMaintenance(replenishment);
   }
 
   private async replenishMissingSlots(): Promise<void> {
@@ -298,7 +341,9 @@ export class EngineWorkerPool {
       this.usableCapacityCount() < this.workerCount
     ) {
       try {
-        await this.createWarmSlotWithRetry({ promote: true });
+        await this.withCapacityReservation(() =>
+          this.createWarmSlotWithRetry({ promote: true })
+        );
       } catch {
         return;
       }
@@ -306,9 +351,12 @@ export class EngineWorkerPool {
   }
 
   private usableCapacityCount(): number {
-    return this.slots.filter(
-      (slot) => slot.state !== 'RETIRING' && slot.state !== 'TERMINATED'
-    ).length;
+    return (
+      this.pendingCapacity +
+      this.slots.filter(
+        (slot) => slot.state !== 'RETIRING' && slot.state !== 'TERMINATED'
+      ).length
+    );
   }
 
   private async createWarmSlot(options: { promote: boolean }): Promise<WorkerSlot> {
@@ -343,7 +391,7 @@ export class EngineWorkerPool {
   private async createWarmSlotWithRetry(options: { promote: boolean }): Promise<WorkerSlot> {
     let lastError: unknown = new Error('engine_replacement_failed');
     for (let index = 0; index < REPLACEMENT_BACKOFF_MS.length; index += 1) {
-      if (this.isCircuitOpen()) throw lastError;
+      if (!this.accepting || this.isCircuitOpen()) throw lastError;
       try {
         const slot = await this.createWarmSlot(options);
         this.pruneReplacementFailures();
@@ -356,11 +404,43 @@ export class EngineWorkerPool {
         }
         this.recordReplacementFailure();
         if (this.isCircuitOpen()) break;
-        await this.sleep(REPLACEMENT_BACKOFF_MS[index] ?? 5_000);
+        await Promise.race([
+          this.sleep(REPLACEMENT_BACKOFF_MS[index] ?? 5_000),
+          this.maintenanceStop,
+        ]);
+        if (!this.accepting) throw lastError;
       }
     }
     this.openCircuit();
     throw lastError;
+  }
+
+  private async withCapacityReservation<T>(operation: () => Promise<T>): Promise<T> {
+    this.pendingCapacity += 1;
+    try {
+      return await operation();
+    } finally {
+      this.pendingCapacity -= 1;
+    }
+  }
+
+  private trackMaintenance<T>(task: Promise<T>): Promise<T> {
+    this.maintenanceTasks.add(task);
+    void task.then(
+      () => this.maintenanceTasks.delete(task),
+      () => this.maintenanceTasks.delete(task)
+    );
+    return task;
+  }
+
+  private runMaintenance<T>(operation: () => Promise<T>): Promise<T> {
+    return this.trackMaintenance(operation());
+  }
+
+  private async drainMaintenance(): Promise<void> {
+    while (this.maintenanceTasks.size > 0) {
+      await Promise.allSettled([...this.maintenanceTasks]);
+    }
   }
 
   private async retryRetainedTerminations(): Promise<void> {
@@ -404,9 +484,21 @@ export class EngineWorkerPool {
       this.replacementFailures.shift();
     }
     if (this.circuitOpenUntilMs !== null && this.now() >= this.circuitOpenUntilMs) {
+      if (this.hasRetainedOrphan()) {
+        this.openCircuit();
+        return;
+      }
       this.circuitOpenUntilMs = null;
       this.replacementFailures.length = 0;
     }
+  }
+
+  private hasRetainedOrphan(): boolean {
+    return this.slots.some((slot) => slot.orphaned && slot.state === 'RETIRING');
+  }
+
+  private canLease(): boolean {
+    return this.accepting && !this.isCircuitOpen() && !this.hasRetainedOrphan();
   }
 
   private isCircuitOpen(): boolean {

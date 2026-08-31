@@ -140,6 +140,82 @@ test('crash isolation replaces only the failed worker', async () => {
   expect(pool.snapshot().workers.map((worker) => worker.id).sort()).toEqual(['worker-2', 'worker-3']);
 });
 
+test('failed-slot replacement reserves capacity before a concurrent acquire', async () => {
+  let creations = 0;
+  let releaseReplacement!: () => void;
+  const replacementFactory = new Promise<void>((resolve) => {
+    releaseReplacement = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      if (creations === 3) await replacementFactory;
+      return new FakeWorker(`worker-${creations}`);
+    },
+    { sleep: async () => {} }
+  );
+  await pool.start();
+  const failed = await pool.acquire();
+  const settling = failed?.settle('engine_crashed');
+  await expect.poll(() => creations).toBe(3);
+
+  const concurrent = await pool.acquire();
+  expect(concurrent?.workerId).toBe('worker-2');
+  expect(creations).toBe(3);
+
+  releaseReplacement();
+  await settling;
+  expect(pool.snapshot().workers).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'worker-2', state: 'LEASED' }),
+      expect.objectContaining({ id: 'worker-3', state: 'IDLE' }),
+    ])
+  );
+  expect(pool.snapshot().workers).toHaveLength(2);
+  await concurrent?.settle('success');
+});
+
+test('failed-slot replacement reserves capacity while termination is pending', async () => {
+  let creations = 0;
+  let terminateStarted!: () => void;
+  let releaseTerminate!: () => void;
+  const started = new Promise<void>((resolve) => {
+    terminateStarted = resolve;
+  });
+  const termination = new Promise<void>((resolve) => {
+    releaseTerminate = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      const worker = new FakeWorker(`worker-${creations}`);
+      if (creations === 1) {
+        worker.terminate = async () => {
+          worker.terminateCalls += 1;
+          terminateStarted();
+          await termination;
+        };
+      }
+      return worker;
+    },
+    { sleep: async () => {} }
+  );
+  await pool.start();
+  const failed = await pool.acquire();
+  const settling = failed?.settle('engine_crashed');
+  await started;
+
+  const concurrent = await pool.acquire();
+  expect(concurrent?.workerId).toBe('worker-2');
+  expect(creations).toBe(2);
+
+  releaseTerminate();
+  await settling;
+  expect(creations).toBe(3);
+  expect(pool.snapshot().workers).toHaveLength(2);
+  await concurrent?.settle('success');
+});
+
 test('healthy recycling warms replacement before retiring the old worker', async () => {
   const events: string[] = [];
   const workers: FakeWorker[] = [];
@@ -164,6 +240,133 @@ test('healthy recycling warms replacement before retiring the old worker', async
     ])
   );
   expect(pool.snapshot().workers.some((worker) => worker.id === 'worker-1')).toBe(false);
+});
+
+test('healthy recycling reserves capacity before a concurrent acquire', async () => {
+  let creations = 0;
+  let releaseReplacement!: () => void;
+  const replacementFactory = new Promise<void>((resolve) => {
+    releaseReplacement = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      if (creations === 3) await replacementFactory;
+      return new FakeWorker(`worker-${creations}`);
+    },
+    { maxCompletedSearches: 1, sleep: async () => {} }
+  );
+  await pool.start();
+  const recycled = await pool.acquire();
+  const settling = recycled?.settle('success');
+  await expect.poll(() => creations).toBe(3);
+
+  const concurrent = await pool.acquire();
+  expect(concurrent?.workerId).toBe('worker-2');
+  expect(creations).toBe(3);
+
+  releaseReplacement();
+  await settling;
+  expect(pool.snapshot().workers).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'worker-2', state: 'LEASED' }),
+      expect.objectContaining({ id: 'worker-3', state: 'IDLE' }),
+    ])
+  );
+  expect(pool.snapshot().workers).toHaveLength(2);
+  await concurrent?.settle('success');
+});
+
+test('shutdown drains a failed-slot replacement before terminating the pool', async () => {
+  let creations = 0;
+  let releaseReplacement!: () => void;
+  const replacementFactory = new Promise<void>((resolve) => {
+    releaseReplacement = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      if (creations === 3) await replacementFactory;
+      return new FakeWorker(`worker-${creations}`);
+    },
+    { sleep: async () => {} }
+  );
+  await pool.start();
+  const failed = await pool.acquire();
+  const settling = failed?.settle('engine_crashed');
+  await expect.poll(() => creations).toBe(3);
+
+  let shutdownDone = false;
+  const shuttingDown = pool.shutdown().then(() => {
+    shutdownDone = true;
+  });
+  await Promise.resolve();
+  expect(shutdownDone).toBe(false);
+
+  releaseReplacement();
+  await Promise.all([settling, shuttingDown]);
+  expect(pool.snapshot()).toMatchObject({ accepting: false, workers: [] });
+});
+
+test('shutdown interrupts replacement backoff before draining maintenance', async () => {
+  let creations = 0;
+  let sleepStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    sleepStarted = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      const worker = new FakeWorker(`worker-${creations}`);
+      if (creations === 3) worker.warmError = new Error('injected_replacement_failure');
+      return worker;
+    },
+    {
+      sleep: async () => {
+        sleepStarted();
+        await new Promise<void>(() => {});
+      },
+    }
+  );
+  await pool.start();
+  const failed = await pool.acquire();
+  const settling = failed?.settle('engine_crashed');
+  await started;
+
+  await Promise.all([settling, pool.shutdown()]);
+  expect(creations).toBe(3);
+  expect(pool.snapshot()).toMatchObject({ accepting: false, workers: [] });
+});
+
+test('shutdown drains healthy recycling before terminating the pool', async () => {
+  let creations = 0;
+  let releaseReplacement!: () => void;
+  const replacementFactory = new Promise<void>((resolve) => {
+    releaseReplacement = resolve;
+  });
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      if (creations === 3) await replacementFactory;
+      return new FakeWorker(`worker-${creations}`);
+    },
+    { maxCompletedSearches: 1, sleep: async () => {} }
+  );
+  await pool.start();
+  const recycled = await pool.acquire();
+  const settling = recycled?.settle('success');
+  await expect.poll(() => creations).toBe(3);
+
+  let shutdownDone = false;
+  const shuttingDown = pool.shutdown().then(() => {
+    shutdownDone = true;
+  });
+  await Promise.resolve();
+  expect(shutdownDone).toBe(false);
+
+  releaseReplacement();
+  await Promise.all([settling, shuttingDown]);
+  expect(pool.snapshot()).toMatchObject({ accepting: false, workers: [] });
 });
 
 test('five replacement failures open the pool circuit', async () => {
@@ -244,6 +447,84 @@ test('closed circuit replenishes missing capacity once before concurrent leases'
   expect(pool.snapshot().workers.map((worker) => worker.state)).toEqual(['IDLE', 'IDLE']);
 });
 
+test('lease preparation is discarded when a peer opens the circuit', async () => {
+  let creations = 0;
+  let prepareStarted!: () => void;
+  let releasePrepare!: () => void;
+  const started = new Promise<void>((resolve) => {
+    prepareStarted = resolve;
+  });
+  const preparation = new Promise<void>((resolve) => {
+    releasePrepare = resolve;
+  });
+  const workers: FakeWorker[] = [];
+  const pool = new EngineWorkerPool(
+    async () => {
+      creations += 1;
+      if (creations > 2) throw new Error('injected_replacement_failure');
+      const worker = new FakeWorker(`worker-${creations}`);
+      if (creations === 1) {
+        worker.prepareLease = async () => {
+          worker.prepareCalls += 1;
+          prepareStarted();
+          await preparation;
+          return inertTransport();
+        };
+      }
+      workers.push(worker);
+      return worker;
+    },
+    { sleep: async () => {} }
+  );
+  await pool.start();
+  const preparing = pool.acquire();
+  await started;
+  const peer = await pool.acquire();
+  await peer?.settle('engine_crashed');
+  expect(pool.snapshot().circuitOpenUntilMs).not.toBeNull();
+
+  releasePrepare();
+  expect(await preparing).toBeNull();
+  expect(workers[0]?.resetCalls).toBe(1);
+  expect(pool.snapshot().workers).toEqual([
+    expect.objectContaining({ id: 'worker-1', state: 'IDLE' }),
+  ]);
+});
+
+test('lease preparation failure after shutdown cannot create a replacement', async () => {
+  let creations = 0;
+  let prepareStarted!: () => void;
+  let rejectPrepare!: (error: Error) => void;
+  const started = new Promise<void>((resolve) => {
+    prepareStarted = resolve;
+  });
+  const preparation = new Promise<void>((_resolve, reject) => {
+    rejectPrepare = reject;
+  });
+  const pool = new EngineWorkerPool(async () => {
+    creations += 1;
+    const worker = new FakeWorker(`worker-${creations}`);
+    if (creations === 1) {
+      worker.prepareLease = async () => {
+        worker.prepareCalls += 1;
+        prepareStarted();
+        await preparation;
+        return inertTransport();
+      };
+    }
+    return worker;
+  });
+  await pool.start();
+  const preparing = pool.acquire();
+  await started;
+  await pool.shutdown();
+
+  rejectPrepare(new Error('late_prepare_failure'));
+  await expect(preparing).rejects.toThrow('late_prepare_failure');
+  expect(creations).toBe(2);
+  expect(pool.snapshot()).toMatchObject({ accepting: false, workers: [] });
+});
+
 test('second startup worker that fails warm and terminate stays retiring and blocks start', async () => {
   const workers: FakeWorker[] = [];
   const pool = new EngineWorkerPool(async () => {
@@ -266,7 +547,7 @@ test('second startup worker that fails warm and terminate stays retiring and blo
   expect(workers).toHaveLength(2);
 });
 
-test('replacement warm and terminate failure stops retries and is not leasable', async () => {
+test('replacement warm and terminate failure remains fail closed after circuit expiry', async () => {
   const workers: FakeWorker[] = [];
   let now = 10_000;
   const pool = new EngineWorkerPool(
@@ -305,9 +586,8 @@ test('replacement warm and terminate failure stops retries and is not leasable',
   ).toBe(false);
 
   now += 30_001;
-  const surviving = await pool.acquire();
-  expect(surviving?.workerId).toBe('worker-2');
-  expect(await surviving?.settle('success')).toBe(true);
+  expect(await pool.acquire()).toBeNull();
+  expect(workers[1]?.prepareCalls).toBe(0);
   expect(workers).toHaveLength(3);
   expect(pool.snapshot().workers).toEqual(
     expect.arrayContaining([
