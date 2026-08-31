@@ -39,6 +39,18 @@ test('transient provider failures use bounded exponential retries', () => {
   expect(imageGenerationRetryDelaySeconds(3)).toBe(120);
 });
 
+test('opening and refinement calls send trusted Gateway cost-attribution dimensions', async () => {
+  const worker = await source('lib/imageGenerator/worker.ts');
+  const refinementWorker = await source('lib/imageGenerator/refinementWorker.ts');
+  expect(worker).toContain('membershipTier: request.membership_tier');
+  expect(worker).toContain("operation: 'opening'");
+  expect(worker).toContain('attemptNumber: request.attempt_count');
+  expect(refinementWorker).toContain('membershipTier: requestResult.data.membership_tier');
+  expect(refinementWorker).toContain("operation: 'refinement'");
+  expect(refinementWorker).toContain('attemptNumber: refinement.attempt_count');
+  expect(refinementWorker).toContain('refinementId: refinement.id');
+});
+
 test('retry migration enforces due-time claims, three attempts, and stale recovery', async () => {
   const sql = (await source(
     'supabase/migrations/20260830230000_image_generation_worker_retry_schedule.sql'

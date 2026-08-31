@@ -34,6 +34,7 @@ export type ImageGenerationRequestRow = {
   provider: string;
   model: string | null;
   candidate_count: number;
+  membership_tier: 'free' | 'plus' | 'pro' | 'internal_unlimited';
   idempotency_key: string;
   reference_id: string | null;
   reference_id_2: string | null;

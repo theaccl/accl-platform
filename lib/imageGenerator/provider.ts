@@ -22,6 +22,10 @@ export interface ImageGenerationProvider {
     candidateCount: number;
     requestId: string;
     ownerId: string;
+    membershipTier?: 'free' | 'plus' | 'pro' | 'internal_unlimited';
+    operation?: 'opening' | 'refinement';
+    attemptNumber?: number;
+    refinementId?: string;
     referenceImages?: Array<{
       bytes: Uint8Array;
       mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
@@ -50,6 +54,10 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
     candidateCount: number;
     requestId: string;
     ownerId: string;
+    membershipTier?: 'free' | 'plus' | 'pro' | 'internal_unlimited';
+    operation?: 'opening' | 'refinement';
+    attemptNumber?: number;
+    refinementId?: string;
     referenceImages?: Array<{
       bytes: Uint8Array;
       mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
@@ -58,6 +66,21 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
     if (!Number.isInteger(input.candidateCount) || input.candidateCount < 1 || input.candidateCount > 5) {
       throw new Error('provider_candidate_count_invalid');
     }
+
+    const operation = input.operation ?? 'opening';
+    const attemptNumber = Number.isInteger(input.attemptNumber) && (input.attemptNumber ?? 0) > 0
+      ? input.attemptNumber!
+      : 1;
+    const environment = process.env.VERCEL_ENV?.trim().toLowerCase() || 'local';
+    const gatewayTags = [
+      'feature:image-generator',
+      `request:${input.requestId}`,
+      `operation:${operation}`,
+      `tier:${input.membershipTier ?? 'unknown'}`,
+      `attempt:${attemptNumber}`,
+      `environment:${environment}`,
+      ...(input.refinementId ? [`refinement:${input.refinementId}`] : []),
+    ];
 
     const result = await this.generateImageFn({
       model: this.model,
@@ -79,7 +102,7 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
         },
         gateway: {
           user: input.ownerId,
-          tags: ['accl', 'image-generator', `request:${input.requestId}`],
+          tags: gatewayTags,
         },
       },
     });

@@ -42,6 +42,9 @@ test('provider requests four private, medium-quality, moderated square candidate
     candidateCount: 4,
     requestId: 'request-123',
     ownerId: 'player-456',
+    membershipTier: 'plus',
+    operation: 'opening',
+    attemptNumber: 2,
   });
 
   expect(images).toHaveLength(4);
@@ -56,7 +59,59 @@ test('provider requests four private, medium-quality, moderated square candidate
       openai: { quality: 'medium', outputFormat: 'png', moderation: 'auto' },
       gateway: {
         user: 'player-456',
-        tags: ['accl', 'image-generator', 'request:request-123'],
+        tags: [
+          'feature:image-generator',
+          'request:request-123',
+          'operation:opening',
+          'tier:plus',
+          'attempt:2',
+          'environment:local',
+        ],
+      },
+    },
+  });
+});
+
+test('refinement calls carry trusted cost-attribution tags', async () => {
+  let call: Record<string, unknown> | undefined;
+  const fakeGenerateImage = async (options: Record<string, unknown>) => {
+    call = options;
+    return {
+      images: Array.from({ length: 2 }, () => ({
+        uint8Array: new Uint8Array([137, 80, 78, 71]),
+        mediaType: 'image/png',
+      })),
+    };
+  };
+  const provider = new VercelGatewayImageGenerationProvider(
+    DEFAULT_IMAGE_GENERATION_MODEL,
+    fakeGenerateImage as never
+  );
+
+  await provider.generate({
+    prompt: 'Preserve the crest and refine the lighting',
+    candidateCount: 2,
+    requestId: 'request-789',
+    ownerId: 'player-456',
+    membershipTier: 'pro',
+    operation: 'refinement',
+    attemptNumber: 3,
+    refinementId: 'refinement-012',
+  });
+
+  expect(call).toMatchObject({
+    providerOptions: {
+      gateway: {
+        user: 'player-456',
+        tags: [
+          'feature:image-generator',
+          'request:request-789',
+          'operation:refinement',
+          'tier:pro',
+          'attempt:3',
+          'environment:local',
+          'refinement:refinement-012',
+        ],
       },
     },
   });

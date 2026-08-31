@@ -143,6 +143,9 @@ export async function processOneImageGeneration(
       candidateCount: request.candidate_count,
       requestId: request.id,
       ownerId: request.owner_id,
+      membershipTier: request.membership_tier,
+      operation: 'opening',
+      attemptNumber: request.attempt_count,
       referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
     });
     for (let index = 0; index < generated.length; index++) {

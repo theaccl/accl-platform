@@ -48,7 +48,7 @@ export async function processOneImageRefinement(
     const guidanceSafety = moderateImagePrompt(refinement.guidance);
     if (!guidanceSafety.allowed) throw new Error(`prompt_safety_rejected:${guidanceSafety.code}`);
     const [requestResult, candidateResult] = await Promise.all([
-      supabase.from('image_generation_requests').select('prompt').eq('id', refinement.request_id).single(),
+      supabase.from('image_generation_requests').select('prompt,membership_tier').eq('id', refinement.request_id).single(),
       supabase
         .from('image_generation_candidates')
         .select('id,request_id,owner_id,ordinal,status,storage_path,mime_type,byte_size,width,height,moderation_status,created_at')
@@ -76,6 +76,10 @@ export async function processOneImageRefinement(
       candidateCount: 2,
       requestId: refinement.request_id,
       ownerId: refinement.owner_id,
+      membershipTier: requestResult.data.membership_tier,
+      operation: 'refinement',
+      attemptNumber: refinement.attempt_count,
+      refinementId: refinement.id,
       referenceImages: [{
         bytes: new Uint8Array(await downloaded.data.arrayBuffer()),
         mimeType: sourceCandidate.mime_type,
