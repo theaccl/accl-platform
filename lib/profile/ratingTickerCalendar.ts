@@ -202,6 +202,17 @@ function hourLabel(hour: number): string {
   return `${pad2(hour)}:00`;
 }
 
+function isLocalMidnight(civil: { hour: number; minute: number; second: number }): boolean {
+  return civil.hour === 0 && civil.minute === 0 && civil.second === 0;
+}
+
+/** Day-lane endpoints: 00:00 / 24:00 only when local midnight actually exists. */
+function dayBoundaryLabel(ms: number, timeZone: string, role: 'start' | 'end'): string {
+  const civil = instantToCivil(ms, timeZone);
+  if (isLocalMidnight(civil)) return role === 'start' ? '00:00' : '24:00';
+  return `${pad2(civil.hour)}:${pad2(civil.minute)}`;
+}
+
 export function ticksForLaneWindow(
   window: RatingLaneWindow,
   innerWidthPx: number,
@@ -218,9 +229,9 @@ export function ticksForLaneWindow(
     candidates.push({ t: clamped, label, priority });
   };
 
-  push(startMs, lane === 'day' ? '00:00' : formatCivil(start), 'endpoint');
+  push(startMs, lane === 'day' ? dayBoundaryLabel(startMs, tz, 'start') : formatCivil(start), 'endpoint');
   if (lane === 'day') {
-    push(endMs, '24:00', 'endpoint');
+    push(endMs, dayBoundaryLabel(endMs, tz, 'end'), 'endpoint');
   } else {
     push(endMs, formatCivil(addCivilDays(endExclusive, lane === 'year' ? 0 : 0)), 'endpoint');
     if (lane === 'week' && window.isoWeek) {

@@ -153,7 +153,9 @@ test.describe('rating ticker calendar and timezone helpers', () => {
     expect(ends(wide)).toHaveLength(2);
     expect(wide.length).toBeGreaterThanOrEqual(narrow.length);
     const day = ratingLaneWindow('day', Date.parse('2026-08-26T12:00:00Z'), 'UTC')!;
-    expect(ticksForLaneWindow(day, 180).filter((t) => t.priority === 'endpoint')).toHaveLength(2);
+    const dayEnds = ticksForLaneWindow(day, 180).filter((t) => t.priority === 'endpoint');
+    expect(dayEnds).toHaveLength(2);
+    expect(dayEnds.map((t) => t.label)).toEqual(['00:00', '24:00']);
   });
 
   test('overall without events does not invent a start date', () => {
@@ -239,6 +241,58 @@ test.describe('rating ticker midnight DST and encoding guards', () => {
     assertExclusiveCivilDay(date, tz);
     assertExclusiveCivilDay(addCivilDays(date, -1), tz);
     assertExclusiveCivilDay(addCivilDays(date, 1), tz);
+  });
+
+  test('Day endpoint labels use the resolved local boundary, not a hardcoded midnight', () => {
+    const gap = findBackwardMidnightGap(2010, 2012);
+    expect(gap, 'expected at least one IANA zone where naive 00:00 maps backward').not.toBeNull();
+    const { tz, date } = gap!;
+    const start = startOfCivilDayUtcMs(date, tz);
+    const startCivil = instantToCivil(start, tz);
+    expect(startCivil.hour + startCivil.minute + startCivil.second).toBeGreaterThan(0);
+
+    const skipped = ratingLaneWindow('day', start, tz)!;
+    const skippedEnds = ticksForLaneWindow(skipped, 720).filter((t) => t.priority === 'endpoint');
+    expect(skippedEnds).toHaveLength(2);
+    const expectedStart = `${String(startCivil.hour).padStart(2, '0')}:${String(startCivil.minute).padStart(2, '0')}`;
+    expect(skippedEnds[0].label).toBe(expectedStart);
+    expect(skippedEnds[0].label).not.toBe('00:00');
+    const skippedEndCivil = instantToCivil(skipped.endMs, tz);
+    if (skippedEndCivil.hour === 0 && skippedEndCivil.minute === 0 && skippedEndCivil.second === 0) {
+      expect(skippedEnds[1].label).toBe('24:00');
+    } else {
+      expect(skippedEnds[1].label).toBe(
+        `${String(skippedEndCivil.hour).padStart(2, '0')}:${String(skippedEndCivil.minute).padStart(2, '0')}`,
+      );
+      expect(skippedEnds[1].label).not.toBe('24:00');
+    }
+
+    const previous = ratingLaneWindow('day', startOfCivilDayUtcMs(addCivilDays(date, -1), tz), tz)!;
+    const previousEnds = ticksForLaneWindow(previous, 720).filter((t) => t.priority === 'endpoint');
+    expect(previousEnds).toHaveLength(2);
+    const previousStartCivil = instantToCivil(previous.startMs, tz);
+    if (previousStartCivil.hour === 0 && previousStartCivil.minute === 0 && previousStartCivil.second === 0) {
+      expect(previousEnds[0].label).toBe('00:00');
+    }
+    const previousEndCivil = instantToCivil(previous.endMs, tz);
+    expect(previous.endMs).toBe(start);
+    expect(previousEnds[1].label).not.toBe('24:00');
+    expect(previousEnds[1].label).toBe(
+      `${String(previousEndCivil.hour).padStart(2, '0')}:${String(previousEndCivil.minute).padStart(2, '0')}`,
+    );
+    expect(previousEnds[1].label).toBe(expectedStart);
+
+    const ordinary = ratingLaneWindow('day', Date.parse('2026-08-26T12:00:00Z'), 'UTC')!;
+    expect(ticksForLaneWindow(ordinary, 720).filter((t) => t.priority === 'endpoint').map((t) => t.label)).toEqual([
+      '00:00',
+      '24:00',
+    ]);
+    const chicago = ratingLaneWindow('day', Date.parse('2026-03-08T18:00:00Z'), 'America/Chicago')!;
+    expect(instantToCivil(chicago.startMs, 'America/Chicago')).toMatchObject({ hour: 0, minute: 0, second: 0 });
+    expect(ticksForLaneWindow(chicago, 720).filter((t) => t.priority === 'endpoint').map((t) => t.label)).toEqual([
+      '00:00',
+      '24:00',
+    ]);
   });
 
   test('Chicago and New York spring/fall stay on the requested civil date', () => {
@@ -328,4 +382,3 @@ test.describe('rating ticker midnight DST and encoding guards', () => {
     }
   });
 });
-
