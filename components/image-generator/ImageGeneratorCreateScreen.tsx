@@ -23,6 +23,7 @@ type GenerationStatusResponse = {
 };
 
 const REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const GENERATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -59,6 +60,18 @@ export function ImageGeneratorCreateScreen() {
   const [candidates, setCandidates] = useState<ReviewCandidate[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvedId, setApprovedId] = useState<string | null>(null);
+
+  const rememberGenerationInUrl = useCallback((id: string | null) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("generation", id);
+    else url.searchParams.delete("generation");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("generation");
+    if (id && GENERATION_ID_PATTERN.test(id)) setGenerationId(id);
+  }, []);
 
   useEffect(() => {
     if (!referenceFile) {
@@ -175,6 +188,7 @@ export function ImageGeneratorCreateScreen() {
     setBusy(true);
     setMessage(null);
     setGenerationId(null);
+    rememberGenerationInUrl(null);
     setGenerationStatus(null);
     setCandidates([]);
     setApprovedId(null);
@@ -223,6 +237,7 @@ export function ImageGeneratorCreateScreen() {
       const id = payload.generation?.id;
       if (!id) throw new Error("missing_generation_id");
       setGenerationId(id);
+      rememberGenerationInUrl(id);
       setGenerationStatus(payload.generation?.status ?? "queued");
       setMessage("Your reference and description are secured. The atelier is preparing four private candidates.");
     } catch {
