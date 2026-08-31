@@ -1,5 +1,5 @@
 import type { FinishedGameAnalysisIntakePayload } from '@/lib/finishedGameAnalysisIntake';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { resolve } from 'node:path';
 import {
   EngineFailure,
@@ -61,12 +61,10 @@ const TRAINER_MAX_CONCURRENT = 3;
 let trainerConcurrent = 0;
 const trainerWaiters: Array<() => void> = [];
 
-function nodeStockfishProcessTransport(): EngineTransport {
-  const asmPath = resolve(process.cwd(), 'node_modules', 'stockfish', 'bin', 'stockfish-18-asm.js');
-  const child = spawn(process.execPath, [asmPath], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+/** @internal Exported for deterministic process-lifecycle contract tests. */
+export function createStockfishProcessTransport(
+  child: ChildProcessWithoutNullStreams,
+): EngineTransport {
   let closed = false;
 
   return {
@@ -82,7 +80,14 @@ function nodeStockfishProcessTransport(): EngineTransport {
         stdoutBuffer = lines.pop() ?? '';
         for (const line of lines) handlers.onLine(line);
       };
-      const onError = (error: unknown) => handlers.onError?.(error);
+      let failureReported = false;
+      const reportFailure = (error: unknown) => {
+        if (closed || failureReported) return;
+        failureReported = true;
+        handlers.onError?.(error);
+      };
+      const onError = (error: unknown) => reportFailure(error);
+      const onExit = () => reportFailure(new Error('stockfish_process_exited_before_completion'));
       // Emscripten may emit non-fatal runtime diagnostics on stderr while the
       // UCI channel remains healthy. Drain them without converting them into a
       // chess-engine failure; actual spawn errors still use `onError` below.
@@ -90,10 +95,14 @@ function nodeStockfishProcessTransport(): EngineTransport {
       child.stdout.on('data', onStdout);
       child.stderr.on('data', onStderr);
       child.on('error', onError);
+      child.on('exit', onExit);
+      child.on('close', onExit);
       return () => {
         child.stdout.off('data', onStdout);
         child.stderr.off('data', onStderr);
         child.off('error', onError);
+        child.off('exit', onExit);
+        child.off('close', onExit);
       };
     },
     close() {
@@ -107,6 +116,15 @@ function nodeStockfishProcessTransport(): EngineTransport {
       if (!child.killed) child.kill();
     },
   };
+}
+
+function nodeStockfishProcessTransport(): EngineTransport {
+  const asmPath = resolve(process.cwd(), 'node_modules', 'stockfish', 'bin', 'stockfish-18-asm.js');
+  const child = spawn(process.execPath, [asmPath], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  return createStockfishProcessTransport(child);
 }
 
 async function acquireTrainerSlot(): Promise<void> {

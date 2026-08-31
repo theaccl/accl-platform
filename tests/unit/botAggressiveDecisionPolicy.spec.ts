@@ -1,13 +1,24 @@
 import { expect, test } from '@playwright/test';
 import { Chess } from 'chess.js';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 
 import { buildBotCandidatesFromFen } from '@/lib/bot/botCandidates';
 import { getBotDifficultyProfile } from '@/lib/bot/botDifficulty';
 import { assessStaticBotMove } from '@/lib/bot/botMoveSafety';
 import { botOpeningReferenceMoves } from '@/lib/bot/botOpeningBook';
-import { evaluateTrainerPositionUci } from '@/lib/analysis/engineComputeService';
+import {
+  createStockfishProcessTransport,
+  evaluateTrainerPositionUci,
+} from '@/lib/analysis/engineComputeService';
+import {
+  evaluatePositionWithStockfish,
+  PINNED_STOCKFISH_IDENTITY,
+} from '@/lib/chess/engine/stockfishAdapter';
+import { parsePosition } from '@/lib/chess/position';
 import type { BotCandidateLine } from '@/lib/bot/botPersonality';
 import {
   annotateEngineLossFromBest,
@@ -79,6 +90,35 @@ function fenAfter(moves: string[]): string {
 }
 
 test.describe('Aggressive bot shared safe-shortlist policy', () => {
+  test('unexpected Stockfish exit fails immediately and removes lifecycle listeners', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      killed: false,
+      kill() {
+        this.killed = true;
+        return true;
+      },
+    }) as unknown as ChildProcessWithoutNullStreams;
+    const transport = createStockfishProcessTransport(child);
+    const startedAt = performance.now();
+    const evaluation = evaluatePositionWithStockfish({
+      transport,
+      position: parsePosition(new Chess().fen()),
+      limits: { depth: 6, multiPv: 1, timeoutMs: 3_000 },
+      identity: PINNED_STOCKFISH_IDENTITY,
+    });
+
+    child.emit('exit', 1, null);
+
+    await expect(evaluation).rejects.toMatchObject({ code: 'ENGINE_CRASH' });
+    expect(performance.now() - startedAt).toBeLessThan(500);
+    expect(child.listenerCount('error')).toBe(0);
+    expect(child.listenerCount('exit')).toBe(0);
+    expect(child.listenerCount('close')).toBe(0);
+  });
+
   test('production queen-check blunder is detected by one-reply safety evidence', () => {
     const line = assessStaticBotMove(BEFORE_QXD2, 'a5d2');
     expect(line).not.toBeNull();
