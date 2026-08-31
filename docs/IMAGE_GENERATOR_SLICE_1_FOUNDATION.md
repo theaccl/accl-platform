@@ -75,17 +75,19 @@ The foundation, token-economy, tier-contract, refinement, saved-lineage, and adv
 
 ## Controlled live staging checkpoint — 2026-08-31
 
-The feature preview for commit `85530af` was verified Ready before and after the following controlled run:
+The feature preview for commit `2addd38` completed the controlled provider checkpoint without touching production or using a paid balance:
 
-1. The branch-scoped preview model was temporarily changed from `openai/gpt-image-2` to the current Gateway slug `prodia/flux-fast-schnell`.
-2. A clearly identified disposable Plus player received one audited test token.
-3. The public API authenticated the player, reported the Plus contract, and accepted exactly one idempotent four-candidate commission with HTTP 202.
-4. The request stored `membership_tier = plus`, `candidate_count = 4`, `token_state = reserved`, and the temporary Flux model.
-5. The owner could read the queued request. An anonymous reader received HTTP 401, and an unauthenticated worker invocation also received HTTP 401.
-6. The provider call was deliberately not bypassed: preview deployments do not run Vercel Cron, and the worker credential is an unrevealable server secret. Rotating that credential requires action-time authorization.
-7. `openai/gpt-image-2` was restored, the feature preview was redeployed to Ready, and the disposable player, queued request, entitlement, and token rows were removed. No candidate objects were created by this checkpoint.
+1. Vercel AI Gateway showed `$4.91` of free credit and disabled automatic reload before the run.
+2. The branch-scoped preview model was temporarily changed from `openai/gpt-image-2` to the current Gateway slug `prodia/flux-fast-schnell`.
+3. A clearly identified disposable Plus player received one audited test token, while a second disposable authenticated player was reserved for cross-account denial testing.
+4. The public browser flow authenticated the owner, reported the Plus contract, and accepted exactly one idempotent four-candidate commission. The request stored `membership_tier = plus`, `candidate_count = 4`, `token_state = reserved`, and the temporary Flux model.
+5. The preview-only queue secret was rotated, and the trusted worker was invoked exactly once. It claimed the commission on attempt 1 and finalized it in `review` with four moderated 1024×1024 PNG candidates.
+6. All four private candidates appeared together on the candidate-review screen. The provider receipt recorded four images, 4,138,022 output bytes, and `$0.01000000` of Gateway cost; the visible free-credit balance moved from `$4.91` to `$4.90`.
+7. An unauthenticated request received HTTP 401. The second authenticated player received HTTP 404 for both the commission and a candidate signed-access request, while the owner review screen successfully loaded all four private images.
+8. The four Storage objects were removed through the Storage API. Both disposable users and all associated entitlement, token, request, candidate, and cost-event rows were then removed and verified absent.
+9. `openai/gpt-image-2` was restored on the feature branch, the preview was redeployed to Ready, and the clean unauthenticated generator showed no candidate images. The temporary staging-only HTTP extension used to deliver the authorized worker call was removed.
 
-The remaining live checkpoint is to invoke the trusted preview worker once through an authorized credential path, verify all four private candidates together, test a different authenticated user against candidate access, remove the resulting objects, and confirm the preview model remains `openai/gpt-image-2`.
+The controlled live provider checkpoint is complete. The intended ACCL model remains `openai/gpt-image-2`; Flux Schnell was used only for this bounded free-credit validation.
 
 ## Token issuance and cost-control staging checkpoint — 2026-08-31
 
