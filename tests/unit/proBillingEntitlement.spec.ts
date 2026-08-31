@@ -12,6 +12,10 @@ const anniversaryMigrationPath = join(
   process.cwd(),
   'supabase/migrations/20260831173500_pro_anniversary_token_issuance.sql'
 );
+const compatibilityMigrationPath = join(
+  process.cwd(),
+  'supabase/migrations/20260831180500_legacy_pro_subscription_sync_compatibility.sql'
+);
 
 test('Pro checkout accepts only controlled-launch Stripe test configuration', () => {
   expect(PRO_ENTITLEMENT).toBe('image_generator');
@@ -89,4 +93,15 @@ test('Pro anniversary timing is provider-authoritative and due grants are idempo
     processor.indexOf('configuredImageGenerationProvider()')
   );
   expect(webhook).toContain('p_subscription_started_at: parsed.subscriptionStartedAt');
+});
+
+test('migration-first rollout preserves legacy entitlement sync without inferring an anniversary', async () => {
+  const sql = await readFile(compatibilityMigrationPath, 'utf8');
+
+  expect(sql).toContain('create or replace function public.sync_pro_subscription_entitlement');
+  expect(sql).toContain("'subscription_start_pending', true");
+  expect(sql).not.toContain('subscription_started_at = p_provider_created_at');
+  expect(sql).not.toContain('mint_pro_anniversary_generation_tokens');
+  expect(sql).toMatch(/revoke all on function public\.sync_pro_subscription_entitlement[\s\S]*from public, anon, authenticated/i);
+  expect(sql).toMatch(/grant execute on function public\.sync_pro_subscription_entitlement[\s\S]*to service_role/i);
 });
