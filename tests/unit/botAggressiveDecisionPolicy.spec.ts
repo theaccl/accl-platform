@@ -591,6 +591,7 @@ test.describe('manual Master/Aggressive opening-to-middlegame audition', () => {
       rationale: string;
       engineRank: number | null;
       lossFromBestCp: number | null;
+      concreteCompensation: boolean | null;
       staticRiskCp: number | null;
       referenceOptions: readonly string[];
       openingReference: boolean;
@@ -660,6 +661,7 @@ test.describe('manual Master/Aggressive opening-to-middlegame audition', () => {
         rationale,
         engineRank: selectedLine?.engineRank ?? null,
         lossFromBestCp: selectedLine?.lossFromBestCp ?? null,
+        concreteCompensation: selectedLine?.planEvidence?.concreteCompensation ?? null,
         staticRiskCp: selectedLine?.staticRiskCp ?? null,
         referenceOptions,
         openingReference: selectedLine?.openingReference ?? false,
