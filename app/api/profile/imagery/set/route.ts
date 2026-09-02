@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { z } from 'zod';
 
+import { recordPlacementDerivativeSetCosts } from '@/lib/imageGenerator/costAccounting';
 import { createProfileStillDerivative } from '@/lib/imageGenerator/derivatives';
 import type { ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
@@ -40,18 +41,52 @@ export async function POST(request: Request): Promise<Response> {
     if (downloaded.error) return jsonResponse({ error: 'Could not read private candidate' }, 500);
     const source = new Uint8Array(await downloaded.data.arrayBuffer());
 
-    let icon;
-    let background;
+    let iconResult;
+    let backgroundResult;
     try {
-      [icon, background] = await Promise.all([
-        createProfileStillDerivative(source, 'profile_image'),
-        createProfileStillDerivative(source, 'profile_background'),
+      [iconResult, backgroundResult] = await Promise.all([
+        (async () => {
+          const startedAt = Date.now();
+          const derivative = await createProfileStillDerivative(source, 'profile_image');
+          return { derivative, measuredDurationMs: Math.max(0, Date.now() - startedAt) };
+        })(),
+        (async () => {
+          const startedAt = Date.now();
+          const derivative = await createProfileStillDerivative(source, 'profile_background');
+          return { derivative, measuredDurationMs: Math.max(0, Date.now() - startedAt) };
+        })(),
       ]);
     } catch {
       return jsonResponse({ error: 'Could not create the coordinated profile set' }, 422);
     }
 
     const placementId = randomUUID();
+    const icon = iconResult.derivative;
+    const background = backgroundResult.derivative;
+    try {
+      await recordPlacementDerivativeSetCosts(supabase, {
+        requestId: candidate.request_id,
+        candidateId: candidate.id,
+        runId: placementId,
+        derivatives: [
+          {
+            surface: 'profile_image',
+            derivativeVersion: icon.version,
+            measuredDurationMs: iconResult.measuredDurationMs,
+            outputBytes: icon.byteSize,
+          },
+          {
+            surface: 'profile_background',
+            derivativeVersion: background.version,
+            measuredDurationMs: backgroundResult.measuredDurationMs,
+            outputBytes: background.byteSize,
+          },
+        ],
+      });
+    } catch {
+      return jsonResponse({ error: 'Could not audit coordinated profile processing' }, 500);
+    }
+
     const iconPath = `${user.id}/generated/${candidate.id}/${icon.version}-profile_image-${placementId}.${icon.extension}`;
     const backgroundPath = `${user.id}/generated/${candidate.id}/${background.version}-profile_background-${placementId}.${background.extension}`;
     const [iconUpload, backgroundUpload] = await Promise.all([

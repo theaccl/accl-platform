@@ -17,7 +17,7 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 - Placement publishes a still derivative. Candidate originals remain in the private bucket.
 - Motion visibility is resolved server-side by membership, surface, and viewer audience. Reduced-motion preferences always receive the still fallback.
 - Weekly Plus/Pro minting and Pro anniversary minting are server-authoritative, idempotent, and replacement-based. Anniversary timing comes from the provider subscription start, not a browser-supplied date.
-- Gateway provider cost and placement-derivative work are recorded against the owning commission. Server-only controls can stop generation, cap attempts, and enforce a per-commission provider-cost ceiling.
+- Gateway provider cost and placement-derivative work are recorded against the owning commission. Single-surface placement records one derivative receipt; Pro/Internal Unlimited matching-set placement records both coordinated derivatives under one run and fails before publication if either receipt cannot be secured. Server-only controls can stop generation, cap attempts, and enforce a per-commission provider-cost ceiling.
 - Token minting, stale-job recovery/refunds, reference cleanup, and review-expiry maintenance run even when the image-generation provider is unavailable; only new provider work is blocked by missing provider configuration.
 
 ## Server configuration

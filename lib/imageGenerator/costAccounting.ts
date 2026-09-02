@@ -103,3 +103,41 @@ export async function recordPlacementDerivativeCost(
   });
   if (recorded.error) throw new Error(`derivative_cost_receipt_failed:${recorded.error.message}`);
 }
+
+export async function recordPlacementDerivativeSetCosts(
+  supabase: SupabaseClient,
+  input: {
+    requestId: string;
+    candidateId: string;
+    runId: string;
+    derivatives: [
+      {
+        surface: 'profile_image';
+        derivativeVersion: string;
+        measuredDurationMs: number;
+        outputBytes: number;
+      },
+      {
+        surface: 'profile_background';
+        derivativeVersion: string;
+        measuredDurationMs: number;
+        outputBytes: number;
+      },
+    ];
+  }
+): Promise<void> {
+  const receipts = await Promise.allSettled(
+    input.derivatives.map((derivative) =>
+      recordPlacementDerivativeCost(supabase, {
+        requestId: input.requestId,
+        candidateId: input.candidateId,
+        runId: input.runId,
+        ...derivative,
+      })
+    )
+  );
+  const failed = receipts.find(
+    (receipt): receipt is PromiseRejectedResult => receipt.status === 'rejected'
+  );
+  if (failed) throw failed.reason;
+}

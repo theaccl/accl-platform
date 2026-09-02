@@ -47,6 +47,19 @@ test('placement route uploads the derivative instead of the private raw candidat
   expect(code).not.toContain('upload(path, downloaded.data');
 });
 
+test('matching-set placement audits both derivatives before publishing them', async () => {
+  const code = await readFile(
+    join(process.cwd(), 'app/api/profile/imagery/set/route.ts'),
+    'utf8'
+  );
+  expect(code).toContain('recordPlacementDerivativeSetCosts(');
+  expect(code).toContain("surface: 'profile_image'");
+  expect(code).toContain("surface: 'profile_background'");
+  expect(code.indexOf('recordPlacementDerivativeSetCosts(')).toBeLessThan(
+    code.indexOf("supabase.storage.from('profile-avatars').upload")
+  );
+});
+
 test('database locks derivative dimensions and community still-only behavior', async () => {
   const sql = (
     await readFile(

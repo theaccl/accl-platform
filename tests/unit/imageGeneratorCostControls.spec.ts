@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 import {
   enforceImageGenerationCostGuard,
   recordPlacementDerivativeCost,
+  recordPlacementDerivativeSetCosts,
   recordProviderGenerationCost,
 } from '../../lib/imageGenerator/costAccounting';
 
@@ -158,4 +159,77 @@ test('cost guard and receipt failures stop processing instead of silently losing
       outputBytes: 1024,
     })
   ).rejects.toThrow('derivative_cost_receipt_failed:write failed');
+});
+
+test('matching-set placement audits both coordinated derivatives under one run', async () => {
+  const fake = rpcRecorder([
+    { data: { id: 12 }, error: null },
+    { data: { id: 13 }, error: null },
+  ]);
+  await recordPlacementDerivativeSetCosts(fake.client as never, {
+    requestId: 'request-set',
+    candidateId: 'candidate-set',
+    runId: 'placement-set',
+    derivatives: [
+      {
+        surface: 'profile_image',
+        derivativeVersion: 'placement.v1',
+        measuredDurationMs: 25,
+        outputBytes: 2048,
+      },
+      {
+        surface: 'profile_background',
+        derivativeVersion: 'placement.v1',
+        measuredDurationMs: 40,
+        outputBytes: 8192,
+      },
+    ],
+  });
+
+  expect(fake.calls).toHaveLength(2);
+  expect(fake.calls.map((call) => call.args)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        p_operation: 'placement_derivative',
+        p_idempotency_key:
+          'derivative:request-set:candidate-set:profile_image:placement-set',
+        p_output_bytes: 2048,
+      }),
+      expect.objectContaining({
+        p_operation: 'placement_derivative',
+        p_idempotency_key:
+          'derivative:request-set:candidate-set:profile_background:placement-set',
+        p_output_bytes: 8192,
+      }),
+    ])
+  );
+});
+
+test('matching-set placement attempts both audits and fails closed when one receipt fails', async () => {
+  const fake = rpcRecorder([
+    { data: null, error: { message: 'icon receipt failed' } },
+    { data: { id: 14 }, error: null },
+  ]);
+  await expect(
+    recordPlacementDerivativeSetCosts(fake.client as never, {
+      requestId: 'request-set-failure',
+      candidateId: 'candidate-set-failure',
+      runId: 'placement-set-failure',
+      derivatives: [
+        {
+          surface: 'profile_image',
+          derivativeVersion: 'placement.v1',
+          measuredDurationMs: 10,
+          outputBytes: 1024,
+        },
+        {
+          surface: 'profile_background',
+          derivativeVersion: 'placement.v1',
+          measuredDurationMs: 20,
+          outputBytes: 4096,
+        },
+      ],
+    })
+  ).rejects.toThrow('derivative_cost_receipt_failed:icon receipt failed');
+  expect(fake.calls).toHaveLength(2);
 });
