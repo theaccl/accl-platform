@@ -10,7 +10,9 @@ import {
 import {
   landscapeTickerPathFromPoints,
   landscapeTickerRatingDomain,
+  landscapeTickerRatingTicks,
   toLandscapeTickerXMs,
+  toLandscapeTickerY,
   type LandscapeTickerPlotGeometry,
 } from '@/lib/profile/landscapeTickerPath';
 import { ticksForLaneWindow, type RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
@@ -59,7 +61,7 @@ type Props = {
 };
 
 const PAD = 28;
-const AXIS_BAND = 22;
+const TOP_AXIS_BAND = 34;
 const SPARK_DELAYS_MS = [90, 180, 270, 360] as const;
 
 type ActivePick = {
@@ -121,7 +123,7 @@ export function LandscapeRatingTickerChart({
     return () => ro.disconnect();
   }, []);
 
-  const axisBand = size.height < 160 ? 16 : AXIS_BAND;
+  const topAxisBand = size.height < 160 ? 28 : TOP_AXIS_BAND;
   const pad = size.height < 160 ? 20 : PAD;
 
   const geometry = useMemo((): LandscapeTickerPlotGeometry | null => {
@@ -135,13 +137,14 @@ export function LandscapeRatingTickerChart({
       width: size.width,
       height: size.height,
       pad,
-      axisBand,
+      axisBand: 0,
+      topAxisBand,
       minT: laneWindow.startMs,
       maxT: laneWindow.endMs,
       minR: rating.minR,
       maxR: rating.maxR,
     };
-  }, [visibleSeries, size.height, size.width, laneWindow, pad, axisBand]);
+  }, [visibleSeries, size.height, size.width, laneWindow, pad, topAxisBand]);
 
   const hasRatingScale = useMemo(() => {
     const extras = visibleSeries
@@ -149,6 +152,11 @@ export function LandscapeRatingTickerChart({
       .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
     return landscapeTickerRatingDomain(visibleSeries.map((s) => s.points), extras) != null;
   }, [visibleSeries]);
+
+  const ratingTicks = useMemo(
+    () => (geometry && hasRatingScale ? landscapeTickerRatingTicks(geometry.minR, geometry.maxR) : []),
+    [geometry, hasRatingScale],
+  );
 
   const plotted = useMemo(() => {
     if (!geometry) return [];
@@ -356,36 +364,52 @@ export function LandscapeRatingTickerChart({
           />
 
           {geometry && hasRatingScale ? (
-            <>
-              <text
-                x={8}
-                y={pad + 2}
-                fill="#9ca3af"
-                fontSize="11"
-                className="tabular-nums"
-                data-testid="landscape-ticker-scale-max"
-              >
-                {Math.round(geometry.maxR)}
+            <g data-testid="landscape-ticker-y-axis" aria-hidden="true">
+              <text x={5} y={11} fill="#94a3b8" fontSize="9" fontWeight="600">
+                ELO
               </text>
-              <text
-                x={8}
-                y={size.height - (geometry.axisBand ?? AXIS_BAND) - 4}
-                fill="#9ca3af"
-                fontSize="11"
-                className="tabular-nums"
-                data-testid="landscape-ticker-scale-min"
-              >
-                {Math.round(geometry.minR)}
-              </text>
-            </>
+              {ratingTicks.map((rating, index) => {
+                const y = toLandscapeTickerY(rating, geometry);
+                return (
+                  <g key={rating}>
+                    <line
+                      x1={pad}
+                      x2={size.width - pad}
+                      y1={y}
+                      y2={y}
+                      stroke="#1e293b"
+                      strokeWidth="1"
+                      opacity={index === 0 || index === ratingTicks.length - 1 ? 0.5 : 0.35}
+                    />
+                    <text
+                      x={5}
+                      y={y + 3}
+                      fill="#9ca3af"
+                      fontSize="9"
+                      className="tabular-nums"
+                      data-testid={
+                        index === 0
+                          ? 'landscape-ticker-scale-max'
+                          : index === ratingTicks.length - 1
+                            ? 'landscape-ticker-scale-min'
+                            : 'landscape-ticker-scale-tick'
+                      }
+                    >
+                      {rating}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
           ) : null}
 
           {geometry && laneWindow ? (
             <g data-testid="landscape-ticker-x-axis" aria-hidden="true">
               {ticks.map((tick) => {
                 const x = toLandscapeTickerXMs(tick.t, geometry);
-                const y1 = pad;
-                const y2 = size.height - (geometry.axisBand ?? AXIS_BAND);
+                const y1 = geometry.topAxisBand ?? pad;
+                const y2 = size.height - pad - (geometry.axisBand ?? 0);
+                const emphasizedWeekBoundary = lane === 'month' && tick.priority === 'primary';
                 return (
                   <g key={`${tick.priority}-${tick.t}`}>
                     {tick.priority !== 'endpoint' ? (
@@ -394,14 +418,15 @@ export function LandscapeRatingTickerChart({
                         x2={x}
                         y1={y1}
                         y2={y2}
-                        stroke="#1e293b"
-                        strokeWidth="1"
-                        opacity={tick.priority === 'secondary' ? 0.35 : 0.5}
+                        stroke={emphasizedWeekBoundary ? '#475569' : '#1e293b'}
+                        strokeWidth={emphasizedWeekBoundary ? 1.75 : 1}
+                        opacity={emphasizedWeekBoundary ? 0.85 : tick.priority === 'secondary' ? 0.35 : 0.5}
+                        data-time-boundary={emphasizedWeekBoundary ? 'iso-week' : tick.priority}
                       />
                     ) : null}
                     <text
                       x={x}
-                      y={size.height - 6}
+                      y={27}
                       fill="#9ca3af"
                       fontSize="9"
                       textAnchor="middle"

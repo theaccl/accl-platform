@@ -22,6 +22,8 @@ export type LandscapeTickerPlotGeometry = {
   pad: number;
   /** Extra bottom band reserved for the time axis. Defaults to 0. */
   axisBand?: number;
+  /** Absolute top inset reserved for a top time axis. Defaults to pad. */
+  topAxisBand?: number;
   minT: number;
   maxT: number;
   minR: number;
@@ -52,6 +54,10 @@ function sortChronological(points: RatingHistoryPoint[]): RatingHistoryPoint[] {
 
 function padBottom(geometry: LandscapeTickerPlotGeometry): number {
   return geometry.pad + (geometry.axisBand ?? 0);
+}
+
+function padTop(geometry: LandscapeTickerPlotGeometry): number {
+  return geometry.topAxisBand ?? geometry.pad;
 }
 
 export function landscapeTickerTimeDomain(
@@ -109,11 +115,29 @@ export function toLandscapeTickerY(
   geometry: LandscapeTickerPlotGeometry,
 ): number {
   const span = geometry.maxR - geometry.minR;
+  const top = padTop(geometry);
   const bottom = padBottom(geometry);
-  if (span === 0) return (geometry.pad + (geometry.height - bottom)) / 2;
+  if (span === 0) return (top + (geometry.height - bottom)) / 2;
   const t = (rating - geometry.minR) / span;
-  const inner = geometry.height - geometry.pad - bottom;
+  const inner = geometry.height - top - bottom;
   return geometry.height - bottom - t * inner;
+}
+
+/** Stable left-axis labels spanning the exact drawable rating domain. */
+export function landscapeTickerRatingTicks(
+  minR: number,
+  maxR: number,
+  sections = 4,
+): number[] {
+  if (!Number.isFinite(minR) || !Number.isFinite(maxR) || maxR < minR) return [];
+  const safeSections = Math.max(1, Math.floor(sections));
+  const span = maxR - minR;
+  if (span === 0) return [Math.round(minR)];
+  const ticks: number[] = [];
+  for (let i = 0; i <= safeSections; i += 1) {
+    ticks.push(Math.round(maxR - (span * i) / safeSections));
+  }
+  return ticks.filter((rating, index) => index === 0 || rating !== ticks[index - 1]);
 }
 
 function roundPlot(n: number): number {

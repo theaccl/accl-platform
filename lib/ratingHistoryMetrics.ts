@@ -9,7 +9,10 @@
  */
 
 import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
-import { resolveTimeZone } from '@/lib/profile/ratingTickerTimeZone';
+import {
+  resolveTimeZone,
+  RATING_TICKER_DISPLAY_TIME_ZONE,
+} from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 export type RatingLane = 'day' | 'week' | 'month' | 'year' | 'overall';
@@ -45,8 +48,9 @@ function sortChronological(points: RatingHistoryPoint[]): RatingHistoryPoint[] {
 }
 
 /**
- * Lane filter (view window only). Calendar/ISO bounds in the resolved IANA zone:
- *  - day:     player-zone calendar day containing `now`
+ * Lane filter (view window only). Product calls default to fixed UTC; tests and
+ * specialist callers may explicitly inject another valid IANA zone:
+ *  - day:     UTC calendar day containing `now`
  *  - week:    ISO 8601 Monday–Sunday containing `now`
  *  - month:   calendar month containing `now`
  *  - year:    calendar year containing `now`
@@ -58,7 +62,7 @@ export function filterPointsByLane(
   points: RatingHistoryPoint[],
   lane: RatingLane,
   now: number = Date.now(),
-  timeZone?: string,
+  timeZone: string = RATING_TICKER_DISPLAY_TIME_ZONE,
 ): RatingHistoryPoint[] {
   if (lane === 'overall') {
     return points.filter((p) => Number.isFinite(Date.parse(p.occurredAt)));

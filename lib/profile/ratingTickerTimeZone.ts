@@ -2,13 +2,15 @@
  * IANA timezone resolution for rating-ticker calendar grouping.
  * Does not persist a player timezone or touch account/database fields.
  *
- * Production order:
+ * Generic resolver order (the product ticker explicitly selects UTC):
  *  1. Explicit injected valid IANA zone (helpers/tests)
  *  2. Intl.DateTimeFormat().resolvedOptions().timeZone
  *  3. Documented deterministic fallback: UTC
  */
 
 export const RATING_TICKER_FALLBACK_TIME_ZONE = 'UTC';
+/** The product-wide ticker calendar and visible axis are intentionally UTC. */
+export const RATING_TICKER_DISPLAY_TIME_ZONE = 'UTC';
 export const RATING_TICKER_NONFINITE_INSTANT = 'rating ticker instant is not finite';
 export const RATING_TICKER_NONFINITE_CIVIL = 'rating ticker civil time is not finite';
 export const RATING_TICKER_CIVIL_DAY_UNRESOLVED =

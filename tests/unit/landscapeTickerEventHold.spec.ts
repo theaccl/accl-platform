@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   landscapeTickerPathFromPoints,
   landscapeTickerRatingDomain,
+  landscapeTickerRatingTicks,
   pathHasDiagonalBetweenEvents,
   toLandscapeTickerXMs,
   type LandscapeTickerPlotGeometry,
@@ -121,5 +122,11 @@ test.describe('landscape ticker event-hold path', () => {
     expect(a.id).toBe('a');
     expect(a.ratingDelta).toBe(80);
     expect(a.occurredAt).toBe('2026-08-12T12:00:00Z');
+  });
+
+  test('left ELO scale creates stable descending rating sections', () => {
+    expect(landscapeTickerRatingTicks(900, 1200)).toEqual([1200, 1125, 1050, 975, 900]);
+    expect(landscapeTickerRatingTicks(1000.2, 1040.2)).toEqual([1040, 1030, 1020, 1010, 1000]);
+    expect(landscapeTickerRatingTicks(Number.NaN, 1200)).toEqual([]);
   });
 });

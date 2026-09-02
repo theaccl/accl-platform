@@ -17,12 +17,54 @@ test.describe('landscape temporal axis and event-hold', () => {
 
     for (const lane of LANES) {
       await page.getByTestId(`rating-lane-tab-${lane}`).click();
+      await expect(page.getByTestId(`rating-lane-tab-${lane}`)).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(page.getByTestId('landscape-ticker-chart')).toHaveAttribute('data-lane', lane);
       await expect(page.getByTestId('landscape-ticker-x-axis')).toHaveCount(1);
       await expect(page.getByTestId('landscape-ticker-time-caption')).toBeVisible();
       await expect(page.locator('[data-tick-priority="endpoint"]')).toHaveCount(2);
       const caption = (await page.getByTestId('landscape-ticker-time-caption').textContent()) ?? '';
       expect(caption.length).toBeGreaterThan(0);
     }
+  });
+
+  test('UTC hierarchy and time ticks are presented at the top with a sectioned ELO scale', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-08-21T16:30:00Z') });
+    await mountLandscapeTicker(page, { viewport: { width: 800, height: 360 } });
+    await page.clock.fastForward(50);
+    await page.getByTestId('landscape-ticker-category-blitz').click();
+    await page.clock.fastForward(50);
+
+    await page.getByTestId('rating-lane-tab-day').click();
+    await expect(page.getByTestId('landscape-ticker-time-caption')).toHaveText(
+      '2026 · Aug · ISO W34 · Fri 21 · UTC',
+    );
+    const dayTickY = await page.locator('[data-tick-priority="endpoint"]').first().getAttribute('y');
+    expect(Number(dayTickY)).toBeLessThan(40);
+
+    await expect(page.getByTestId('landscape-ticker-y-axis')).toHaveCount(1);
+    await expect(page.getByTestId('landscape-ticker-scale-max')).toBeVisible();
+    await expect(page.getByTestId('landscape-ticker-scale-min')).toBeVisible();
+    await expect(page.getByTestId('landscape-ticker-scale-tick')).toHaveCount(3);
+
+    await page.getByTestId('rating-lane-tab-week').click();
+    await expect(page.getByTestId('landscape-ticker-time-caption')).toHaveText(
+      '2026 · Aug · ISO W34 · UTC',
+    );
+    await page.getByTestId('rating-lane-tab-month').click();
+    await expect(page.getByTestId('landscape-ticker-time-caption')).toHaveText(
+      '2026 · Aug · ISO W31–W34 · UTC',
+    );
+    await expect(page.getByTestId('landscape-ticker-x-tick-primary')).toHaveCount(3);
+    await expect(page.locator('[data-time-boundary="iso-week"]')).toHaveCount(3);
+    await expect(page.locator('[data-tick-priority="secondary"]')).toHaveCount(0);
+    await page.getByTestId('rating-lane-tab-year').click();
+    await expect(page.getByTestId('landscape-ticker-time-caption')).toHaveText(
+      '2026 · Jan–Dec · UTC',
+    );
+    await expect(page.getByTestId('landscape-ticker-x-tick-primary')).toHaveCount(11);
   });
 
   test('empty Day Week Month Year retain temporal scaffolding', async ({ page }) => {
@@ -53,7 +95,7 @@ test.describe('landscape temporal axis and event-hold', () => {
     await expect(page.locator('[data-testid^="landscape-ticker-marker-"]')).toHaveCount(0);
   });
 
-  test('marker details keep player-zone time and raw ISO; holds are not focus targets', async ({ page }) => {
+  test('marker details keep UTC display time and raw ISO; holds are not focus targets', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-08-21T16:30:00Z') });
     await mountLandscapeTicker(page, { viewport: { width: 800, height: 360 } });
     await page.clock.fastForward(50);

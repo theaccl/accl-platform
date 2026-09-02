@@ -48,7 +48,10 @@ import styles from '@/components/profile/ratings/landscapeRatingTicker.module.cs
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
 import { filterPointsByLane, lastRatingAfterBefore, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
-import { formatOccurredAtInZone, resolveTimeZone } from '@/lib/profile/ratingTickerTimeZone';
+import {
+  formatOccurredAtInZone,
+  RATING_TICKER_DISPLAY_TIME_ZONE,
+} from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 const RATING_ARROW = '\u2192';
@@ -141,7 +144,7 @@ function LandscapeTickerOverlay({
     });
   }, []);
 
-  const timeZone = useMemo(() => resolveTimeZone(), []);
+  const timeZone = RATING_TICKER_DISPLAY_TIME_ZONE;
   const nowMs = Date.now();
   const laneWindow = useMemo(() => {
     const times: number[] = [];

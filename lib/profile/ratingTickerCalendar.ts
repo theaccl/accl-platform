@@ -68,8 +68,21 @@ function formatCivilLong(date: CivilDate): string {
   return `${MONTH_SHORT[date.month - 1]} ${date.day}, ${date.year}`;
 }
 
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+function monthSpanLabel(start: CivilDate, end: CivilDate): string {
+  const first = MONTH_SHORT[start.month - 1];
+  const last = MONTH_SHORT[end.month - 1];
+  return first === last ? first : `${first}–${last}`;
+}
+
+function isoWeekLabel(iso: IsoWeekId): string {
+  return `ISO W${pad2(iso.isoWeek)}`;
+}
+
+function isoWeekRangeLabel(first: IsoWeekId, last: IsoWeekId): string {
+  if (first.isoWeekYear === last.isoWeekYear) {
+    return `${isoWeekLabel(first)}–W${pad2(last.isoWeek)}`;
+  }
+  return `ISO ${first.isoWeekYear}-W${pad2(first.isoWeek)}–${last.isoWeekYear}-W${pad2(last.isoWeek)}`;
 }
 
 export function isoWeekFromInstant(ms: number, timeZone: string): IsoWeekId {
@@ -122,7 +135,7 @@ export function ratingLaneWindow(
       timeZone: tz,
       startMs: first,
       endMs,
-      caption: `${formatCivilLong(startCivil)} – ${formatCivilLong(endCivil)}`,
+      caption: `${formatCivilLong(startCivil)} – ${formatCivilLong(endCivil)} · ${tz}`,
     };
   }
 
@@ -130,12 +143,14 @@ export function ratingLaneWindow(
   if (lane === 'day') {
     const startMs = startOfCivilDayUtcMs(now, tz);
     const endMs = startOfCivilDayUtcMs(addCivilDays(now, 1), tz);
+    const iso = isoWeekFromInstant(nowMs, tz);
     return {
       lane,
       timeZone: tz,
       startMs,
       endMs,
-      caption: formatCivilLong(now),
+      caption: `${now.year} · ${MONTH_SHORT[now.month - 1]} · ${isoWeekLabel(iso)} · ${WEEKDAY_SHORT[now.isoWeekday - 1]} ${now.day} · ${tz}`,
+      isoWeek: iso,
     };
   }
   if (lane === 'week') {
@@ -145,22 +160,20 @@ export function ratingLaneWindow(
       timeZone: tz,
       startMs: iso.startMs,
       endMs: iso.endMs,
-      caption: `ISO Week ${pad2(iso.isoWeek)} of ${iso.isoWeekYear} · ${formatCivil(iso.monday)} – ${formatCivil(iso.sunday)}`,
+      caption: `${iso.isoWeekYear} · ${monthSpanLabel(iso.monday, iso.sunday)} · ${isoWeekLabel(iso)} · ${tz}`,
       isoWeek: iso,
     };
   }
   if (lane === 'month') {
     const start: CivilDate = { year: now.year, month: now.month, day: 1 };
-    const next =
-      now.month === 12
-        ? { year: now.year + 1, month: 1, day: 1 }
-        : { year: now.year, month: now.month + 1, day: 1 };
+    const firstIso = isoWeekFromInstant(startOfCivilDayUtcMs(start, tz), tz);
+    const lastIso = isoWeekFromInstant(nowMs, tz);
     return {
       lane,
       timeZone: tz,
       startMs: startOfCivilDayUtcMs(start, tz),
-      endMs: startOfCivilDayUtcMs(next, tz),
-      caption: `${MONTH_SHORT[now.month - 1]} ${now.year}`,
+      endMs: nowMs,
+      caption: `${now.year} · ${MONTH_SHORT[now.month - 1]} · ${isoWeekRangeLabel(firstIso, lastIso)} · ${tz}`,
     };
   }
   const start: CivilDate = { year: now.year, month: 1, day: 1 };
@@ -170,7 +183,7 @@ export function ratingLaneWindow(
     timeZone: tz,
     startMs: startOfCivilDayUtcMs(start, tz),
     endMs: startOfCivilDayUtcMs(next, tz),
-    caption: String(now.year),
+    caption: `${now.year} · Jan–Dec · ${tz}`,
   };
 }
 
@@ -250,13 +263,13 @@ export function ticksForLaneWindow(
       candidates[0] = { t: startMs, label: '1', priority: 'endpoint' };
       candidates[1] = {
         t: endMs,
-        label: String(daysInMonth(start.year, start.month)),
+        label: String(endExclusive.day),
         priority: 'endpoint',
       };
     }
     if (lane === 'year') {
       candidates[0] = { t: startMs, label: 'Jan', priority: 'endpoint' };
-      candidates[1] = { t: endMs, label: 'Dec', priority: 'endpoint' };
+      candidates[1] = { t: endMs, label: String(endExclusive.year + 1), priority: 'endpoint' };
     }
   }
 
@@ -276,66 +289,41 @@ export function ticksForLaneWindow(
       );
     }
   } else if (lane === 'month') {
-    const dim = daysInMonth(start.year, start.month);
-    for (let d = 8; d < dim; d += 7) {
-      push(
-        startOfCivilDayUtcMs({ year: start.year, month: start.month, day: d }, tz),
-        String(d),
-        'primary',
-      );
-    }
-    if (innerWidthPx >= 560) {
-      let cursor = startOfCivilDayUtcMs(start, tz);
-      while (cursor < endMs) {
-        const iso = isoWeekFromInstant(cursor, tz);
-        if (iso.startMs > startMs && iso.startMs < endMs) {
-          push(iso.startMs, `W${pad2(iso.isoWeek)}`, 'secondary');
-        }
-        cursor = iso.endMs;
+    let cursor = startOfCivilDayUtcMs(start, tz);
+    while (cursor < endMs) {
+      const iso = isoWeekFromInstant(cursor, tz);
+      if (iso.startMs > startMs && iso.startMs < endMs) {
+        push(iso.startMs, `W${pad2(iso.isoWeek)}`, 'primary');
       }
+      cursor = iso.endMs;
     }
   } else if (lane === 'year') {
-    for (let m = 2; m <= 11; m += 1) {
+    for (let m = 2; m <= 12; m += 1) {
       const t = startOfCivilDayUtcMs({ year: start.year, month: m, day: 1 }, tz);
-      push(t, MONTH_SHORT[m - 1], m % 3 === 1 ? 'primary' : 'secondary');
-    }
-    if (innerWidthPx >= 480) {
-      for (const q of [4, 7, 10] as const) {
-        const t = startOfCivilDayUtcMs({ year: start.year, month: q, day: 1 }, tz);
-        push(t, `Q${Math.floor((q - 1) / 3) + 1}`, 'secondary');
-      }
+      push(t, MONTH_SHORT[m - 1], 'primary');
     }
   } else {
     const spanMs = endMs - startMs;
     const daySpan = spanMs / (24 * 60 * 60 * 1000);
-    if (daySpan <= 120) {
-      let cursor = new Date(startMs);
-      cursor.setUTCDate(1);
-      while (cursor.getTime() < endMs) {
-        const civil = instantToCivil(cursor.getTime(), tz);
-        const t = startOfCivilDayUtcMs({ year: civil.year, month: civil.month, day: 1 }, tz);
-        if (t > startMs && t < endMs) {
-          push(t, `${MONTH_SHORT[civil.month - 1]} ${civil.year}`, 'primary');
-        }
-        const nextMonth = civil.month === 12 ? 1 : civil.month + 1;
-        const nextYear = civil.month === 12 ? civil.year + 1 : civil.year;
-        cursor = new Date(startOfCivilDayUtcMs({ year: nextYear, month: nextMonth, day: 1 }, tz));
-      }
-    } else {
-      const startYear = instantToCivil(startMs, tz).year;
-      const endYear = instantToCivil(endMs, tz).year;
-      for (let y = startYear + 1; y <= endYear; y += 1) {
-        const t = startOfCivilDayUtcMs({ year: y, month: 1, day: 1 }, tz);
-        if (t > startMs && t < endMs) push(t, String(y), 'primary');
-      }
-      if (innerWidthPx >= 520 && daySpan < 800) {
-        for (let y = startYear; y <= endYear; y += 1) {
-          for (const m of [4, 7, 10] as const) {
-            const t = startOfCivilDayUtcMs({ year: y, month: m, day: 1 }, tz);
-            if (t > startMs && t < endMs) push(t, `${MONTH_SHORT[m - 1]} ${y}`, 'secondary');
-          }
-        }
-      }
+    let cursorCivil: CivilDate = instantToCivil(startMs, tz);
+    cursorCivil = cursorCivil.month === 12
+      ? { year: cursorCivil.year + 1, month: 1, day: 1 }
+      : { year: cursorCivil.year, month: cursorCivil.month + 1, day: 1 };
+    let cursor = startOfCivilDayUtcMs(cursorCivil, tz);
+    while (cursor < endMs) {
+      const isJanuary = cursorCivil.month === 1;
+      const label = daySpan <= 800
+        ? isJanuary
+          ? `Jan ${cursorCivil.year}`
+          : MONTH_SHORT[cursorCivil.month - 1]
+        : isJanuary
+          ? String(cursorCivil.year)
+          : '';
+      push(cursor, label, label ? 'primary' : 'secondary');
+      cursorCivil = cursorCivil.month === 12
+        ? { year: cursorCivil.year + 1, month: 1, day: 1 }
+        : { year: cursorCivil.year, month: cursorCivil.month + 1, day: 1 };
+      cursor = startOfCivilDayUtcMs(cursorCivil, tz);
     }
   }
 

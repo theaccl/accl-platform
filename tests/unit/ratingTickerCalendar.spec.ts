@@ -116,18 +116,109 @@ test.describe('rating ticker calendar and timezone helpers', () => {
     expect(day?.caption).toContain('2026');
   });
 
-  test('month and year are calendar bounds, not trailing durations', () => {
+  test('month-to-date and year use anchored calendar periods, not trailing durations', () => {
     const now = Date.parse('2026-05-10T12:00:00Z');
     const pts = [
       point({ id: 'april', occurredAt: '2026-04-20T12:00:00Z' }),
       point({ id: 'may', occurredAt: '2026-05-01T12:00:00Z' }),
+      point({ id: 'future-may', occurredAt: '2026-05-20T12:00:00Z' }),
     ];
     expect(filterPointsByLane(pts, 'month', now, 'UTC').map((p) => p.id)).toEqual(['may']);
-    expect(filterPointsByLane(pts, 'year', now, 'UTC').map((p) => p.id)).toEqual(['april', 'may']);
+    expect(filterPointsByLane(pts, 'year', now, 'UTC').map((p) => p.id)).toEqual(['april', 'may', 'future-may']);
     const olderYear = point({ id: 'prev', occurredAt: '2025-12-31T12:00:00Z' });
     expect(filterPointsByLane([olderYear, ...pts], 'year', now, 'UTC').map((p) => p.id)).toEqual([
       'april',
       'may',
+      'future-may',
+    ]);
+  });
+
+  test('product lane filtering defaults to UTC at the date boundary', () => {
+    const now = Date.parse('2026-08-27T01:00:00Z');
+    const pts = [
+      point({ id: 'utc-current', occurredAt: '2026-08-27T00:30:00Z' }),
+      point({ id: 'utc-previous', occurredAt: '2026-08-26T23:30:00Z' }),
+    ];
+    expect(filterPointsByLane(pts, 'day', now).map((p) => p.id)).toEqual(['utc-current']);
+  });
+
+  test('fixed UTC lanes expose the requested calendar hierarchy', () => {
+    const now = Date.parse('2026-08-21T16:30:00Z');
+    expect(ratingLaneWindow('day', now, 'UTC')?.caption).toBe(
+      '2026 · Aug · ISO W34 · Fri 21 · UTC',
+    );
+    expect(ratingLaneWindow('week', now, 'UTC')?.caption).toBe(
+      '2026 · Aug · ISO W34 · UTC',
+    );
+    expect(ratingLaneWindow('month', now, 'UTC')?.caption).toBe(
+      '2026 · Aug · ISO W31–W34 · UTC',
+    );
+    expect(ratingLaneWindow('year', now, 'UTC')?.caption).toBe(
+      '2026 · Jan–Dec · UTC',
+    );
+
+    expect(ticksForLaneWindow(ratingLaneWindow('day', now, 'UTC')!, 720).map((tick) => tick.label)).toEqual([
+      '00:00',
+      '03:00',
+      '06:00',
+      '09:00',
+      '12:00',
+      '15:00',
+      '18:00',
+      '21:00',
+      '24:00',
+    ]);
+    expect(ticksForLaneWindow(ratingLaneWindow('week', now, 'UTC')!, 720).map((tick) => tick.label)).toEqual([
+      'Mon 17',
+      'Tue 18',
+      'Wed 19',
+      'Thu 20',
+      'Fri 21',
+      'Sat 22',
+      'Sun 23',
+    ]);
+
+    const month = ratingLaneWindow('month', now, 'UTC')!;
+    expect(
+      ticksForLaneWindow(month, 720)
+        .filter((tick) => tick.priority === 'primary')
+        .map((tick) => tick.label),
+    ).toEqual(['W32', 'W33', 'W34']);
+    expect(
+      ticksForLaneWindow(month, 720).filter(
+        (tick) => tick.priority === 'secondary' && tick.label === '',
+      ).length,
+    ).toBe(0);
+
+    expect(
+      ratingLaneWindow('month', Date.parse('2025-12-31T12:00:00Z'), 'UTC')?.caption,
+    ).toBe('2025 · Dec · ISO 2025-W49–2026-W01 · UTC');
+
+    const overall = ratingLaneWindow('overall', Date.parse('2026-11-15T12:00:00Z'), 'UTC', {
+      firstEventMs: Date.parse('2026-08-01T12:00:00Z'),
+      lastEventMs: Date.parse('2026-11-15T12:00:00Z'),
+    })!;
+    const overallTicks = ticksForLaneWindow(overall, 720);
+    expect(overallTicks.filter((tick) => tick.priority === 'primary').map((tick) => tick.label)).toEqual([
+      'Sep',
+      'Oct',
+      'Nov',
+    ]);
+    expect(overallTicks.some((tick) => tick.label.startsWith('W'))).toBe(false);
+
+    const yearTicks = ticksForLaneWindow(ratingLaneWindow('year', now, 'UTC')!, 720);
+    expect(yearTicks.filter((tick) => tick.priority === 'primary').map((tick) => tick.label)).toEqual([
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ]);
   });
 
