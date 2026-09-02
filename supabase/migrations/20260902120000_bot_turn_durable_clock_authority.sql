@@ -253,7 +253,11 @@ begin
     raise exception 'game_not_found';
   end if;
 
-  if j.status in ('completed', 'cancelled') then
+  if j.status = 'cancelled' then
+    raise exception 'bot_job_cancelled';
+  end if;
+
+  if j.status = 'completed' then
     return jsonb_build_object(
       'game', to_jsonb(g),
       'bot_move_applied', false,

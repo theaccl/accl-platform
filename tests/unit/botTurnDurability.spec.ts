@@ -86,10 +86,21 @@ test.describe('durable bot-turn RPC contract', () => {
     expect(sql).toContain('order by q.updated_at asc, q.created_at asc');
     expect(sql).toContain("status = case when attempt_count >= 5 then 'failed' else 'queued' end");
     expect(sql).toContain("raise exception 'bot_move_payload_required'");
+    expect(sql).toContain("if j.status = 'cancelled' then\n    raise exception 'bot_job_cancelled'");
     expect(sql).toContain("raise exception 'bot_turn_tournament_forbidden'");
     expect(sql).toContain("coalesce(g.play_context, 'free') is distinct from 'free'");
     expect(sql).toContain('g.tournament_id is not null');
     expect(sql.indexOf("raise exception 'bot_move_payload_required'")).toBeGreaterThan(expiry);
+  });
+
+  test('clock sweep reports durable recovery errors as unavailable', () => {
+    const route = readFileSync(
+      join(process.cwd(), 'app', 'api', 'internal', 'live-clock-timeout', 'process', 'route.ts'),
+      'utf8',
+    );
+
+    expect(route).toContain('const recoveryFailed = Boolean(botRecovery.error)');
+    expect(route).toContain('status: sweepError || recoveryFailed ? 503 : 200');
   });
 
   test('RPCs stay service-role only and never expose the queue to clients', () => {

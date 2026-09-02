@@ -51,9 +51,10 @@ async function runLiveClockTimeoutSweep(batch: number): Promise<Response> {
   }
 
   const botRecovery = await processNextBotMoveRecoveryJob(supabase);
+  const recoveryFailed = Boolean(botRecovery.error);
 
   return new Response(JSON.stringify({ finished, rounds, sweep_error: sweepError, bot_recovery: botRecovery }), {
-    status: sweepError ? 503 : 200,
+    status: sweepError || recoveryFailed ? 503 : 200,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
   });
 }
