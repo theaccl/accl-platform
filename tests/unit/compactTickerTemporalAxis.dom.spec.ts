@@ -102,6 +102,10 @@ test.describe('compact ticker UTC temporal axes', () => {
       'data-dominant',
       'true',
     );
+    await page.getByTestId('multi-line-point-free_day').hover();
+    await expect(page.getByTestId('multi-line-hover-tooltip')).toContainText(
+      'Aug 1, 2026, 12:00:00 PM UTC',
+    );
     await capture(page, 'comparison-overall-800.png');
   });
 });

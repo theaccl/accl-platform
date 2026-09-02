@@ -64,7 +64,7 @@ test.describe('compact comparison activation dominance (unit)', () => {
   });
 
   test('deselect Rapid then reselect moves Rapid to the front', () => {
-    let order = ['tournament', 'free_rapid', 'free_blitz'] as const;
+    const order = ['tournament', 'free_rapid', 'free_blitz'] as const;
     const afterHide = applyActivationToggle([...order], 'free_rapid', false);
     expect(afterHide).toEqual(['tournament', 'free_blitz']);
     expect(frontMostId(afterHide)).toBe('free_blitz');
@@ -119,8 +119,14 @@ test.describe('compact comparison activation dominance (unit)', () => {
     const chart = src('components/profile/ratings/MultiLineRatingTickerChart.tsx');
     expect(chart).toContain('export const MULTI_LINE_CHART_W = 560');
     expect(chart).toContain('export const MULTI_LINE_CHART_H = 180');
-    expect(chart).toContain('export const MULTI_LINE_CHART_PAD = 20');
-    expect(COMPACT_COMPARISON_CHART).toEqual({ width: 560, height: 180, pad: 20 });
+    expect(chart).toContain('export const MULTI_LINE_CHART_PAD = 30');
+    expect(chart).toContain('const MULTI_LINE_TOP_AXIS_BAND = 34');
+    expect(COMPACT_COMPARISON_CHART).toEqual({
+      width: 560,
+      height: 180,
+      pad: 30,
+      topAxisBand: 34,
+    });
     const hits = landscapeTickerCrossingHits().filter((h) => h.a === 'free_blitz' && h.b === 'free_rapid');
     expect(hits.length).toBe(2);
     expect(hits.every((h) => compactCrossingAgrees(h))).toBe(true);

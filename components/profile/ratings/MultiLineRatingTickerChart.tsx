@@ -266,7 +266,11 @@ export function MultiLineRatingTickerChart({
             className="pointer-events-none absolute right-2 top-2 max-w-[220px] rounded-lg border border-[#2f3f54] bg-[#0f1723]/95 px-2 py-1.5 text-xs text-gray-200 shadow-lg"
           >
             <p className="m-0 mb-1 text-[10px] text-gray-400">
-              {new Date(hoverRows[0].point.occurredAt).toLocaleString()}
+              {formatOccurredAtInZone(
+                hoverRows[0].point.occurredAt,
+                laneWindow.timeZone,
+              )}{' '}
+              {laneWindow.timeZone}
             </p>
             <ul className="m-0 list-none space-y-0.5 p-0">
               {hoverRows.map((row) => (

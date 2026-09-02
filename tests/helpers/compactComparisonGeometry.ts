@@ -11,7 +11,8 @@ import {
 export const COMPACT_COMPARISON_CHART = {
   width: 560,
   height: 180,
-  pad: 20,
+  pad: 30,
+  topAxisBand: 34,
 } as const;
 
 export function compactComparisonDomain(trackIds: readonly string[]): {
@@ -65,7 +66,10 @@ export function compactComparisonSvgPoint(
   const y =
     COMPACT_COMPARISON_CHART.height -
     COMPACT_COMPARISON_CHART.pad -
-    yT * (COMPACT_COMPARISON_CHART.height - COMPACT_COMPARISON_CHART.pad * 2);
+    yT *
+      (COMPACT_COMPARISON_CHART.height -
+        COMPACT_COMPARISON_CHART.topAxisBand -
+        COMPACT_COMPARISON_CHART.pad);
   return { x, y };
 }
 
