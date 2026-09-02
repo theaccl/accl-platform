@@ -113,6 +113,18 @@ test.describe('ACCL Generation Token and tier contract', () => {
     ).toBe('pro');
   });
 
+  test('motion access is derived from the effective tier contract', () => {
+    expect(GENERATOR_TIER_CONTRACTS.free.ownerMotion).toBe(false);
+    expect(GENERATOR_TIER_CONTRACTS.plus.ownerMotion).toBe(true);
+    expect(GENERATOR_TIER_CONTRACTS.pro.ownerMotion).toBe(true);
+    expect(entitlementRoute).toContain(
+      'profile_motion: generatorContract.ownerMotion'
+    );
+    expect(entitlementRoute).not.toContain(
+      "active.some((item) => item.entitlement === 'profile_motion')"
+    );
+  });
+
   test('wallet tables are RLS-protected and client read-only', () => {
     expect(migration).toContain('alter table public.generation_token_accounts enable row level security');
     expect(migration).toContain('alter table public.generation_token_ledger enable row level security');

@@ -67,13 +67,14 @@ export async function GET(request: Request): Promise<Response> {
   };
   const hasPaidGeneratorTier = tier === 'plus' || tier === 'pro';
   const canCommission = internalUnlimited || tokenSummary.balance > 0;
+  const generatorContract = GENERATOR_TIER_CONTRACTS[tier];
   return jsonResponse({
     image_generator: internalUnlimited || hasPaidGeneratorTier || tokenSummary.balance > 0,
     can_commission: canCommission,
-    profile_motion: internalUnlimited || active.some((item) => item.entitlement === 'profile_motion'),
+    profile_motion: generatorContract.ownerMotion,
     internal_unlimited: internalUnlimited,
     membership_tier: tier,
-    generator_contract: GENERATOR_TIER_CONTRACTS[tier],
+    generator_contract: generatorContract,
     generation_tokens: internalUnlimited ? {
       balance: null,
       reserved: tokenSummary.reserved,
