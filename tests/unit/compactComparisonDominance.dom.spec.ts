@@ -2,7 +2,6 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BLITZ_RAPID_CROSS_U } from '../helpers/landscapeTickerCrossingFixture';
 import { mountComparisonPanel } from '../helpers/mountComparisonPage';
 
 const LEGEND_ORDER = [
@@ -37,9 +36,9 @@ async function seriesGroupOrder(page: Page): Promise<string[]> {
   );
 }
 
-async function ownerAtCompactCrossing(page: Page, seriesId: 'free_blitz' | 'free_rapid', u: number) {
+async function ownerAtCompactEventJump(page: Page, seriesId: 'free_blitz' | 'free_rapid') {
   return page.evaluate(
-    ({ seriesId: id, u: frac }) => {
+    (id) => {
       const markers = [...document.querySelectorAll<SVGCircleElement>(`circle[data-testid="multi-line-point-${id}"]`)]
         .map((el) => ({
           cx: Number(el.getAttribute('cx')),
@@ -50,8 +49,8 @@ async function ownerAtCompactCrossing(page: Page, seriesId: 'free_blitz' | 'free
       if (markers.length < 2) {
         return { owner: null, dominant: null, reason: 'missing-markers', count: markers.length };
       }
-      const x = markers[0].cx + frac * (markers[1].cx - markers[0].cx);
-      const y = markers[0].cy + frac * (markers[1].cy - markers[0].cy);
+      const x = markers[1].cx;
+      const y = (markers[0].cy + markers[1].cy) / 2;
       const svg = document.querySelector<SVGSVGElement>('[data-testid="multi-line-rating-chart-svg"]');
       const ctm = svg?.getScreenCTM();
       if (!svg || !ctm) {
@@ -70,7 +69,7 @@ async function ownerAtCompactCrossing(page: Page, seriesId: 'free_blitz' | 'free
         count: markers.length,
       };
     },
-    { seriesId, u },
+    seriesId,
   );
 }
 
@@ -138,7 +137,7 @@ test.describe('compact comparison dominance (real component)', () => {
       'free_blitz',
     );
 
-    const hit = await ownerAtCompactCrossing(page, 'free_blitz', BLITZ_RAPID_CROSS_U);
+    const hit = await ownerAtCompactEventJump(page, 'free_blitz');
     expect(hit.reason).toBe('ok');
     expect(hit.owner).toBe('multi-line-series-group-free_blitz');
     expect(hit.dominant).toBe('true');
@@ -187,7 +186,7 @@ test.describe('compact comparison dominance (real component)', () => {
       'data-dominant',
       'true',
     );
-    const hit = await ownerAtCompactCrossing(page, 'free_rapid', BLITZ_RAPID_CROSS_U);
+    const hit = await ownerAtCompactEventJump(page, 'free_rapid');
     expect(hit.owner).toBe('multi-line-series-group-free_rapid');
     expect(await legendButtonOrder(page)).toEqual(LEGEND_ORDER);
     await expect(page.locator('[data-ticker-anim]')).toHaveCount(0);

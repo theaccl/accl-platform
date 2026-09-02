@@ -7,19 +7,32 @@ import { frontMostId, sortItemsByDominance } from '@/lib/profile/ratingLineDomin
 import { pointsAtExactTimestamp } from '@/lib/profileRatingFamilyComparison';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
+import {
+  landscapeTickerPathFromPoints,
+  landscapeTickerRatingDomain,
+  type LandscapeTickerPlotGeometry,
+} from '@/lib/profile/landscapeTickerPath';
+import type { RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { formatOccurredAtInZone } from '@/lib/profile/ratingTickerTimeZone';
+import type { RatingLane } from '@/lib/ratingHistoryMetrics';
+import { CompactRatingTickerAxes } from '@/components/profile/ratings/CompactRatingTickerAxes';
 
 type Props = {
   series: MajorFamilySeriesData[];
   visibleTrackIds: ReadonlySet<string>;
   dominanceOrder: readonly string[];
   canLinkFinishedGames: boolean;
+  lane: RatingLane;
+  window: RatingLaneWindow | null;
+  carryInRatings: Readonly<Record<string, number | null>>;
   expanded?: boolean;
 };
 
 export const MULTI_LINE_CHART_W = 560;
 export const MULTI_LINE_CHART_H = 180;
 export const MULTI_LINE_CHART_H_EXPANDED = 240;
-export const MULTI_LINE_CHART_PAD = 20;
+export const MULTI_LINE_CHART_PAD = 30;
+const MULTI_LINE_TOP_AXIS_BAND = 34;
 
 type PlottedPoint = {
   trackId: string;
@@ -29,11 +42,6 @@ type PlottedPoint = {
   x: number;
   y: number;
 };
-
-function parseTime(iso: string): number {
-  const t = Date.parse(iso);
-  return Number.isFinite(t) ? t : NaN;
-}
 
 function pickNearestPoint(
   pts: PlottedPoint[],
@@ -64,6 +72,9 @@ export function MultiLineRatingTickerChart({
   visibleTrackIds,
   dominanceOrder,
   canLinkFinishedGames,
+  lane,
+  window: laneWindow,
+  carryInRatings,
   expanded = false,
 }: Props) {
   const chartH = expanded ? MULTI_LINE_CHART_H_EXPANDED : MULTI_LINE_CHART_H;
@@ -72,41 +83,53 @@ export function MultiLineRatingTickerChart({
 
   const plotted = useMemo(() => {
     const visible = series.filter((s) => visibleTrackIds.has(s.trackId));
-    const allPoints = visible.flatMap((s) =>
-      s.points.map((p) => ({ trackId: s.trackId, label: s.label, color: s.color, point: p })),
+    const carryRatings = visible
+      .map((s) => carryInRatings[s.trackId])
+      .filter((rating): rating is number => typeof rating === 'number' && Number.isFinite(rating));
+    const ratingDomain = landscapeTickerRatingDomain(
+      visible.map((s) => s.points),
+      carryRatings,
     );
-    if (allPoints.length === 0) return { items: [] as PlottedPoint[], yMin: 1400, yMax: 1600 };
+    if (!laneWindow || !ratingDomain) {
+      return {
+        items: [] as PlottedPoint[],
+        paths: new Map<string, string>(),
+        geometry: null as LandscapeTickerPlotGeometry | null,
+      };
+    }
 
-    const times = allPoints.map((ap) => parseTime(ap.point.occurredAt)).filter((t) => Number.isFinite(t));
-    const ratings = allPoints.map((ap) => ap.point.ratingAfter);
-    const minT = Math.min(...times);
-    const maxT = Math.max(...times);
-    const minR = Math.min(...ratings);
-    const maxR = Math.max(...ratings);
-    const span = Math.max(maxR - minR, 40);
-    const yMin = minR - span * 0.08;
-    const yMax = maxR + span * 0.08;
-    const tSpan = Math.max(maxT - minT, 1);
-
-    const toX = (iso: string) => {
-      const t = parseTime(iso);
-      if (!Number.isFinite(t)) return MULTI_LINE_CHART_W / 2;
-      if (times.length === 1 || minT === maxT) return MULTI_LINE_CHART_W / 2;
-      return MULTI_LINE_CHART_PAD + ((t - minT) / tSpan) * (MULTI_LINE_CHART_W - MULTI_LINE_CHART_PAD * 2);
+    const geometry: LandscapeTickerPlotGeometry = {
+      width: MULTI_LINE_CHART_W,
+      height: chartH,
+      pad: MULTI_LINE_CHART_PAD,
+      topAxisBand: MULTI_LINE_TOP_AXIS_BAND,
+      minT: laneWindow.startMs,
+      maxT: laneWindow.endMs,
+      minR: ratingDomain.minR,
+      maxR: ratingDomain.maxR,
     };
-    const toY = (r: number) => {
-      const yT = (r - yMin) / (yMax - yMin);
-      return chartH - MULTI_LINE_CHART_PAD - yT * (chartH - MULTI_LINE_CHART_PAD * 2);
-    };
+    const items: PlottedPoint[] = [];
+    const paths = new Map<string, string>();
+    for (const s of visible) {
+      const path = landscapeTickerPathFromPoints(s.points, geometry, {
+        carryInRating: carryInRatings[s.trackId],
+      });
+      if (!path) continue;
+      paths.set(s.trackId, path.d);
+      items.push(
+        ...path.plotted.map(({ point, x, y }) => ({
+          trackId: s.trackId,
+          label: s.label,
+          color: s.color,
+          point,
+          x,
+          y,
+        })),
+      );
+    }
 
-    const items: PlottedPoint[] = allPoints.map((ap) => ({
-      ...ap,
-      x: toX(ap.point.occurredAt),
-      y: toY(ap.point.ratingAfter),
-    }));
-
-    return { items, yMin, yMax };
-  }, [series, visibleTrackIds, chartH]);
+    return { items, paths, geometry };
+  }, [series, visibleTrackIds, chartH, carryInRatings, laneWindow]);
 
   const visibleSeries = useMemo(() => {
     const visible = series.filter((s) => visibleTrackIds.has(s.trackId));
@@ -114,8 +137,8 @@ export function MultiLineRatingTickerChart({
   }, [series, visibleTrackIds, dominanceOrder]);
 
   const paintedSeries = useMemo(
-    () => visibleSeries.filter((s) => plotted.items.some((p) => p.trackId === s.trackId)),
-    [visibleSeries, plotted.items],
+    () => visibleSeries.filter((s) => plotted.paths.has(s.trackId)),
+    [visibleSeries, plotted.paths],
   );
   const dominantCategory = paintedSeries[paintedSeries.length - 1]?.trackId ?? frontMostId(dominanceOrder);
 
@@ -130,7 +153,7 @@ export function MultiLineRatingTickerChart({
     return sortItemsByDominance(rows, dominanceOrder, (row) => row.trackId);
   }, [hoverAt, series, visibleTrackIds, dominanceOrder]);
 
-  if (plotted.items.length === 0) {
+  if (plotted.paths.size === 0 || !plotted.geometry || !laneWindow) {
     return null;
   }
 
@@ -139,6 +162,8 @@ export function MultiLineRatingTickerChart({
       data-testid="multi-line-rating-chart"
       data-dominance-order={visibleSeries.map((s) => s.trackId).join(' ') || 'none'}
       data-dominant-category={dominantCategory ?? 'none'}
+      data-lane={lane}
+      data-time-caption={laneWindow.caption}
       data-hero="false"
       className="space-y-2"
     >
@@ -147,17 +172,20 @@ export function MultiLineRatingTickerChart({
           viewBox={`0 0 ${MULTI_LINE_CHART_W} ${chartH}`}
           className="w-full max-w-full rounded-lg border border-[#2f3f54] bg-[#0b121c]"
           role="img"
-          aria-label="Major rating families comparison chart"
+          aria-label={`Major rating families comparison chart, ${lane} lane, ${laneWindow.caption}`}
           data-testid="multi-line-rating-chart-svg"
           onMouseLeave={() => setHoverAt(null)}
         >
+          <CompactRatingTickerAxes
+            geometry={plotted.geometry}
+            lane={lane}
+            window={laneWindow}
+            testIdPrefix="compact-comparison"
+          />
           {visibleSeries.map((s, index) => {
             const pts = plotted.items.filter((p) => p.trackId === s.trackId);
-            if (pts.length === 0) return null;
-            const polyline =
-              pts.length === 1
-                ? `${pts[0].x},${pts[0].y} ${pts[0].x},${pts[0].y}`
-                : pts.map((p) => `${p.x},${p.y}`).join(' ');
+            const path = plotted.paths.get(s.trackId);
+            if (!path) return null;
             const isDominant = s.trackId === dominantCategory;
             const activateNearest = (clientX: number, clientY: number, svg: SVGSVGElement | null) => {
               if (!svg) return;
@@ -173,21 +201,23 @@ export function MultiLineRatingTickerChart({
                 data-dominance-rank={index}
                 data-dominant={isDominant ? 'true' : 'false'}
               >
-                <polyline
+                <path
                   data-testid={`multi-line-series-${s.trackId}`}
                   fill="none"
                   stroke={s.color}
                   strokeWidth={isDominant ? 2.75 : 2}
                   strokeOpacity={0.95}
-                  points={polyline}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d={path}
                   pointerEvents="none"
                 />
-                <polyline
+                <path
                   data-testid={`multi-line-series-hit-${s.trackId}`}
                   fill="none"
                   stroke="transparent"
                   strokeWidth="16"
-                  points={polyline}
+                  d={path}
                   pointerEvents="stroke"
                   onClick={(event) => {
                     event.stopPropagation();
@@ -280,7 +310,9 @@ export function MultiLineRatingTickerChart({
             </span>
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            {new Date(activePoint.point.occurredAt).toLocaleString()} · {activePoint.point.result}
+            {formatOccurredAtInZone(activePoint.point.occurredAt, laneWindow.timeZone)}{' '}
+            {laneWindow.timeZone} ·{' '}
+            {activePoint.point.result}
           </p>
           {canLinkFinishedGames && activePoint.point.gameId ? (
             <p className="mt-2 mb-0 flex flex-wrap gap-x-3 gap-y-1">

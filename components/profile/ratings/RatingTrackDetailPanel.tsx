@@ -7,8 +7,11 @@ import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import {
   DEFAULT_RATING_LANE,
   filterPointsByLane,
+  lastRatingAfterBefore,
   type RatingLane,
 } from '@/lib/ratingHistoryMetrics';
+import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { RATING_TICKER_DISPLAY_TIME_ZONE } from '@/lib/profile/ratingTickerTimeZone';
 import { LANDSCAPE_TICKER_CATEGORIES } from '@/lib/profile/landscapeTickerCategories';
 import { BadgeBoundaryPanel } from '@/components/profile/ratings/BadgeBoundaryPanel';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
@@ -47,11 +50,32 @@ export function RatingTrackDetailPanel({
   const showBadgeUnavailable = isExact && !isSelf;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
+  const [nowMs] = useState(() => Date.now());
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
-  const lanePoints = useMemo(() => filterPointsByLane(points, lane), [points, lane]);
+  const laneWindow = useMemo(() => {
+    const times = points
+      .map((point) => Date.parse(point.occurredAt))
+      .filter((time) => Number.isFinite(time));
+    return ratingLaneWindow(lane, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, {
+      firstEventMs: times.length ? Math.min(...times) : null,
+      lastEventMs: times.length ? Math.max(...times) : null,
+    });
+  }, [lane, nowMs, points]);
+  const lanePoints = useMemo(
+    () => filterPointsByLane(points, lane, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE),
+    [points, lane, nowMs],
+  );
+  const carryInRating = useMemo(
+    () =>
+      lane === 'overall' || !laneWindow
+        ? null
+        : lastRatingAfterBefore(points, laneWindow.startMs),
+    [lane, laneWindow, points],
+  );
   const allEmpty = points.length === 0;
   const laneEmpty = !allEmpty && lanePoints.length === 0;
+  const laneDrawable = lanePoints.length > 0 || carryInRating != null;
   const exactEmptyHistory = isExact && isSelf && allEmpty;
   const canExpandLandscape =
     points.length > 0 ||
@@ -90,7 +114,7 @@ export function RatingTrackDetailPanel({
         />
       ) : null}
 
-      {laneEmpty ? (
+      {laneEmpty && !laneDrawable ? (
         <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
           {RATING_LANE_EMPTY}
         </p>
@@ -99,8 +123,17 @@ export function RatingTrackDetailPanel({
           points={lanePoints}
           currentRating={currentRating}
           canLinkFinishedGames={canLinkFinishedGames}
+          lane={lane}
+          window={laneWindow}
+          carryInRating={carryInRating}
         />
       )}
+
+      {laneEmpty && laneDrawable ? (
+        <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
+          {RATING_LANE_EMPTY}
+        </p>
+      ) : null}
 
       <BadgeBoundaryPanel badge={badge} showUnavailable={showBadgeUnavailable || (isSelf && isExact)} />
       <ExpandedRatingTickerDrawer

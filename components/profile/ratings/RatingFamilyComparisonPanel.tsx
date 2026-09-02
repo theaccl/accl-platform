@@ -15,7 +15,13 @@ import {
   majorFamilySeriesHasAnyPoints,
 } from '@/lib/profileRatingFamilyComparison';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
-import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
+import {
+  DEFAULT_RATING_LANE,
+  lastRatingAfterBefore,
+  type RatingLane,
+} from '@/lib/ratingHistoryMetrics';
+import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { RATING_TICKER_DISPLAY_TIME_ZONE } from '@/lib/profile/ratingTickerTimeZone';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
 import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
@@ -37,10 +43,42 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
   const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
   const [dominanceOrder, setDominanceOrder] = useState<MajorFamilyTrackId[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [nowMs] = useState(() => Date.now());
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const baseSeries = useMemo(() => buildMajorFamilySeriesData(historyByTrack), [historyByTrack]);
-  const laneSeries = useMemo(() => filterMajorFamilySeriesByLane(baseSeries, lane), [baseSeries, lane]);
+  const laneSeries = useMemo(
+    () =>
+      filterMajorFamilySeriesByLane(
+        baseSeries,
+        lane,
+        nowMs,
+        RATING_TICKER_DISPLAY_TIME_ZONE,
+      ),
+    [baseSeries, lane, nowMs],
+  );
+  const laneWindow = useMemo(() => {
+    const times = baseSeries
+      .flatMap((series) => series.points)
+      .map((point) => Date.parse(point.occurredAt))
+      .filter((time) => Number.isFinite(time));
+    return ratingLaneWindow(lane, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, {
+      firstEventMs: times.length ? Math.min(...times) : null,
+      lastEventMs: times.length ? Math.max(...times) : null,
+    });
+  }, [baseSeries, lane, nowMs]);
+  const carryInRatings = useMemo(
+    () =>
+      Object.fromEntries(
+        baseSeries.map((series) => [
+          series.trackId,
+          lane === 'overall' || !laneWindow
+            ? null
+            : lastRatingAfterBefore(series.points, laneWindow.startMs),
+        ]),
+      ),
+    [baseSeries, lane, laneWindow],
+  );
   const visibleTrackIds = useMemo(() => new Set(dominanceOrder), [dominanceOrder]);
   const paintedIds = useMemo(
     () =>
@@ -52,7 +90,6 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
   );
   const paintedDominantCategory = paintedIds[paintedIds.length - 1] ?? null;
 
-  const anyLanePoints = majorFamilySeriesHasAnyPoints(laneSeries);
   const anyBasePoints = majorFamilySeriesHasAnyPoints(baseSeries);
   const canExpandLandscape =
     anyBasePoints || Object.values(historyByTrack).some((pts) => (pts?.length ?? 0) > 0);
@@ -62,6 +99,15 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         .filter((s) => visibleTrackIds.has(s.trackId))
         .reduce((n, s) => n + s.points.length, 0),
     [laneSeries, visibleTrackIds],
+  );
+  const selectedDrawableCount = useMemo(
+    () =>
+      laneSeries.filter(
+        (series) =>
+          visibleTrackIds.has(series.trackId) &&
+          (series.points.length > 0 || carryInRatings[series.trackId] != null),
+      ).length,
+    [carryInRatings, laneSeries, visibleTrackIds],
   );
 
   function toggleTrack(trackId: MajorFamilyTrackId) {
@@ -143,21 +189,31 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         <p className="m-0 text-sm text-gray-400" data-testid="comparison-empty-all">
           {COMPARISON_EMPTY}
         </p>
-      ) : !anyLanePoints ? (
-        <p className="m-0 text-xs text-gray-500" data-testid="comparison-lane-empty">
-          {RATING_LANE_EMPTY}
-        </p>
-      ) : renderedPointCount === 0 ? (
+      ) : dominanceOrder.length === 0 ? (
         <p className="m-0 text-xs text-gray-500" data-testid="comparison-all-hidden">
           {COMPARISON_SELECT_EMPTY}
         </p>
+      ) : selectedDrawableCount === 0 ? (
+        <p className="m-0 text-xs text-gray-500" data-testid="comparison-lane-empty">
+          {RATING_LANE_EMPTY}
+        </p>
       ) : (
-        <MultiLineRatingTickerChart
-          series={laneSeries}
-          visibleTrackIds={visibleTrackIds}
-          dominanceOrder={dominanceOrder}
-          canLinkFinishedGames={canLinkFinishedGames}
-        />
+        <>
+          <MultiLineRatingTickerChart
+            series={laneSeries}
+            visibleTrackIds={visibleTrackIds}
+            dominanceOrder={dominanceOrder}
+            canLinkFinishedGames={canLinkFinishedGames}
+            lane={lane}
+            window={laneWindow}
+            carryInRatings={carryInRatings}
+          />
+          {renderedPointCount === 0 ? (
+            <p className="m-0 text-xs text-gray-500" data-testid="comparison-lane-empty">
+              {RATING_LANE_EMPTY}
+            </p>
+          ) : null}
+        </>
       )}
 
       <ExpandedRatingTickerDrawer

@@ -1,12 +1,14 @@
 'use client';
 
 import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/RatingFamilyComparisonPanel';
+import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { LANDSCAPE_TICKER_CROSSING_HISTORY } from './landscapeTickerCrossingFixture';
 
 type HarnessOptions = {
   empty?: boolean;
   crossing?: boolean;
+  single?: boolean;
 };
 
 function readOptions(): HarnessOptions {
@@ -115,6 +117,7 @@ export function ComparisonHarness() {
   const initial = readOptions();
   const empty = Boolean(initial.empty);
   const crossing = Boolean(initial.crossing);
+  const single = Boolean(initial.single);
   const historyByTrack = empty
     ? {}
     : crossing
@@ -126,7 +129,20 @@ export function ComparisonHarness() {
       data-testid="comparison-harness"
       data-fixture={empty ? 'empty' : crossing ? 'crossing' : 'default'}
     >
-      <RatingFamilyComparisonPanel historyByTrack={historyByTrack} canLinkFinishedGames />
+      {single ? (
+        <RatingTrackDetailPanel
+          trackLabel="Daily Overall"
+          ratingTrackId="free_day"
+          currentRating={1508}
+          points={historyByTrack.free_day ?? []}
+          badge={null}
+          isSelf
+          canLinkFinishedGames
+          historyByTrack={historyByTrack}
+        />
+      ) : (
+        <RatingFamilyComparisonPanel historyByTrack={historyByTrack} canLinkFinishedGames />
+      )}
     </div>
   );
 }

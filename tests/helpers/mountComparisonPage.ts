@@ -64,6 +64,7 @@ const LAYOUT_FALLBACK = `
 export type MountComparisonOptions = {
   empty?: boolean;
   crossing?: boolean;
+  single?: boolean;
   viewport?: { width: number; height: number };
 };
 
@@ -119,13 +120,16 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
   const harnessOptions = {
     empty: Boolean(opts.empty),
     crossing: Boolean(opts.crossing),
+    single: Boolean(opts.single),
   };
   await page.addScriptTag({
     content: `window.__HARNESS_OPTIONS = ${JSON.stringify(harnessOptions)};`,
   });
   await page.addScriptTag({ content: bundle.js });
   await page.getByTestId('comparison-harness').waitFor({ state: 'attached' });
-  if (!opts.empty) {
+  if (opts.single) {
+    await page.getByTestId('rating-track-detail-panel').waitFor();
+  } else if (!opts.empty) {
     await page.getByTestId('rating-family-comparison-panel').waitFor();
   }
 }
