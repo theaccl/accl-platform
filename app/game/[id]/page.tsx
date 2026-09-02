@@ -89,6 +89,7 @@ import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
 import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
+import { nearestReplayNotationScrollTop } from '@/lib/replayNotationScroll';
 
 type MoveLogLoadReason =
   | 'realtime_insert'
@@ -1019,10 +1020,21 @@ export default function GamePage() {
 
   useEffect(() => {
     if (replayStep === null) return;
-    const activeMove = replayMoveListRef.current?.querySelector<HTMLElement>(
+    const scroller = replayMoveListRef.current;
+    const activeMove = scroller?.querySelector<HTMLElement>(
       `[data-replay-step="${replayStep}"]`,
     );
-    activeMove?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (!scroller || !activeMove) return;
+    const viewport = scroller.getBoundingClientRect();
+    const item = activeMove.getBoundingClientRect();
+    const nextScrollTop = nearestReplayNotationScrollTop({
+      scrollTop: scroller.scrollTop,
+      viewportTop: viewport.top,
+      viewportBottom: viewport.bottom,
+      itemTop: item.top,
+      itemBottom: item.bottom,
+    });
+    if (nextScrollTop !== scroller.scrollTop) scroller.scrollTop = nextScrollTop;
   }, [replayStep]);
 
   useLayoutEffect(() => {
