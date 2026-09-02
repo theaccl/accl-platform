@@ -7,6 +7,7 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 ## Implemented product behavior
 
 - A Generation Token commissions one opening generation. Internal Unlimited commissions are still written to the audit ledger at zero displayed cost.
+- Exact commission, guided-refinement, and saved-creation retries return their original server record before rechecking mutable tier, reference, candidate, or review state. A changed payload under the same idempotency key is rejected, so retries cannot duplicate token reservations or provider work.
 - Free receives 3 opening candidates, Plus receives 4, and Pro/Internal Unlimited receive 5.
 - Free and Plus accept one private reference and place either an icon or background. Pro/Internal Unlimited accept two references and may place a matching icon/background set. The matching-set API rejects lower-tier commission contracts before downloading the private candidate or computing derivatives, while the atomic database placement function remains the final enforcement boundary.
 - Plus receives one guided touch-up producing 2 more candidates. Pro/Internal Unlimited receive up to four guided refinements producing 2 candidates each.
@@ -75,7 +76,7 @@ The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024Ã
 
 The foundation, token-economy, tier-contract, refinement, saved-lineage, and advisor-hardening migrations have been applied and validated in the disposable ACCL staging Supabase project. Production remains untouched.
 
-The local `image_generation_review_expiry_recovery` migration is prepared for the next approved staging review stack. It has not been applied remotely.
+The local `image_generation_review_expiry_recovery` and `image_generation_durable_idempotent_replays` migrations are prepared for an approved staging review stack. Neither has been applied remotely.
 
 ## Controlled live staging checkpoint â€” 2026-08-31
 
