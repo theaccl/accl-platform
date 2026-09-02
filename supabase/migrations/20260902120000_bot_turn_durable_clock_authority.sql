@@ -268,11 +268,12 @@ begin
       'job_status', j.status
     );
   end if;
-  if j.attempt_count is distinct from p_claim_attempt_count then
+  if not (
+    (j.status = 'queued' and j.attempt_count = 0 and p_claim_attempt_count = 0)
+    or
+    (j.status = 'running' and j.attempt_count = p_claim_attempt_count)
+  ) then
     raise exception 'bot_job_claim_lost';
-  end if;
-  if j.status not in ('queued', 'running') then
-    raise exception 'bot_job_not_processable';
   end if;
   if coalesce(g.source_type, '') is distinct from 'bot_game' then
     raise exception 'not_bot_game';

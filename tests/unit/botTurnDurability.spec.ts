@@ -125,6 +125,8 @@ test.describe('durable bot-turn RPC contract', () => {
     expect(sql).toContain('for update skip locked');
     expect(sql).toContain('and q.attempt_count < 5');
     expect(sql).toContain('and attempt_count = p_claim_attempt_count');
+    expect(sql).toContain("j.status = 'queued' and j.attempt_count = 0 and p_claim_attempt_count = 0");
+    expect(sql).toContain("j.status = 'running' and j.attempt_count = p_claim_attempt_count");
     expect(sql).toContain("raise exception 'bot_job_claim_lost'");
     expect(sql).toContain('order by q.updated_at asc, q.created_at asc');
     expect(sql).toContain("status = case when attempt_count >= 5 then 'failed' else 'queued' end");
