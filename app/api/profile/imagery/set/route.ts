@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { recordPlacementDerivativeSetCosts } from '@/lib/imageGenerator/costAccounting';
 import { createProfileStillDerivative } from '@/lib/imageGenerator/derivatives';
 import type { ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
+import { generatorTierSupportsMatchingSet } from '@/lib/imageGenerator/membership';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { guardRequest } from '@/lib/server/requestGuard';
@@ -34,6 +35,22 @@ export async function POST(request: Request): Promise<Response> {
     if (candidateResult.error) return jsonResponse({ error: 'Could not load approved candidate' }, 500);
     if (!candidateResult.data) return jsonResponse({ error: 'Approved candidate not found' }, 404);
     const candidate = candidateResult.data as ImageGenerationCandidateRow;
+
+    const commissionResult = await supabase
+      .from('image_generation_requests')
+      .select('membership_tier')
+      .eq('id', candidate.request_id)
+      .eq('owner_id', user.id)
+      .maybeSingle();
+    if (commissionResult.error) {
+      return jsonResponse({ error: 'Could not verify the matching-set commission' }, 500);
+    }
+    if (!commissionResult.data) {
+      return jsonResponse({ error: 'Matching-set commission not found' }, 404);
+    }
+    if (!generatorTierSupportsMatchingSet(commissionResult.data.membership_tier)) {
+      return jsonResponse({ error: 'Matching icon and background placement requires Pro' }, 403);
+    }
 
     const downloaded = await supabase.storage
       .from('image-generation-candidates')

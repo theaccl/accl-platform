@@ -38,6 +38,11 @@ test('Free and Plus permit one placement while Pro gets an atomic matching set',
   expect(setRoute).toContain("rpc('place_approved_profile_image_set'");
   expect(setRoute).toContain("createProfileStillDerivative(source, 'profile_image')");
   expect(setRoute).toContain("createProfileStillDerivative(source, 'profile_background')");
+  expect(setRoute).toContain(".from('image_generation_requests')");
+  expect(setRoute).toContain('generatorTierSupportsMatchingSet(');
+  expect(setRoute.indexOf('generatorTierSupportsMatchingSet(')).toBeLessThan(
+    setRoute.indexOf(".from('image-generation-candidates')")
+  );
   expect(screen).toContain('Place matching icon + background');
 });
 

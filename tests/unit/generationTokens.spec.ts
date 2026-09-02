@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  generatorTierSupportsMatchingSet,
   GENERATOR_TIER_CONTRACTS,
   resolveGeneratorMembershipTier,
 } from '../../lib/imageGenerator/membership';
@@ -75,6 +76,11 @@ test.describe('ACCL Generation Token and tier contract', () => {
       maxReferences: 2,
       placement: 'matching_icon_and_background',
     });
+    expect(generatorTierSupportsMatchingSet('free')).toBe(false);
+    expect(generatorTierSupportsMatchingSet('plus')).toBe(false);
+    expect(generatorTierSupportsMatchingSet('pro')).toBe(true);
+    expect(generatorTierSupportsMatchingSet('internal_unlimited')).toBe(true);
+    expect(generatorTierSupportsMatchingSet('unknown')).toBe(false);
   });
 
   test('legacy image_generator entitlement remains Pro during migration', () => {

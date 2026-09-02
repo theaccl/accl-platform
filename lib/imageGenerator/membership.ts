@@ -74,6 +74,14 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
   },
 };
 
+export function generatorTierSupportsMatchingSet(
+  tier: unknown
+): tier is Extract<GeneratorMembershipTier, 'pro' | 'internal_unlimited'> {
+  if (typeof tier !== 'string' || !(tier in GENERATOR_TIER_CONTRACTS)) return false;
+  return GENERATOR_TIER_CONTRACTS[tier as GeneratorMembershipTier].placement ===
+    'matching_icon_and_background';
+}
+
 type EntitlementLike = {
   entitlement: string;
   metadata?: unknown;

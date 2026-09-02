@@ -8,7 +8,7 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 
 - A Generation Token commissions one opening generation. Internal Unlimited commissions are still written to the audit ledger at zero displayed cost.
 - Free receives 3 opening candidates, Plus receives 4, and Pro/Internal Unlimited receive 5.
-- Free and Plus accept one private reference and place either an icon or background. Pro/Internal Unlimited accept two references and may place a matching icon/background set.
+- Free and Plus accept one private reference and place either an icon or background. Pro/Internal Unlimited accept two references and may place a matching icon/background set. The matching-set API rejects lower-tier commission contracts before downloading the private candidate or computing derivatives, while the atomic database placement function remains the final enforcement boundary.
 - Plus receives one guided touch-up producing 2 more candidates. Pro/Internal Unlimited receive up to four guided refinements producing 2 candidates each.
 - Candidate review lasts 24 hours.
 - The review boundary fails closed at the API deadline: expired review candidates cannot receive new signed URLs, queued refinements cannot start after expiry, and the trusted maintenance pass persists expired request/candidate state without deleting private objects before a retention policy is approved.
