@@ -127,6 +127,7 @@ function fakeRecoveryClient(options: {
   commitFailure?: boolean;
   permanentCommitFailure?: boolean;
   commitThrows?: boolean;
+  cancelFailure?: boolean;
   attemptCount?: number;
 }) {
   const calls: Array<{ fn: string; args?: Record<string, unknown> }> = [];
@@ -173,6 +174,9 @@ function fakeRecoveryClient(options: {
           },
           error: null,
         };
+      }
+      if (fn === 'cancel_bot_move_job' && options.cancelFailure) {
+        return { data: null, error: { message: 'injected_cancel_failure' } };
       }
       return { data: true, error: null };
     },
@@ -246,6 +250,17 @@ test.describe('bot-turn recovery failure injection', () => {
     });
 
     expect(result).toMatchObject({ outcome: 'cancelled', error: 'no_legal_candidate' });
+    expect(fake.calls.at(-1)?.fn).toBe('cancel_bot_move_job');
+  });
+
+  test('surfaces cancellation RPC failures to recovery monitoring', async () => {
+    const fake = fakeRecoveryClient({ permanentCommitFailure: true, cancelFailure: true });
+    const result = await processNextBotMoveRecoveryJob(fake.client, {
+      commit: fake.commit,
+    });
+
+    expect(result).toMatchObject({ error: 'injected_cancel_failure' });
+    expect(result.outcome).toBeUndefined();
     expect(fake.calls.at(-1)?.fn).toBe('cancel_bot_move_job');
   });
 
