@@ -50,7 +50,6 @@ export async function processOneImageRefinement(
   const refinement = parseClaimedRefinement(claim.data);
   if (!refinement) return { claimed: false };
 
-  const uploadedPaths: string[] = [];
   try {
     const guidanceSafety = moderateImagePrompt(refinement.guidance);
     if (!guidanceSafety.allowed) throw new Error(`prompt_safety_rejected:${guidanceSafety.code}`);
@@ -115,13 +114,6 @@ export async function processOneImageRefinement(
       const digest = createHash('sha256').update(candidate.bytes).digest('hex');
       const ordinal = refinement.candidate_ordinal_start + index;
       const storagePath = `${refinement.owner_id}/${refinement.request_id}/refinement-${refinement.id}-${ordinal}-${digest.slice(0, 16)}.${extensionForMimeType(candidate.mimeType)}`;
-      const uploaded = await supabase.storage.from('image-generation-candidates').upload(
-        storagePath,
-        candidate.bytes,
-        { contentType: candidate.mimeType, cacheControl: '0', upsert: false }
-      );
-      if (uploaded.error) throw new Error(`candidate_upload_failed:${uploaded.error.message}`);
-      uploadedPaths.push(storagePath);
       const registered = await supabase.rpc('register_image_generation_refinement_candidate', {
         p_refinement_id: refinement.id,
         p_ordinal: ordinal,
@@ -134,6 +126,12 @@ export async function processOneImageRefinement(
         p_moderation_status: 'approved',
       });
       if (registered.error) throw new Error(`candidate_register_failed:${registered.error.message}`);
+      const uploaded = await supabase.storage.from('image-generation-candidates').upload(
+        storagePath,
+        candidate.bytes,
+        { contentType: candidate.mimeType, cacheControl: '0', upsert: false }
+      );
+      if (uploaded.error) throw new Error(`candidate_upload_failed:${uploaded.error.message}`);
     }
 
     const finalized = await supabase.rpc('finalize_image_generation_refinement', {
@@ -164,9 +162,6 @@ export async function processOneImageRefinement(
       } catch (receiptError) {
         error = receiptError;
       }
-    }
-    if (uploadedPaths.length > 0) {
-      await supabase.storage.from('image-generation-candidates').remove(uploadedPaths);
     }
     const message = error instanceof Error ? error.message : String(error);
     const retryable = isTransientImageGenerationError(error) && refinement.attempt_count < 3;

@@ -81,7 +81,6 @@ export async function processOneImageGeneration(
   const request = parseClaimedRequest(claim.data);
   if (!request) return { claimed: false };
 
-  const uploadedPaths: string[] = [];
   const consumedReferences: Array<{ id: string; storagePath: string }> = [];
   try {
     const promptSafety = moderateImagePrompt(request.prompt);
@@ -178,16 +177,6 @@ export async function processOneImageGeneration(
       const storagePath = `${request.owner_id}/${request.id}/${index + 1}-${digest.slice(0, 16)}.${extensionForMimeType(
         candidate.mimeType
       )}`;
-      const uploaded = await supabase.storage
-        .from('image-generation-candidates')
-        .upload(storagePath, candidate.bytes, {
-          contentType: candidate.mimeType,
-          cacheControl: '0',
-          upsert: false,
-        });
-      if (uploaded.error) throw new Error(`candidate_upload_failed:${uploaded.error.message}`);
-      uploadedPaths.push(storagePath);
-
       const registered = await supabase.rpc('register_image_generation_candidate', {
         p_request_id: request.id,
         p_ordinal: index + 1,
@@ -200,6 +189,15 @@ export async function processOneImageGeneration(
         p_moderation_status: 'approved',
       });
       if (registered.error) throw new Error(`candidate_register_failed:${registered.error.message}`);
+
+      const uploaded = await supabase.storage
+        .from('image-generation-candidates')
+        .upload(storagePath, candidate.bytes, {
+          contentType: candidate.mimeType,
+          cacheControl: '0',
+          upsert: false,
+        });
+      if (uploaded.error) throw new Error(`candidate_upload_failed:${uploaded.error.message}`);
     }
 
     const finalized = await supabase.rpc('finalize_image_generation_request', {
@@ -235,9 +233,6 @@ export async function processOneImageGeneration(
       } catch (receiptError) {
         error = receiptError;
       }
-    }
-    if (uploadedPaths.length > 0) {
-      await supabase.storage.from('image-generation-candidates').remove(uploadedPaths);
     }
     const message = error instanceof Error ? error.message : String(error);
     const retryable = isTransientImageGenerationError(error) && request.attempt_count < MAX_QUEUE_ATTEMPTS;

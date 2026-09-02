@@ -29,6 +29,34 @@ test('cron requests use Vercel bearer authentication and a GET handler', async (
   expect(route).toContain('export async function GET');
   expect(route).toContain('recover_stale_image_generation_requests');
   expect(route).toContain("rpc('expire_due_image_generation_reviews'");
+  expect(route).toContain('processImageGenerationStorageCleanup');
+});
+
+test('candidate cleanup is durably queued before retry rows are removed', async () => {
+  const sql = (await source(
+    'supabase/migrations/20260902190000_image_generation_durable_storage_cleanup.sql'
+  )).toLowerCase();
+  expect(sql).toContain('create table public.image_generation_storage_cleanup_jobs');
+  expect(sql).toContain('claim_image_generation_storage_cleanup_jobs');
+  expect(sql).toContain('finalize_image_generation_storage_cleanup_job');
+  expect(sql.indexOf('insert into public.image_generation_storage_cleanup_jobs')).toBeLessThan(
+    sql.indexOf('delete from public.image_generation_candidates')
+  );
+  expect(sql).toContain('for update skip locked');
+  expect(sql).toContain("j.status in ('pending', 'running')");
+  expect(sql).toContain('to service_role');
+  expect(sql).toContain('from public, anon, authenticated');
+});
+
+test('candidate rows are registered before upload closes the untracked-object crash window', async () => {
+  const openingWorker = await source('lib/imageGenerator/worker.ts');
+  const refinementWorker = await source('lib/imageGenerator/refinementWorker.ts');
+  expect(openingWorker.indexOf("rpc('register_image_generation_candidate'")).toBeLessThan(
+    openingWorker.indexOf(".upload(storagePath, candidate.bytes")
+  );
+  expect(refinementWorker.indexOf("rpc('register_image_generation_refinement_candidate'")).toBeLessThan(
+    refinementWorker.indexOf(".upload(\n        storagePath")
+  );
 });
 
 test('maintenance and stale-token refunds run before provider availability is checked', async () => {

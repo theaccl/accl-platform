@@ -4,6 +4,7 @@ import {
 } from '@/lib/imageGenerator/internalAuth';
 import { configuredImageGenerationProvider } from '@/lib/imageGenerator/provider';
 import { processImageRefinementBatch } from '@/lib/imageGenerator/refinementWorker';
+import { processImageGenerationStorageCleanup } from '@/lib/imageGenerator/storageCleanup';
 import { processImageGenerationBatch } from '@/lib/imageGenerator/worker';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
@@ -94,6 +95,7 @@ async function processRequest(request: Request, batch: number): Promise<Response
   const expiredReviews = await supabase.rpc('expire_due_image_generation_reviews', {
     p_limit: 50,
   });
+  const durableStorageCleanup = await processImageGenerationStorageCleanup(supabase, 20);
   const expiredReviewRows = Array.isArray(expiredReviews.data) ? expiredReviews.data : [];
   const maintenanceSummary = {
     recovered_count: recoveredRows.length,
@@ -105,6 +107,7 @@ async function processRequest(request: Request, batch: number): Promise<Response
     expired_review_count: expiredReviewRows.length,
     review_expiry_error: expiredReviews.error?.message ?? null,
     reference_cleanup_error: referenceCleanupError,
+    durable_storage_cleanup: durableStorageCleanup,
     ...mintSummary,
     recovery_refund_errors: recoveryRefunds.flatMap((result) =>
       result.error ? [result.error.message] : []
