@@ -289,6 +289,7 @@ export async function POST(request: Request): Promise<Response> {
   });
 
   let humanAlreadyCommitted = false;
+  let recoveredHumanSan: string | undefined;
 
   if (fenBefore && fenBefore !== String(gameRow.fen ?? '').trim()) {
     const actualFen = String(gameRow.fen ?? '').trim() || null;
@@ -308,6 +309,7 @@ export async function POST(request: Request): Promise<Response> {
       return badMoveJson('Illegal move.');
     }
     const probeNextFen = boardProbe.fen();
+    recoveredHumanSan = probeMove.san;
     const recoveredStale = await tryRecoverIdempotentHumanMove(supabase, {
       gameId,
       idempotencyKey: humanIdempotencyKey,
@@ -394,6 +396,7 @@ export async function POST(request: Request): Promise<Response> {
       toSquare,
       moveDurationMs: Number(inputMove.move_duration_ms ?? 0),
       humanIdempotencyKey,
+      humanSan: recoveredHumanSan,
       initialGameRow: initialGame.data as Record<string, unknown>,
       gameRow: gameRow as Record<string, unknown>,
       humanAlreadyCommitted,
@@ -454,6 +457,22 @@ export async function POST(request: Request): Promise<Response> {
         });
       }
       auditApiLog('submit_move', { result: 'move_commit_failed', game_id: shortId(gameId), user: shortId(userId) });
+      if (botResult.humanRow) {
+        return json(
+          {
+            error: {
+              code: 'move_commit_failed',
+              message: botResult.message,
+              retryable: true,
+            },
+            human_move_applied: true,
+            bot_move_applied: false,
+            think_ms: botResult.thinkMs ?? null,
+            row: botResult.humanRow,
+          },
+          409,
+        );
+      }
       return json(
         { error: 'move_commit_failed', message: botResult.message },
         409,

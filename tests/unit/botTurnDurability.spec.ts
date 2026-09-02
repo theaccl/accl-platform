@@ -219,3 +219,30 @@ test.describe('bot-turn recovery failure injection', () => {
     expect(fake.calls.some((call) => call.fn === 'release_bot_move_job')).toBe(false);
   });
 });
+
+test.describe('bot-turn request recovery contract', () => {
+  test('reuses the probed SAN when retrying an already-reserved human ply', () => {
+    const route = readFileSync(
+      join(process.cwd(), 'app', 'api', 'game', 'submit-move', 'route.ts'),
+      'utf8',
+    );
+
+    expect(route).toContain('recoveredHumanSan = probeMove.san');
+    expect(route).toContain('humanSan: recoveredHumanSan');
+  });
+
+  test('returns the authoritative reserved human row when bot completion fails', () => {
+    const route = readFileSync(
+      join(process.cwd(), 'app', 'api', 'game', 'submit-move', 'route.ts'),
+      'utf8',
+    );
+    const failureBranch = route.slice(
+      route.indexOf("auditApiLog('submit_move', { result: 'move_commit_failed'"),
+      route.indexOf('const elapsedBot'),
+    );
+
+    expect(failureBranch).toContain('if (botResult.humanRow)');
+    expect(failureBranch).toContain('human_move_applied: true');
+    expect(failureBranch).toContain('row: botResult.humanRow');
+  });
+});
