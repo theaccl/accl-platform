@@ -430,6 +430,47 @@ grant execute on function public.apply_queued_bot_move_system(
   uuid, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
 ) to service_role;
 
+create or replace function public.claim_next_bot_move_job()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $claim_bot_job$
+declare
+  v_id uuid;
+begin
+  select q.id
+    into v_id
+  from public.bot_move_jobs q
+  where q.status = 'queued'
+    and q.attempt_count < 5
+  order by q.updated_at asc, q.created_at asc
+  for update skip locked
+  limit 1;
+
+  if v_id is null then
+    return null;
+  end if;
+
+  update public.bot_move_jobs j
+  set
+    status = 'running',
+    attempt_count = j.attempt_count + 1,
+    claimed_at = clock_timestamp(),
+    updated_at = clock_timestamp()
+  where j.id = v_id;
+
+  return (
+    select to_jsonb(r)
+    from public.bot_move_jobs r
+    where r.id = v_id
+  );
+end;
+$claim_bot_job$;
+
+revoke all on function public.claim_next_bot_move_job() from public, anon, authenticated;
+grant execute on function public.claim_next_bot_move_job() to service_role;
+
 create or replace function public.release_bot_move_job(
   p_job_id uuid,
   p_error text default null
@@ -442,7 +483,7 @@ as $release_bot_job$
 begin
   update public.bot_move_jobs
   set
-    status = 'queued',
+    status = case when attempt_count >= 5 then 'failed' else 'queued' end,
     claimed_at = null,
     last_error = nullif(trim(coalesce(p_error, '')), ''),
     updated_at = clock_timestamp()
@@ -499,7 +540,7 @@ begin
   ), recovered as (
     update public.bot_move_jobs j
     set
-      status = 'queued',
+      status = case when j.attempt_count >= 5 then 'failed' else 'queued' end,
       claimed_at = null,
       last_error = 'stale_worker_recovered',
       updated_at = clock_timestamp()
@@ -520,10 +561,10 @@ revoke all on function public.recover_stale_bot_move_jobs(integer, integer) from
 grant execute on function public.recover_stale_bot_move_jobs(integer, integer) to service_role;
 
 comment on function public.release_bot_move_job(uuid, text) is
-  'Requeues a claimed bot job after a recoverable processor failure.';
+  'Requeues a recoverable bot job with fair ordering, or marks it failed after five claims.';
 comment on function public.cancel_bot_move_job(uuid, text) is
   'Cancels a queued/running bot job whose game no longer permits a bot move.';
 comment on function public.recover_stale_bot_move_jobs(integer, integer) is
-  'Requeues stale running bot jobs so an interrupted worker cannot strand a game.';
+  'Requeues stale running bot jobs, failing exhausted jobs so poison work cannot starve the queue.';
 
 commit;

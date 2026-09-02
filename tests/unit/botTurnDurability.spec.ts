@@ -82,6 +82,9 @@ test.describe('durable bot-turn RPC contract', () => {
     expect(botApply).toBeGreaterThan(expiry);
     expect(sql).toContain("status = 'queued'");
     expect(sql).toContain('for update skip locked');
+    expect(sql).toContain('and q.attempt_count < 5');
+    expect(sql).toContain('order by q.updated_at asc, q.created_at asc');
+    expect(sql).toContain("status = case when attempt_count >= 5 then 'failed' else 'queued' end");
     expect(sql).toContain("raise exception 'bot_move_payload_required'");
     expect(sql).toContain("raise exception 'bot_turn_tournament_forbidden'");
     expect(sql).toContain("coalesce(g.play_context, 'free') is distinct from 'free'");
@@ -111,7 +114,9 @@ test.describe('durable bot-turn RPC contract', () => {
 
 function fakeRecoveryClient(options: {
   commitFailure?: boolean;
+  permanentCommitFailure?: boolean;
   commitThrows?: boolean;
+  attemptCount?: number;
 }) {
   const calls: Array<{ fn: string; args?: Record<string, unknown> }> = [];
   const game = {
@@ -153,6 +158,7 @@ function fakeRecoveryClient(options: {
             post_human_fen: POST_HUMAN_FEN,
             bot_player_id: BOT_ID,
             idempotency_key: 'cm:human-1',
+            attempt_count: options.attemptCount ?? 1,
           },
           error: null,
         };
@@ -170,6 +176,9 @@ function fakeRecoveryClient(options: {
   } as unknown as SupabaseClient;
   const commit = async () => {
     if (options.commitThrows) throw new Error('injected_worker_crash');
+    if (options.permanentCommitFailure) {
+      return { ok: false, kind: 'bot_no_candidates', message: 'no_legal_candidate' } as const;
+    }
     if (options.commitFailure) {
       return { ok: false, kind: 'commit_failed', message: 'injected_commit_failure' } as const;
     }
@@ -209,6 +218,26 @@ test.describe('bot-turn recovery failure injection', () => {
     expect(fake.calls.at(-1)?.fn).toBe('release_bot_move_job');
   });
 
+  test('fails an exhausted transient job instead of starving newer work', async () => {
+    const fake = fakeRecoveryClient({ commitThrows: true, attemptCount: 5 });
+    const result = await processNextBotMoveRecoveryJob(fake.client, {
+      commit: fake.commit,
+    });
+
+    expect(result).toMatchObject({ outcome: 'failed', error: 'injected_worker_crash' });
+    expect(fake.calls.at(-1)?.fn).toBe('release_bot_move_job');
+  });
+
+  test('cancels deterministic permanent failures immediately', async () => {
+    const fake = fakeRecoveryClient({ permanentCommitFailure: true });
+    const result = await processNextBotMoveRecoveryJob(fake.client, {
+      commit: fake.commit,
+    });
+
+    expect(result).toMatchObject({ outcome: 'cancelled', error: 'no_legal_candidate' });
+    expect(fake.calls.at(-1)?.fn).toBe('cancel_bot_move_job');
+  });
+
   test('leaves successful job completion to the atomic database RPC', async () => {
     const fake = fakeRecoveryClient({});
     const result = await processNextBotMoveRecoveryJob(fake.client, {
@@ -229,6 +258,9 @@ test.describe('bot-turn request recovery contract', () => {
 
     expect(route).toContain('recoveredHumanSan = probeMove.san');
     expect(route).toContain('humanSan: recoveredHumanSan');
+    expect(route).toContain(".from('bot_move_jobs')");
+    expect(route).toContain("status !== 'completed'");
+    expect(route).toContain('recoveredStale.completedBotTurn');
   });
 
   test('returns the authoritative reserved human row when bot completion fails', () => {

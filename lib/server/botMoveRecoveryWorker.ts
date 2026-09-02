@@ -8,6 +8,7 @@ const RECOVERY_GAME_SELECT =
   'id,fen,turn,status,tempo,live_time_control,last_move_at,move_deadline_at,white_clock_ms,black_clock_ms,white_player_id,black_player_id,source_type,bot_settings,rating_last_update';
 const RECOVERY_LOG_SELECT =
   'game_id,player_id,san,from_sq,to_sq,fen_before,fen_after,move_duration_ms,idempotency_key';
+const MAX_RECOVERY_ATTEMPTS = 5;
 
 type RecoveryMoveLog = {
   game_id: string;
@@ -26,7 +27,7 @@ export type BotMoveRecoveryResult = {
   claimed: boolean;
   jobId?: string;
   gameId?: string;
-  outcome?: 'completed' | 'cancelled' | 'requeued';
+  outcome?: 'completed' | 'cancelled' | 'failed' | 'requeued';
   error?: string;
 };
 
@@ -46,6 +47,15 @@ async function releaseJob(
     p_job_id: jobId,
     p_error: message.slice(0, 500),
   });
+}
+
+async function retryOrFailJob(
+  supabase: SupabaseClient,
+  job: BotMoveJobRow,
+  message: string,
+): Promise<'failed' | 'requeued'> {
+  await releaseJob(supabase, job.id, message);
+  return Number(job.attempt_count ?? 0) >= MAX_RECOVERY_ATTEMPTS ? 'failed' : 'requeued';
 }
 
 async function cancelJob(
@@ -97,8 +107,12 @@ export async function processNextBotMoveRecoveryJob(
     .maybeSingle();
   if (gameQuery.error || !gameQuery.data) {
     const error = gameQuery.error?.message ?? 'recovery_game_not_found';
-    await releaseJob(supabase, job.id, error);
-    return { ...base, outcome: 'requeued', error };
+    if (!gameQuery.data && !gameQuery.error) {
+      await cancelJob(supabase, job.id, error);
+      return { ...base, outcome: 'cancelled', error };
+    }
+    const outcome = await retryOrFailJob(supabase, job, error);
+    return { ...base, outcome, error };
   }
   const game = gameQuery.data as Record<string, unknown>;
   if (
@@ -117,8 +131,12 @@ export async function processNextBotMoveRecoveryJob(
     .maybeSingle();
   if (logQuery.error || !logQuery.data) {
     const error = logQuery.error?.message ?? 'recovery_human_log_not_found';
-    await releaseJob(supabase, job.id, error);
-    return { ...base, outcome: 'requeued', error };
+    if (!logQuery.data && !logQuery.error) {
+      await cancelJob(supabase, job.id, error);
+      return { ...base, outcome: 'cancelled', error };
+    }
+    const outcome = await retryOrFailJob(supabase, job, error);
+    return { ...base, outcome, error };
   }
   const log = logQuery.data as RecoveryMoveLog;
 
@@ -155,13 +173,17 @@ export async function processNextBotMoveRecoveryJob(
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await releaseJob(supabase, job.id, message);
-    return { ...base, outcome: 'requeued', error: message };
+    const outcome = await retryOrFailJob(supabase, job, message);
+    return { ...base, outcome, error: message };
   }
 
   if (!result.ok) {
-    await releaseJob(supabase, job.id, result.message);
-    return { ...base, outcome: 'requeued', error: result.message };
+    if (result.kind !== 'commit_failed') {
+      await cancelJob(supabase, job.id, `permanent_${result.kind}:${result.message}`);
+      return { ...base, outcome: 'cancelled', error: result.message };
+    }
+    const outcome = await retryOrFailJob(supabase, job, result.message);
+    return { ...base, outcome, error: result.message };
   }
 
   return { ...base, outcome: 'completed' };

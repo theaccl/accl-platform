@@ -170,7 +170,10 @@ async function tryRecoverIdempotentHumanMove(
     fenBefore: string | null;
     fenAfter: string;
   },
-): Promise<{ ok: true; row: Record<string, unknown> } | { ok: false; conflictMessage?: string }> {
+): Promise<
+  | { ok: true; row: Record<string, unknown>; completedBotTurn: boolean }
+  | { ok: false; conflictMessage?: string }
+> {
   const lookup = await findCommittedMoveLogByKey(supabase, details.gameId, details.idempotencyKey);
   if (!lookup.found) return { ok: false };
 
@@ -191,11 +194,35 @@ async function tryRecoverIdempotentHumanMove(
   const actualFen = String(current.data.fen ?? '').trim();
   const expectedAfter = String(details.fenAfter).trim();
   if (actualFen !== expectedAfter) {
-    return { ok: false };
+    const completedJob = await supabase
+      .from('bot_move_jobs')
+      .select('status,post_human_fen')
+      .eq('game_id', details.gameId)
+      .eq('idempotency_key', details.idempotencyKey)
+      .maybeSingle();
+    const status = String(completedJob.data?.status ?? '').trim().toLowerCase();
+    const postHumanFen = String(completedJob.data?.post_human_fen ?? '').trim();
+    if (completedJob.error || status !== 'completed' || postHumanFen !== expectedAfter) {
+      return { ok: false };
+    }
+
+    auditApiLog('submit_move', {
+      result: 'idempotent_duplicate_completed_bot_turn',
+      game_id: shortId(details.gameId),
+    });
+    return {
+      ok: true,
+      row: current.data as Record<string, unknown>,
+      completedBotTurn: true,
+    };
   }
 
   auditApiLog('submit_move', { result: 'idempotent_duplicate', game_id: shortId(details.gameId) });
-  return { ok: true, row: current.data as Record<string, unknown> };
+  return {
+    ok: true,
+    row: current.data as Record<string, unknown>,
+    completedBotTurn: false,
+  };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -257,11 +284,6 @@ export async function POST(request: Request): Promise<Response> {
   if (!gameRow.white_player_id || !gameRow.black_player_id || gameRow.white_player_id === gameRow.black_player_id) {
     auditApiLog('submit_move', { result: 'not_both_seated', game_id: shortId(gameId), user: shortId(userId) });
     return badMoveJson('Game has not started. Both seats must be filled before moves are allowed.');
-  }
-  const normalizedStatus = String(gameRow.status ?? '').trim().toLowerCase();
-  if (normalizedStatus !== 'active' && normalizedStatus !== 'waiting') {
-    auditApiLog('submit_move', { result: 'invalid_status', game_id: shortId(gameId), user: shortId(userId) });
-    return badMoveJson('Game is not in a playable state.');
   }
   const actorColor: 'white' | 'black' = gameRow.white_player_id === userId ? 'white' : 'black';
   const inputMove = (body.move ?? {}) as {
@@ -329,7 +351,21 @@ export async function POST(request: Request): Promise<Response> {
       return conflictJson({ gameId, expectedFen: fenBefore || null, actualFen });
     }
     gameRow = recoveredStale.row as typeof initialGame.data;
+    if (
+      recoveredStale.completedBotTurn ||
+      String(gameRow.status ?? '').trim().toLowerCase() === 'finished'
+    ) {
+      return idempotentSuccessJson(gameRow, {
+        botMoveApplied: recoveredStale.completedBotTurn,
+      });
+    }
     humanAlreadyCommitted = true;
+  }
+
+  const normalizedStatus = String(gameRow.status ?? '').trim().toLowerCase();
+  if (normalizedStatus !== 'active' && normalizedStatus !== 'waiting') {
+    auditApiLog('submit_move', { result: 'invalid_status', game_id: shortId(gameId), user: shortId(userId) });
+    return badMoveJson('Game is not in a playable state.');
   }
 
   if (!humanAlreadyCommitted) {
