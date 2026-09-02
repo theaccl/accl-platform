@@ -42,20 +42,25 @@ async function releaseJob(
   supabase: SupabaseClient,
   jobId: string,
   message: string,
-): Promise<void> {
-  await supabase.rpc('release_bot_move_job', {
+): Promise<string | null> {
+  const { error } = await supabase.rpc('release_bot_move_job', {
     p_job_id: jobId,
     p_error: message.slice(0, 500),
   });
+  return error?.message ?? null;
 }
 
 async function retryOrFailJob(
   supabase: SupabaseClient,
   job: BotMoveJobRow,
   message: string,
-): Promise<'failed' | 'requeued'> {
-  await releaseJob(supabase, job.id, message);
-  return Number(job.attempt_count ?? 0) >= MAX_RECOVERY_ATTEMPTS ? 'failed' : 'requeued';
+): Promise<{ outcome?: 'failed' | 'requeued'; error: string }> {
+  const releaseError = await releaseJob(supabase, job.id, message);
+  if (releaseError) return { error: releaseError };
+  return {
+    outcome: Number(job.attempt_count ?? 0) >= MAX_RECOVERY_ATTEMPTS ? 'failed' : 'requeued',
+    error: message,
+  };
 }
 
 async function cancelJob(
@@ -113,8 +118,8 @@ export async function processNextBotMoveRecoveryJob(
       if (cancellationError) return { ...base, error: cancellationError };
       return { ...base, outcome: 'cancelled', error };
     }
-    const outcome = await retryOrFailJob(supabase, job, error);
-    return { ...base, outcome, error };
+    const transition = await retryOrFailJob(supabase, job, error);
+    return { ...base, ...transition };
   }
   const game = gameQuery.data as Record<string, unknown>;
   if (
@@ -139,8 +144,8 @@ export async function processNextBotMoveRecoveryJob(
       if (cancellationError) return { ...base, error: cancellationError };
       return { ...base, outcome: 'cancelled', error };
     }
-    const outcome = await retryOrFailJob(supabase, job, error);
-    return { ...base, outcome, error };
+    const transition = await retryOrFailJob(supabase, job, error);
+    return { ...base, ...transition };
   }
   const log = logQuery.data as RecoveryMoveLog;
 
@@ -178,8 +183,8 @@ export async function processNextBotMoveRecoveryJob(
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const outcome = await retryOrFailJob(supabase, job, message);
-    return { ...base, outcome, error: message };
+    const transition = await retryOrFailJob(supabase, job, message);
+    return { ...base, ...transition };
   }
 
   if (!result.ok) {
@@ -192,8 +197,8 @@ export async function processNextBotMoveRecoveryJob(
       if (cancellationError) return { ...base, error: cancellationError };
       return { ...base, outcome: 'cancelled', error: result.message };
     }
-    const outcome = await retryOrFailJob(supabase, job, result.message);
-    return { ...base, outcome, error: result.message };
+    const transition = await retryOrFailJob(supabase, job, result.message);
+    return { ...base, ...transition };
   }
 
   return { ...base, outcome: 'completed' };

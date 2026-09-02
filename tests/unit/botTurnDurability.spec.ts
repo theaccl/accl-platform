@@ -128,6 +128,7 @@ function fakeRecoveryClient(options: {
   permanentCommitFailure?: boolean;
   commitThrows?: boolean;
   cancelFailure?: boolean;
+  releaseFailure?: boolean;
   attemptCount?: number;
 }) {
   const calls: Array<{ fn: string; args?: Record<string, unknown> }> = [];
@@ -177,6 +178,9 @@ function fakeRecoveryClient(options: {
       }
       if (fn === 'cancel_bot_move_job' && options.cancelFailure) {
         return { data: null, error: { message: 'injected_cancel_failure' } };
+      }
+      if (fn === 'release_bot_move_job' && options.releaseFailure) {
+        return { data: null, error: { message: 'injected_release_failure' } };
       }
       return { data: true, error: null };
     },
@@ -230,6 +234,17 @@ test.describe('bot-turn recovery failure injection', () => {
     });
 
     expect(result.error).toBe('injected_worker_crash');
+    expect(fake.calls.at(-1)?.fn).toBe('release_bot_move_job');
+  });
+
+  test('surfaces release RPC failures instead of claiming a requeue', async () => {
+    const fake = fakeRecoveryClient({ commitThrows: true, releaseFailure: true });
+    const result = await processNextBotMoveRecoveryJob(fake.client, {
+      commit: fake.commit,
+    });
+
+    expect(result).toMatchObject({ error: 'injected_release_failure' });
+    expect(result.outcome).toBeUndefined();
     expect(fake.calls.at(-1)?.fn).toBe('release_bot_move_job');
   });
 

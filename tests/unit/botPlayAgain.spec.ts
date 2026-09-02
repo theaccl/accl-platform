@@ -21,6 +21,7 @@ test.describe('finished bot game Play Again', () => {
       difficulty: 5,
       personalityStyle: 'aggressive',
       liveTimeControl: '5+5',
+      platMode: 'blitz',
     });
   });
 
@@ -41,7 +42,38 @@ test.describe('finished bot game Play Again', () => {
       difficulty: 3,
       personalityStyle: 'balanced',
       liveTimeControl: null,
+      platMode: null,
     });
+  });
+
+  test('preserves an allowed hidden legacy rapid clock instead of silently downgrading it', () => {
+    expect(
+      botPlayAgainRequestFromGame({
+        source_type: 'bot_game',
+        bot_settings: {
+          version: 'accl_bot_v1',
+          difficulty: 4,
+          personalityStyle: 'defensive',
+          opponentLabel: 'Defensive',
+        },
+        live_time_control: '20m',
+      }),
+    ).toMatchObject({ liveTimeControl: '20m', platMode: 'rapid' });
+  });
+
+  test('rejects an unrecognized stored clock instead of silently changing it', () => {
+    expect(
+      botPlayAgainRequestFromGame({
+        source_type: 'bot_game',
+        bot_settings: {
+          version: 'accl_bot_v1',
+          difficulty: 4,
+          personalityStyle: 'defensive',
+          opponentLabel: 'Defensive',
+        },
+        live_time_control: 'not-a-clock',
+      }),
+    ).toBeNull();
   });
 
   test('rejects human games and malformed bot settings', () => {
