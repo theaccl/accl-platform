@@ -124,4 +124,18 @@ test.describe('pending bot clock display', () => {
     expect(pageSource).toContain('setPendingBotClock(null)');
     expect(pageSource).not.toContain('window.setTimeout(resolve, thinkDelayMs)');
   });
+
+  test('pauses the stale local timeout watcher during the atomic bot turn request', () => {
+    const pageSource = readFileSync(
+      join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'),
+      'utf8',
+    );
+
+    const timeoutEffect = pageSource.slice(
+      pageSource.indexOf("if (!game || game.status !== 'active') return;"),
+      pageSource.indexOf('const handleResign = async'),
+    );
+    expect(timeoutEffect).toContain('if (pendingBotClock) return;');
+    expect(timeoutEffect).toContain('[game, gameId, pendingBotClock, scheduleLiveTimeoutFinish]');
+  });
 });

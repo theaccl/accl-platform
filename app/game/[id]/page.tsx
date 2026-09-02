@@ -1770,6 +1770,10 @@ export default function GamePage() {
 
   useEffect(() => {
     if (!game || game.status !== 'active') return;
+    // The submitted human move and bot reply are committed atomically by the
+    // server. Until that request returns, the local row still describes the
+    // human's old turn and must not be used to award a stale timeout.
+    if (pendingBotClock) return;
     if (!bothPlayersSeated(game)) return;
     const tempo = normalizeGameTempo(game.tempo);
     if (tempo !== 'live' && tempo !== 'daily') return;
@@ -1787,7 +1791,7 @@ export default function GamePage() {
     check();
     const timer = setInterval(check, 1000);
     return () => clearInterval(timer);
-  }, [game, gameId, scheduleLiveTimeoutFinish]);
+  }, [game, gameId, pendingBotClock, scheduleLiveTimeoutFinish]);
 
   const handleResign = async () => {
     if (!game || !myColor || resigning) return;
@@ -1980,6 +1984,8 @@ export default function GamePage() {
         return;
       }
       router.push(`/game/${newGameId}`);
+    } catch {
+      setMessage('Could not start another computer game. Check your connection and try again.');
     } finally {
       setBotPlayAgainBusy(false);
     }

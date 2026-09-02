@@ -70,5 +70,8 @@ test.describe('finished bot game Play Again', () => {
     expect(src).toContain("game.source_type === 'bot_game'");
     expect(src).toContain("game.source_type !== 'bot_game'");
     expect(src).toContain("'/api/match-requests/create-rematch'");
+    expect(src).toContain(
+      'Could not start another computer game. Check your connection and try again.',
+    );
   });
 });
