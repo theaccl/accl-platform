@@ -15,6 +15,8 @@ import { defaultBotGameConfig } from '@/lib/bot/botGameConfig';
 import { botNameFromUserId } from '@/lib/bot/botIdentity';
 import { selectBotMoveForStyle } from '@/lib/bot/botPersonalityStyle';
 import { buildAuthoritativeMovePatch } from '@/lib/gameStateSourceOfTruth';
+import { clockBudgetMsForGame } from '@/lib/gameTimeControl';
+import { normalizeGameTempo } from '@/lib/gameTempo';
 import {
   committedLogMatchesPayload,
   findCommittedMoveLogByKey,
@@ -99,6 +101,29 @@ export function remainingConfiguredBotThinkTimeMs(
   if (!Number.isFinite(movedAtMs)) return configuredMs;
   const elapsedMs = Math.max(0, nowMs - movedAtMs);
   return Math.max(0, configuredMs - elapsedMs);
+}
+
+/**
+ * Returns the authoritative remaining clock for the side whose turn is stored
+ * in the supplied row. Null means the game is not using a ticking clock.
+ */
+export function authoritativeTurnClockRemainingMs(
+  row: Record<string, unknown>,
+  nowMs = Date.now(),
+): number | null {
+  const tempo = normalizeGameTempo(row.tempo == null ? null : String(row.tempo));
+  if (tempo !== 'live' && tempo !== 'daily') return null;
+
+  const turn = String(row.turn ?? '').trim().toLowerCase();
+  if (turn !== 'white' && turn !== 'black') return null;
+
+  const stored = turn === 'white' ? row.white_clock_ms : row.black_clock_ms;
+  const startingClock = Number.isFinite(stored)
+    ? Number(stored)
+    : clockBudgetMsForGame(tempo, row.live_time_control == null ? null : String(row.live_time_control));
+  const movedAtMs = Date.parse(String(row.last_move_at ?? ''));
+  const elapsedMs = Number.isFinite(movedAtMs) ? Math.max(0, nowMs - movedAtMs) : 0;
+  return Math.max(0, startingClock - elapsedMs);
 }
 
 function dbMessage(err: unknown): string {
@@ -190,7 +215,7 @@ export async function commitBotGameTurn(
     return { ok: false, kind: 'move_log_invalid', message: humanLogPayload.message };
   }
 
-  const postHumanRow = buildPostHumanRow(gameRow, movePatch);
+  let postHumanRow = buildPostHumanRow(gameRow, movePatch);
   const humanPatch = movePatch ?? humanPatchFromRow(postHumanRow, false);
 
   let botLogPayload: ReturnType<typeof validateRpcMoveLogPayload> | null = null;
@@ -231,6 +256,58 @@ export async function commitBotGameTurn(
         humanRow: postHumanRow,
       };
     }
+
+    // Publish the human ply before any engine work or configured think delay.
+    // This makes the bot the authoritative side to move in every tab, so no
+    // stale client or timeout sweep can still flag the human while we wait.
+    const reservationParams = buildBotGameTurnRpcParams({
+      gameId,
+      expectedFen: preMoveFen,
+      humanPatch: {
+        fen: humanPatch.fen,
+        turn: humanPatch.turn,
+        last_move_at: humanPatch.last_move_at,
+        move_deadline_at: humanPatch.move_deadline_at,
+        white_clock_ms: humanPatch.white_clock_ms,
+        black_clock_ms: humanPatch.black_clock_ms,
+        promote_waiting_to_active:
+          humanPatch.status === 'active' && String(gameRow.status ?? '') === 'waiting',
+      },
+      humanTerminal: null,
+      humanMoveLog: humanLogPayload.payload,
+    });
+    const { data: reservedHumanRow, error: reservationError } = await supabase.rpc(
+      'apply_bot_game_turn_system',
+      reservationParams,
+    );
+    if (reservationError || !reservedHumanRow) {
+      const reservationMessage = dbMessage(reservationError);
+      if (reservationMessage.includes('move_log_invalid_payload')) {
+        return { ok: false, kind: 'move_log_invalid', message: 'Move history payload was rejected.' };
+      }
+      if (reservationMessage.includes('idempotency_key_conflict')) {
+        return {
+          ok: false,
+          kind: 'idempotency_conflict',
+          message: 'This move idempotency key was already used for a different move.',
+        };
+      }
+      if (reservationMessage.includes('optimistic_conflict')) {
+        return {
+          ok: false,
+          kind: 'optimistic_conflict',
+          message: 'Game position changed before this move was committed.',
+          expectedFen: preMoveFen,
+        };
+      }
+      return {
+        ok: false,
+        kind: 'commit_failed',
+        message: 'Move could not be committed. Refresh and try again.',
+        humanRow: postHumanRow,
+      };
+    }
+    postHumanRow = reservedHumanRow as Record<string, unknown>;
 
     const difficultyProfile = getBotDifficultyProfile(pre.botConfig.accl_bot_v1.difficulty);
     thinkMs = randomThinkTimeMs(difficultyProfile);
@@ -285,6 +362,32 @@ export async function commitBotGameTurn(
     );
     if (remainingThinkMs > 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, remainingThinkMs));
+    }
+
+    const botClockRemainingMs = authoritativeTurnClockRemainingMs(postHumanRow);
+    if (botClockRemainingMs === 0) {
+      const timeoutResult = pre.botMoverColor === 'white' ? 'black_win' : 'white_win';
+      const { data: timedOutRow, error: timeoutError } = await supabase.rpc('finish_game_system', {
+        p_game_id: gameId,
+        p_result: timeoutResult,
+        p_end_reason: 'timeout',
+      });
+      if (!timeoutError && timedOutRow) {
+        return {
+          ok: true,
+          finalRow: timedOutRow as Record<string, unknown>,
+          botMoveApplied: false,
+          thinkMs,
+          humanWasIdempotentDuplicate: humanAlreadyCommitted,
+        };
+      }
+      return {
+        ok: false,
+        kind: 'commit_failed',
+        message: 'Computer timeout could not be committed. Refresh and try again.',
+        humanRow: postHumanRow,
+        thinkMs,
+      };
     }
 
     botPatch = buildAuthoritativeMovePatch({
