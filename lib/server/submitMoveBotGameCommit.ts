@@ -83,6 +83,24 @@ export type SubmitMoveBotGameFailure = {
 
 export type SubmitMoveBotGameResult = SubmitMoveBotGameSuccess | SubmitMoveBotGameFailure;
 
+/**
+ * The configured think time is a minimum total response window measured from
+ * the authoritative human-move timestamp. Candidate/engine work consumes part
+ * of that window, so only the unused remainder is delayed before the bot clock
+ * patch and atomic commit are built.
+ */
+export function remainingConfiguredBotThinkTimeMs(
+  thinkMs: number,
+  humanMovedAt: unknown,
+  nowMs = Date.now(),
+): number {
+  const configuredMs = Math.max(0, Math.round(thinkMs));
+  const movedAtMs = Date.parse(String(humanMovedAt ?? ''));
+  if (!Number.isFinite(movedAtMs)) return configuredMs;
+  const elapsedMs = Math.max(0, nowMs - movedAtMs);
+  return Math.max(0, configuredMs - elapsedMs);
+}
+
 function dbMessage(err: unknown): string {
   return String((err as { message?: string } | null)?.message ?? '').toLowerCase();
 }
@@ -260,6 +278,14 @@ export async function commitBotGameTurn(
     const botNextFen = botBoard.fen();
     const botNextTurn = botBoard.turn() === 'w' ? 'white' : 'black';
     botTerminal = terminalStateFromBoard(botBoard, pre.botMoverColor);
+
+    const remainingThinkMs = remainingConfiguredBotThinkTimeMs(
+      thinkMs,
+      postHumanRow.last_move_at,
+    );
+    if (remainingThinkMs > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, remainingThinkMs));
+    }
 
     botPatch = buildAuthoritativeMovePatch({
       nextFen: botNextFen,

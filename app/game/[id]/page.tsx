@@ -2033,7 +2033,19 @@ export default function GamePage() {
 
     const gameOver = gameOverFieldsAfterMove(nextFen, game!);
     const moveDurationMs = Date.now() - startedAt;
-    const { data: sessionData } = await supabase.auth.getSession();
+    let sessionData;
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      sessionData = sessionResult.data;
+    } catch {
+      chessRef.current?.undo();
+      setLiveChessVersion((v) => v + 1);
+      setSavingMove(false);
+      setPendingBotClock(null);
+      setSelectedSquare(null);
+      setMessage('Could not verify your session. Check your connection and try again.');
+      return;
+    }
     const token = sessionData.session?.access_token;
     if (!token) {
       chessRef.current?.undo();

@@ -138,4 +138,22 @@ test.describe('pending bot clock display', () => {
     expect(timeoutEffect).toContain('if (pendingBotClock) return;');
     expect(timeoutEffect).toContain('[game, gameId, pendingBotClock, scheduleLiveTimeoutFinish]');
   });
+
+  test('session lookup rejection restores the board and clears pending state', () => {
+    const pageSource = readFileSync(
+      join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'),
+      'utf8',
+    );
+    const sessionBlock = pageSource.slice(
+      pageSource.indexOf('let sessionData;'),
+      pageSource.indexOf('let moveSubmitRes: Response;'),
+    );
+
+    expect(sessionBlock).toContain('try {');
+    expect(sessionBlock).toContain('await supabase.auth.getSession()');
+    expect(sessionBlock).toContain('chessRef.current?.undo()');
+    expect(sessionBlock).toContain('setSavingMove(false)');
+    expect(sessionBlock).toContain('setPendingBotClock(null)');
+    expect(sessionBlock).toContain('Could not verify your session. Check your connection and try again.');
+  });
 });
