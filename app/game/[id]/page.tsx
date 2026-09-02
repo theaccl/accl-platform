@@ -39,6 +39,7 @@ import {
   botPendingClockDisplayAt,
   type BotPendingClockSnapshot,
 } from '@/lib/botPendingClockDisplay';
+import { botPlayAgainRequestFromGame } from '@/lib/bot/botPlayAgain';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
 import { TournamentFirstMoveGraceBanner } from '@/components/tournament/TournamentFirstMoveGraceBanner';
@@ -133,6 +134,8 @@ type GameRow = {
   rating_applied?: boolean | null;
   /** JSON snapshot: bucket, white/black before & after, deltas (debug). */
   rating_last_update?: unknown | null;
+  /** Server-created settings for unrated computer games. */
+  bot_settings?: unknown | null;
   last_move_at?: string | null;
   move_deadline_at?: string | null;
   white_clock_ms?: number | null;
@@ -779,6 +782,7 @@ export default function GamePage() {
   const [resigning, setResigning] = useState(false);
   const [drawBusy, setDrawBusy] = useState(false);
   const [rematchRequestBusy, setRematchRequestBusy] = useState(false);
+  const [botPlayAgainBusy, setBotPlayAgainBusy] = useState(false);
   const [rematchSentBanner, setRematchSentBanner] = useState(false);
   /** Subscribe like DirectChallengePanel so the rematch requester auto-navigates when the row is accepted. */
   const [pendingRematchRequestId, setPendingRematchRequestId] = useState<string | null>(null);
@@ -878,6 +882,7 @@ export default function GamePage() {
   useEffect(() => {
     setRematchSentBanner(false);
     setPendingRematchRequestId(null);
+    setBotPlayAgainBusy(false);
   }, [gameId]);
 
   useEffect(() => {
@@ -1939,6 +1944,44 @@ export default function GamePage() {
       setPendingRematchRequestId(requestId);
     } finally {
       setRematchRequestBusy(false);
+    }
+  };
+
+  const handlePlayBotAgain = async () => {
+    if (!game || game.status !== 'finished' || !userId || botPlayAgainBusy) return;
+    if (userId !== game.white_player_id && userId !== game.black_player_id) return;
+
+    const request = botPlayAgainRequestFromGame(game);
+    if (!request) {
+      setMessage('Could not recover this computer game’s settings.');
+      return;
+    }
+
+    setBotPlayAgainBusy(true);
+    setMessage('');
+    try {
+      const httpRes = await postAuthenticatedJson(supabase, '/api/bot/game/start', request);
+      const payload = (await httpRes.json().catch(() => ({}))) as {
+        game?: { id?: string };
+        code?: string;
+        error?: string;
+        message?: string;
+        detail?: string;
+      };
+      if (httpRes.status === 403 && payload.code === EMAIL_VERIFICATION_REQUIRED_CODE) {
+        setMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE);
+        return;
+      }
+      const newGameId = typeof payload.game?.id === 'string' ? payload.game.id.trim() : '';
+      if (!httpRes.ok || !newGameId) {
+        const detail = [payload.error, payload.detail, payload.message]
+          .find((part) => typeof part === 'string' && part.trim());
+        setMessage(detail || 'Could not start another computer game.');
+        return;
+      }
+      router.push(`/game/${newGameId}`);
+    } finally {
+      setBotPlayAgainBusy(false);
     }
   };
 
@@ -3453,7 +3496,40 @@ export default function GamePage() {
             {showAnalysisPanel ? 'Hide analysis' : 'Analyze Game'}
           </button>
         )}
-        {!isPublicViewer && game.status === 'finished' && game.black_player_id && (
+        {!isPublicViewer &&
+          game.status === 'finished' &&
+          game.source_type === 'bot_game' &&
+          (userId === game.white_player_id || userId === game.black_player_id) && (
+            <>
+              <p
+                style={{
+                  width: '100%',
+                  flexBasis: '100%',
+                  margin: '0 0 8px 0',
+                  fontSize: 13,
+                  color: '#888',
+                  lineHeight: 1.45,
+                  maxWidth: 560,
+                }}
+              >
+                <strong>Play Again</strong> starts a fresh unrated computer game with the same
+                difficulty, personality, and clock.
+              </p>
+              <button
+                type="button"
+                data-testid="bot-play-again-button"
+                onClick={() => void handlePlayBotAgain()}
+                disabled={botPlayAgainBusy}
+                style={{ padding: '8px 12px' }}
+              >
+                {botPlayAgainBusy ? 'Starting…' : 'PLAY AGAIN'}
+              </button>
+            </>
+          )}
+        {!isPublicViewer &&
+          game.status === 'finished' &&
+          game.source_type !== 'bot_game' &&
+          game.black_player_id && (
           <>
             <p
               style={{
