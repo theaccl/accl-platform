@@ -76,7 +76,7 @@ The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024Ã
 
 The foundation, token-economy, tier-contract, refinement, saved-lineage, and advisor-hardening migrations have been applied and validated in the disposable ACCL staging Supabase project. Production remains untouched.
 
-The local `image_generation_review_expiry_recovery` and `image_generation_durable_idempotent_replays` migrations are prepared for an approved staging review stack. Neither has been applied remotely.
+The local `image_generation_review_expiry_recovery`, `image_generation_durable_idempotent_replays`, and `image_generation_foreign_key_indexes` migrations are prepared for an approved staging review stack. None has been applied remotely. The foreign-key index migration covers refinement-to-candidate and request-to-parent-creation lineage so those integrity checks remain efficient as generation history grows.
 
 ## Controlled live staging checkpoint â€” 2026-08-31
 
