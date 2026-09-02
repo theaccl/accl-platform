@@ -129,6 +129,7 @@ function fakeRecoveryClient(options: {
   commitThrows?: boolean;
   cancelFailure?: boolean;
   releaseFailure?: boolean;
+  releaseNoop?: boolean;
   attemptCount?: number;
 }) {
   const calls: Array<{ fn: string; args?: Record<string, unknown> }> = [];
@@ -181,6 +182,9 @@ function fakeRecoveryClient(options: {
       }
       if (fn === 'release_bot_move_job' && options.releaseFailure) {
         return { data: null, error: { message: 'injected_release_failure' } };
+      }
+      if (fn === 'release_bot_move_job' && options.releaseNoop) {
+        return { data: false, error: null };
       }
       return { data: true, error: null };
     },
@@ -246,6 +250,16 @@ test.describe('bot-turn recovery failure injection', () => {
     expect(result).toMatchObject({ error: 'injected_release_failure' });
     expect(result.outcome).toBeUndefined();
     expect(fake.calls.at(-1)?.fn).toBe('release_bot_move_job');
+  });
+
+  test('treats a false release result as a failed state transition', async () => {
+    const fake = fakeRecoveryClient({ commitThrows: true, releaseNoop: true });
+    const result = await processNextBotMoveRecoveryJob(fake.client, {
+      commit: fake.commit,
+    });
+
+    expect(result).toMatchObject({ error: 'release_bot_move_job_not_applied' });
+    expect(result.outcome).toBeUndefined();
   });
 
   test('fails an exhausted transient job instead of starving newer work', async () => {

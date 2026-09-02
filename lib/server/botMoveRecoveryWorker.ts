@@ -43,11 +43,12 @@ async function releaseJob(
   jobId: string,
   message: string,
 ): Promise<string | null> {
-  const { error } = await supabase.rpc('release_bot_move_job', {
+  const { data, error } = await supabase.rpc('release_bot_move_job', {
     p_job_id: jobId,
     p_error: message.slice(0, 500),
   });
-  return error?.message ?? null;
+  if (error) return error.message;
+  return data === true ? null : 'release_bot_move_job_not_applied';
 }
 
 async function retryOrFailJob(
