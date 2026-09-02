@@ -241,8 +241,25 @@ test.describe('bot-turn request recovery contract', () => {
       route.indexOf('const elapsedBot'),
     );
 
-    expect(failureBranch).toContain('if (botResult.humanRow)');
+    expect(failureBranch).toContain('if (botResult.humanMoveApplied && botResult.humanRow)');
     expect(failureBranch).toContain('human_move_applied: true');
     expect(failureBranch).toContain('row: botResult.humanRow');
+  });
+
+  test('marks partial success only after a durable reservation or authoritative retry', () => {
+    const commit = readFileSync(
+      join(process.cwd(), 'lib', 'server', 'submitMoveBotGameCommit.ts'),
+      'utf8',
+    );
+
+    expect(commit).toContain(
+      'humanRow: reservedJobId || humanAlreadyCommitted ? postHumanRow : undefined',
+    );
+    expect(commit).toContain(
+      'humanMoveApplied: Boolean(reservedJobId || humanAlreadyCommitted)',
+    );
+    expect(commit).not.toContain(
+      "message: 'Move could not be committed. Refresh and try again.',\n        humanRow: postHumanRow",
+    );
   });
 });

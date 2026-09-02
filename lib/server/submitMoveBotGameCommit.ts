@@ -82,6 +82,7 @@ export type SubmitMoveBotGameFailure = {
     | 'commit_failed';
   message: string;
   humanRow?: Record<string, unknown>;
+  humanMoveApplied?: boolean;
   thinkMs?: number | null;
   expectedFen?: string | null;
   actualFen?: string | null;
@@ -239,7 +240,8 @@ export async function commitBotGameTurn(
         kind: 'bot_precondition',
         message: pre.message,
         botCode: pre.code,
-        humanRow: postHumanRow,
+        humanRow: humanAlreadyCommitted ? postHumanRow : undefined,
+        humanMoveApplied: humanAlreadyCommitted,
       };
     }
 
@@ -291,7 +293,6 @@ export async function commitBotGameTurn(
         ok: false,
         kind: 'commit_failed',
         message: 'Move could not be committed. Refresh and try again.',
-        humanRow: postHumanRow,
       };
     }
     postHumanRow = reserved.game;
@@ -325,6 +326,7 @@ export async function commitBotGameTurn(
         kind: 'bot_no_candidates',
         message: 'Computer could not find a legal move.',
         humanRow: postHumanRow,
+        humanMoveApplied: true,
         thinkMs,
       };
     }
@@ -344,6 +346,7 @@ export async function commitBotGameTurn(
         kind: 'bot_invalid_uci',
         message: 'Computer selected an illegal move.',
         humanRow: postHumanRow,
+        humanMoveApplied: true,
         thinkMs,
       };
     }
@@ -594,7 +597,8 @@ export async function commitBotGameTurn(
     message: terminal
       ? 'Move could not be committed. Refresh and try again.'
       : 'Computer turn could not be committed. Refresh and try again.',
-    humanRow: postHumanRow,
+    humanRow: reservedJobId || humanAlreadyCommitted ? postHumanRow : undefined,
+    humanMoveApplied: Boolean(reservedJobId || humanAlreadyCommitted),
     thinkMs,
     expectedFen: preMoveFen,
     actualFen,

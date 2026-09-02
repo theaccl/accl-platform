@@ -450,14 +450,29 @@ export async function POST(request: Request): Promise<Response> {
           game_id: shortId(gameId),
           user: shortId(userId),
         });
-        return botMoveFailedJson(code, botResult.message, botResult.humanRow, {
-          thinkMs: botResult.thinkMs ?? undefined,
-          expectedFen: botResult.expectedFen,
-          actualFen: botResult.actualFen,
-        });
+        if (botResult.humanMoveApplied && botResult.humanRow) {
+          return botMoveFailedJson(code, botResult.message, botResult.humanRow, {
+            thinkMs: botResult.thinkMs ?? undefined,
+            expectedFen: botResult.expectedFen,
+            actualFen: botResult.actualFen,
+          });
+        }
+        return json(
+          {
+            error: {
+              code,
+              message: botResult.message,
+              retryable: true,
+              think_ms: botResult.thinkMs ?? null,
+              expected_fen: botResult.expectedFen ?? null,
+              actual_fen: botResult.actualFen ?? null,
+            },
+          },
+          409,
+        );
       }
       auditApiLog('submit_move', { result: 'move_commit_failed', game_id: shortId(gameId), user: shortId(userId) });
-      if (botResult.humanRow) {
+      if (botResult.humanMoveApplied && botResult.humanRow) {
         return json(
           {
             error: {
