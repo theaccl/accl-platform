@@ -60,7 +60,8 @@ begin
     return jsonb_build_object(
       'game', to_jsonb(g),
       'job_id', j.id,
-      'job_status', j.status
+      'job_status', j.status,
+      'job_attempt_count', j.attempt_count
     );
   end if;
 
@@ -129,7 +130,8 @@ begin
   return jsonb_build_object(
     'game', to_jsonb(g),
     'job_id', j.id,
-    'job_status', j.status
+    'job_status', j.status,
+    'job_attempt_count', j.attempt_count
   );
 end;
 $reserve_bot_turn$;
@@ -207,6 +209,7 @@ revoke all on function public.bot_turn_flagged_loser(
 
 create or replace function public.apply_queued_bot_move_system(
   p_job_id uuid,
+  p_claim_attempt_count integer,
   p_selected_uci text,
   p_think_ms integer,
   p_bot_next_fen text,
@@ -264,6 +267,9 @@ begin
       'timed_out', j.last_error = 'bot_clock_expired',
       'job_status', j.status
     );
+  end if;
+  if j.attempt_count is distinct from p_claim_attempt_count then
+    raise exception 'bot_job_claim_lost';
   end if;
   if j.status not in ('queued', 'running') then
     raise exception 'bot_job_not_processable';
@@ -424,14 +430,14 @@ end;
 $apply_queued_bot_move$;
 
 comment on function public.apply_queued_bot_move_system(
-  uuid, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
+  uuid, integer, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
 ) is 'Atomically applies a reserved bot move or records its clock timeout, then completes the recovery job.';
 
 revoke all on function public.apply_queued_bot_move_system(
-  uuid, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
+  uuid, integer, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
 ) from public, anon, authenticated;
 grant execute on function public.apply_queued_bot_move_system(
-  uuid, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
+  uuid, integer, text, integer, text, text, timestamptz, timestamptz, integer, integer, text, text, jsonb
 ) to service_role;
 
 create or replace function public.claim_next_bot_move_job()
@@ -475,8 +481,11 @@ $claim_bot_job$;
 revoke all on function public.claim_next_bot_move_job() from public, anon, authenticated;
 grant execute on function public.claim_next_bot_move_job() to service_role;
 
+drop function if exists public.release_bot_move_job(uuid, text);
+
 create or replace function public.release_bot_move_job(
   p_job_id uuid,
+  p_claim_attempt_count integer,
   p_error text default null
 )
 returns boolean
@@ -492,13 +501,17 @@ begin
     last_error = nullif(trim(coalesce(p_error, '')), ''),
     updated_at = clock_timestamp()
   where id = p_job_id
-    and status = 'running';
+    and status = 'running'
+    and attempt_count = p_claim_attempt_count;
   return found;
 end;
 $release_bot_job$;
 
+drop function if exists public.cancel_bot_move_job(uuid, text);
+
 create or replace function public.cancel_bot_move_job(
   p_job_id uuid,
+  p_claim_attempt_count integer,
   p_reason text default null
 )
 returns boolean
@@ -514,7 +527,8 @@ begin
     last_error = nullif(trim(coalesce(p_reason, '')), ''),
     updated_at = clock_timestamp()
   where id = p_job_id
-    and status in ('queued', 'running');
+    and status = 'running'
+    and attempt_count = p_claim_attempt_count;
   return found;
 end;
 $cancel_bot_job$;
@@ -557,16 +571,16 @@ begin
 end;
 $recover_bot_jobs$;
 
-revoke all on function public.release_bot_move_job(uuid, text) from public, anon, authenticated;
-grant execute on function public.release_bot_move_job(uuid, text) to service_role;
-revoke all on function public.cancel_bot_move_job(uuid, text) from public, anon, authenticated;
-grant execute on function public.cancel_bot_move_job(uuid, text) to service_role;
+revoke all on function public.release_bot_move_job(uuid, integer, text) from public, anon, authenticated;
+grant execute on function public.release_bot_move_job(uuid, integer, text) to service_role;
+revoke all on function public.cancel_bot_move_job(uuid, integer, text) from public, anon, authenticated;
+grant execute on function public.cancel_bot_move_job(uuid, integer, text) to service_role;
 revoke all on function public.recover_stale_bot_move_jobs(integer, integer) from public, anon, authenticated;
 grant execute on function public.recover_stale_bot_move_jobs(integer, integer) to service_role;
 
-comment on function public.release_bot_move_job(uuid, text) is
+comment on function public.release_bot_move_job(uuid, integer, text) is
   'Requeues a recoverable bot job with fair ordering, or marks it failed after five claims.';
-comment on function public.cancel_bot_move_job(uuid, text) is
+comment on function public.cancel_bot_move_job(uuid, integer, text) is
   'Cancels a queued/running bot job whose game no longer permits a bot move.';
 comment on function public.recover_stale_bot_move_jobs(integer, integer) is
   'Requeues stale running bot jobs, failing exhausted jobs so poison work cannot starve the queue.';

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  buildApplyQueuedBotMoveRpcParams,
   buildBotTurnReservationRpcParams,
   parseAppliedQueuedBotTurn,
   parseReservedBotTurn,
@@ -51,6 +52,14 @@ test.describe('durable bot-turn RPC contract', () => {
   test('rejects malformed reservation and queued-commit responses', () => {
     expect(parseReservedBotTurn(null)).toBeNull();
     expect(parseReservedBotTurn({ game: {}, job_id: '' })).toBeNull();
+    expect(
+      parseReservedBotTurn({
+        game: { id: GAME_ID },
+        job_id: JOB_ID,
+        job_status: 'running',
+        job_attempt_count: 2,
+      }),
+    ).toMatchObject({ jobId: JOB_ID, jobStatus: 'running', jobAttemptCount: 2 });
     expect(parseAppliedQueuedBotTurn({ game: null })).toBeNull();
     expect(
       parseAppliedQueuedBotTurn({
@@ -60,6 +69,38 @@ test.describe('durable bot-turn RPC contract', () => {
         job_status: 'completed',
       }),
     ).toMatchObject({ botMoveApplied: false, timedOut: true, jobStatus: 'completed' });
+  });
+
+  test('binds queued application to the exact claimed attempt', () => {
+    const params = buildApplyQueuedBotMoveRpcParams({
+      jobId: JOB_ID,
+      jobAttemptCount: 2,
+      selectedUci: 'e7e5',
+      thinkMs: 250,
+      botPatch: {
+        fen: 'after',
+        turn: 'white',
+        lastMoveAt: '2026-09-02T12:00:00.250Z',
+        moveDeadlineAt: '2026-09-02T12:05:00.250Z',
+        whiteClockMs: 299_000,
+        blackClockMs: 299_750,
+      },
+      botTerminal: null,
+      botMoveLog: {
+        game_id: GAME_ID,
+        player_id: BOT_ID,
+        san: 'e5',
+        from_sq: 'e7',
+        to_sq: 'e5',
+        fen_before: POST_HUMAN_FEN,
+        fen_after: 'after',
+        move_duration_ms: 250,
+        idempotency_key: `bot-job:${JOB_ID}`,
+      },
+    });
+
+    expect(params.p_job_id).toBe(JOB_ID);
+    expect(params.p_claim_attempt_count).toBe(2);
   });
 
   test('migration locks job and game before timeout or bot mutation', () => {
@@ -83,6 +124,8 @@ test.describe('durable bot-turn RPC contract', () => {
     expect(sql).toContain("status = 'queued'");
     expect(sql).toContain('for update skip locked');
     expect(sql).toContain('and q.attempt_count < 5');
+    expect(sql).toContain('and attempt_count = p_claim_attempt_count');
+    expect(sql).toContain("raise exception 'bot_job_claim_lost'");
     expect(sql).toContain('order by q.updated_at asc, q.created_at asc');
     expect(sql).toContain("status = case when attempt_count >= 5 then 'failed' else 'queued' end");
     expect(sql).toContain("raise exception 'bot_move_payload_required'");
@@ -128,6 +171,7 @@ function fakeRecoveryClient(options: {
   permanentCommitFailure?: boolean;
   commitThrows?: boolean;
   cancelFailure?: boolean;
+  cancelNoop?: boolean;
   releaseFailure?: boolean;
   releaseNoop?: boolean;
   attemptCount?: number;
@@ -180,6 +224,9 @@ function fakeRecoveryClient(options: {
       if (fn === 'cancel_bot_move_job' && options.cancelFailure) {
         return { data: null, error: { message: 'injected_cancel_failure' } };
       }
+      if (fn === 'cancel_bot_move_job' && options.cancelNoop) {
+        return { data: false, error: null };
+      }
       if (fn === 'release_bot_move_job' && options.releaseFailure) {
         return { data: null, error: { message: 'injected_release_failure' } };
       }
@@ -229,6 +276,7 @@ test.describe('bot-turn recovery failure injection', () => {
       'claim_next_bot_move_job',
       'release_bot_move_job',
     ]);
+    expect(fake.calls.at(-1)?.args?.p_claim_attempt_count).toBe(1);
   });
 
   test('requeues a claimed job after an injected worker crash', async () => {
@@ -291,6 +339,17 @@ test.describe('bot-turn recovery failure injection', () => {
     expect(result).toMatchObject({ error: 'injected_cancel_failure' });
     expect(result.outcome).toBeUndefined();
     expect(fake.calls.at(-1)?.fn).toBe('cancel_bot_move_job');
+  });
+
+  test('requires cancellation to affirm the leased transition', async () => {
+    const fake = fakeRecoveryClient({ permanentCommitFailure: true, cancelNoop: true });
+    const result = await processNextBotMoveRecoveryJob(fake.client, {
+      commit: fake.commit,
+    });
+
+    expect(result).toMatchObject({ error: 'cancel_bot_move_job_not_applied' });
+    expect(result.outcome).toBeUndefined();
+    expect(fake.calls.at(-1)?.args?.p_claim_attempt_count).toBe(1);
   });
 
   test('leaves successful job completion to the atomic database RPC', async () => {

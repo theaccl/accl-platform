@@ -209,6 +209,7 @@ export async function commitBotGameTurn(
   let thinkMs: number | null = null;
   let botShadow: BotShadowContext | null = null;
   let reservedJobId: string | null = null;
+  let reservedJobAttemptCount: number | null = null;
   let selectedUci: string | null = null;
   const correlationId =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -297,6 +298,7 @@ export async function commitBotGameTurn(
     }
     postHumanRow = reserved.game;
     reservedJobId = reserved.jobId;
+    reservedJobAttemptCount = reserved.jobAttemptCount;
     if (reserved.jobStatus === 'completed') {
       return {
         ok: true,
@@ -422,9 +424,17 @@ export async function commitBotGameTurn(
   let committedBotMoveApplied = false;
   let compositeErr: unknown = null;
 
-  if (reservedJobId && selectedUci && botPatch && botLogPayload?.ok && thinkMs != null) {
+  if (
+    reservedJobId &&
+    reservedJobAttemptCount != null &&
+    selectedUci &&
+    botPatch &&
+    botLogPayload?.ok &&
+    thinkMs != null
+  ) {
     const queuedParams = buildApplyQueuedBotMoveRpcParams({
       jobId: reservedJobId,
+      jobAttemptCount: reservedJobAttemptCount,
       selectedUci,
       thinkMs,
       botPatch: {

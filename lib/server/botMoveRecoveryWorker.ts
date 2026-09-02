@@ -40,11 +40,12 @@ export function parseClaimedBotMoveJob(raw: unknown): BotMoveJobRow | null {
 
 async function releaseJob(
   supabase: SupabaseClient,
-  jobId: string,
+  job: BotMoveJobRow,
   message: string,
 ): Promise<string | null> {
   const { data, error } = await supabase.rpc('release_bot_move_job', {
-    p_job_id: jobId,
+    p_job_id: job.id,
+    p_claim_attempt_count: job.attempt_count,
     p_error: message.slice(0, 500),
   });
   if (error) return error.message;
@@ -56,7 +57,7 @@ async function retryOrFailJob(
   job: BotMoveJobRow,
   message: string,
 ): Promise<{ outcome?: 'failed' | 'requeued'; error: string }> {
-  const releaseError = await releaseJob(supabase, job.id, message);
+  const releaseError = await releaseJob(supabase, job, message);
   if (releaseError) return { error: releaseError };
   return {
     outcome: Number(job.attempt_count ?? 0) >= MAX_RECOVERY_ATTEMPTS ? 'failed' : 'requeued',
@@ -66,14 +67,16 @@ async function retryOrFailJob(
 
 async function cancelJob(
   supabase: SupabaseClient,
-  jobId: string,
+  job: BotMoveJobRow,
   reason: string,
 ): Promise<string | null> {
-  const { error } = await supabase.rpc('cancel_bot_move_job', {
-    p_job_id: jobId,
+  const { data, error } = await supabase.rpc('cancel_bot_move_job', {
+    p_job_id: job.id,
+    p_claim_attempt_count: job.attempt_count,
     p_reason: reason,
   });
-  return error?.message ?? null;
+  if (error) return error.message;
+  return data === true ? null : 'cancel_bot_move_job_not_applied';
 }
 
 export async function processNextBotMoveRecoveryJob(
@@ -115,7 +118,7 @@ export async function processNextBotMoveRecoveryJob(
   if (gameQuery.error || !gameQuery.data) {
     const error = gameQuery.error?.message ?? 'recovery_game_not_found';
     if (!gameQuery.data && !gameQuery.error) {
-      const cancellationError = await cancelJob(supabase, job.id, error);
+      const cancellationError = await cancelJob(supabase, job, error);
       if (cancellationError) return { ...base, error: cancellationError };
       return { ...base, outcome: 'cancelled', error };
     }
@@ -127,7 +130,7 @@ export async function processNextBotMoveRecoveryJob(
     String(game.status ?? '').trim().toLowerCase() !== 'active' ||
     String(game.fen ?? '').trim() !== String(job.post_human_fen ?? '').trim()
   ) {
-    const cancellationError = await cancelJob(supabase, job.id, 'game_no_longer_at_reserved_bot_turn');
+    const cancellationError = await cancelJob(supabase, job, 'game_no_longer_at_reserved_bot_turn');
     if (cancellationError) return { ...base, error: cancellationError };
     return { ...base, outcome: 'cancelled' };
   }
@@ -141,7 +144,7 @@ export async function processNextBotMoveRecoveryJob(
   if (logQuery.error || !logQuery.data) {
     const error = logQuery.error?.message ?? 'recovery_human_log_not_found';
     if (!logQuery.data && !logQuery.error) {
-      const cancellationError = await cancelJob(supabase, job.id, error);
+      const cancellationError = await cancelJob(supabase, job, error);
       if (cancellationError) return { ...base, error: cancellationError };
       return { ...base, outcome: 'cancelled', error };
     }
@@ -154,7 +157,7 @@ export async function processNextBotMoveRecoveryJob(
   try {
     board = new Chess(job.post_human_fen);
   } catch {
-    const cancellationError = await cancelJob(supabase, job.id, 'invalid_reserved_fen');
+    const cancellationError = await cancelJob(supabase, job, 'invalid_reserved_fen');
     if (cancellationError) return { ...base, error: cancellationError };
     return { ...base, outcome: 'cancelled', error: 'invalid_reserved_fen' };
   }
@@ -192,7 +195,7 @@ export async function processNextBotMoveRecoveryJob(
     if (result.kind !== 'commit_failed') {
       const cancellationError = await cancelJob(
         supabase,
-        job.id,
+        job,
         `permanent_${result.kind}:${result.message}`,
       );
       if (cancellationError) return { ...base, error: cancellationError };

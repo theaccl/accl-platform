@@ -4,6 +4,7 @@ export type ReservedBotTurn = {
   game: Record<string, unknown>;
   jobId: string;
   jobStatus: string;
+  jobAttemptCount: number;
 };
 
 export type AppliedQueuedBotTurn = {
@@ -23,11 +24,13 @@ export function parseReservedBotTurn(raw: unknown): ReservedBotTurn | null {
   const value = objectValue(raw);
   const game = objectValue(value?.game);
   const jobId = String(value?.job_id ?? '').trim();
-  if (!game || !jobId) return null;
+  const jobAttemptCount = Number(value?.job_attempt_count);
+  if (!game || !jobId || !Number.isInteger(jobAttemptCount) || jobAttemptCount < 0) return null;
   return {
     game,
     jobId,
     jobStatus: String(value?.job_status ?? '').trim(),
+    jobAttemptCount,
   };
 }
 
@@ -75,6 +78,7 @@ export function buildBotTurnReservationRpcParams(input: {
 
 export function buildApplyQueuedBotMoveRpcParams(input: {
   jobId: string;
+  jobAttemptCount: number;
   selectedUci: string;
   thinkMs: number;
   botPatch: {
@@ -90,6 +94,7 @@ export function buildApplyQueuedBotMoveRpcParams(input: {
 }) {
   return {
     p_job_id: input.jobId,
+    p_claim_attempt_count: input.jobAttemptCount,
     p_selected_uci: input.selectedUci,
     p_think_ms: input.thinkMs,
     p_bot_next_fen: input.botPatch.fen,
