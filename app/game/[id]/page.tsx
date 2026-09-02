@@ -34,6 +34,12 @@ import {
   clockBudgetMsForGame,
   correspondenceMoveDeadlineMs,
 } from '@/lib/gameTimeControl';
+import {
+  beginBotPendingClockDisplay,
+  botPendingClockDisplayAt,
+  type BotPendingClockSnapshot,
+} from '@/lib/botPendingClockDisplay';
+import { botPlayAgainRequestFromGame } from '@/lib/bot/botPlayAgain';
 import { RequestSuccessBanner } from '@/components/RequestSuccessBanner';
 import { TournamentCoexistenceNotice } from '@/components/tournament/TournamentCoexistenceNotice';
 import { TournamentFirstMoveGraceBanner } from '@/components/tournament/TournamentFirstMoveGraceBanner';
@@ -128,6 +134,8 @@ type GameRow = {
   rating_applied?: boolean | null;
   /** JSON snapshot: bucket, white/black before & after, deltas (debug). */
   rating_last_update?: unknown | null;
+  /** Server-created settings for unrated computer games. */
+  bot_settings?: unknown | null;
   last_move_at?: string | null;
   move_deadline_at?: string | null;
   white_clock_ms?: number | null;
@@ -770,9 +778,11 @@ export default function GamePage() {
   const [userId, setUserId] = useState('');
   const [chatAccessToken, setChatAccessToken] = useState<string | null>(null);
   const [savingMove, setSavingMove] = useState(false);
+  const [pendingBotClock, setPendingBotClock] = useState<BotPendingClockSnapshot | null>(null);
   const [resigning, setResigning] = useState(false);
   const [drawBusy, setDrawBusy] = useState(false);
   const [rematchRequestBusy, setRematchRequestBusy] = useState(false);
+  const [botPlayAgainBusy, setBotPlayAgainBusy] = useState(false);
   const [rematchSentBanner, setRematchSentBanner] = useState(false);
   /** Subscribe like DirectChallengePanel so the rematch requester auto-navigates when the row is accepted. */
   const [pendingRematchRequestId, setPendingRematchRequestId] = useState<string | null>(null);
@@ -872,6 +882,7 @@ export default function GamePage() {
   useEffect(() => {
     setRematchSentBanner(false);
     setPendingRematchRequestId(null);
+    setBotPlayAgainBusy(false);
   }, [gameId]);
 
   useEffect(() => {
@@ -1759,6 +1770,10 @@ export default function GamePage() {
 
   useEffect(() => {
     if (!game || game.status !== 'active') return;
+    // The submitted human move and bot reply are committed atomically by the
+    // server. Until that request returns, the local row still describes the
+    // human's old turn and must not be used to award a stale timeout.
+    if (pendingBotClock) return;
     if (!bothPlayersSeated(game)) return;
     const tempo = normalizeGameTempo(game.tempo);
     if (tempo !== 'live' && tempo !== 'daily') return;
@@ -1776,7 +1791,7 @@ export default function GamePage() {
     check();
     const timer = setInterval(check, 1000);
     return () => clearInterval(timer);
-  }, [game, gameId, scheduleLiveTimeoutFinish]);
+  }, [game, gameId, pendingBotClock, scheduleLiveTimeoutFinish]);
 
   const handleResign = async () => {
     if (!game || !myColor || resigning) return;
@@ -1936,6 +1951,46 @@ export default function GamePage() {
     }
   };
 
+  const handlePlayBotAgain = async () => {
+    if (!game || game.status !== 'finished' || !userId || botPlayAgainBusy) return;
+    if (userId !== game.white_player_id && userId !== game.black_player_id) return;
+
+    const request = botPlayAgainRequestFromGame(game);
+    if (!request) {
+      setMessage('Could not recover this computer game’s settings.');
+      return;
+    }
+
+    setBotPlayAgainBusy(true);
+    setMessage('');
+    try {
+      const httpRes = await postAuthenticatedJson(supabase, '/api/bot/game/start', request);
+      const payload = (await httpRes.json().catch(() => ({}))) as {
+        game?: { id?: string };
+        code?: string;
+        error?: string;
+        message?: string;
+        detail?: string;
+      };
+      if (httpRes.status === 403 && payload.code === EMAIL_VERIFICATION_REQUIRED_CODE) {
+        setMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE);
+        return;
+      }
+      const newGameId = typeof payload.game?.id === 'string' ? payload.game.id.trim() : '';
+      if (!httpRes.ok || !newGameId) {
+        const detail = [payload.error, payload.detail, payload.message]
+          .find((part) => typeof part === 'string' && part.trim());
+        setMessage(detail || 'Could not start another computer game.');
+        return;
+      }
+      router.push(`/game/${newGameId}`);
+    } catch {
+      setMessage('Could not start another computer game. Check your connection and try again.');
+    } finally {
+      setBotPlayAgainBusy(false);
+    }
+  };
+
   const persistMove = async (
     sourceSquare: string,
     targetSquare: string,
@@ -1962,48 +2017,85 @@ export default function GamePage() {
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const startedAt = Date.now();
+    setPendingBotClock(
+      beginBotPendingClockDisplay({
+        sourceType: game!.source_type,
+        tempo: game!.tempo,
+        liveTimeControl: game!.live_time_control,
+        currentTurn: game!.turn,
+        nextTurn,
+        whiteClockMs: game!.white_clock_ms,
+        blackClockMs: game!.black_clock_ms,
+        lastMoveAt: game!.last_move_at,
+        movedAtMs: startedAt,
+      }),
+    );
 
     const gameOver = gameOverFieldsAfterMove(nextFen, game!);
     const moveDurationMs = Date.now() - startedAt;
-    const { data: sessionData } = await supabase.auth.getSession();
+    let sessionData;
+    try {
+      const sessionResult = await supabase.auth.getSession();
+      sessionData = sessionResult.data;
+    } catch {
+      chessRef.current?.undo();
+      setLiveChessVersion((v) => v + 1);
+      setSavingMove(false);
+      setPendingBotClock(null);
+      setSelectedSquare(null);
+      setMessage('Could not verify your session. Check your connection and try again.');
+      return;
+    }
     const token = sessionData.session?.access_token;
     if (!token) {
       chessRef.current?.undo();
       setLiveChessVersion((v) => v + 1);
       setSavingMove(false);
+      setPendingBotClock(null);
       setSelectedSquare(null);
       setMessage('Sign in again to submit moves.');
       return;
     }
-    const moveSubmitRes = await fetch('/api/game/submit-move', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        gameId: game!.id,
-        clientMoveId,
-        fenBefore,
-        nextFen,
-        nextTurn,
-        statusBefore,
-        tempo: game!.tempo,
-        liveTimeControl: game!.live_time_control,
-        currentTurn: game!.turn,
-        whiteClockMs: game!.white_clock_ms,
-        blackClockMs: game!.black_clock_ms,
-        lastMoveAt: game!.last_move_at,
-        move: {
-          san: move.san,
-          from_sq: sourceSquare,
-          to_sq: targetSquare,
-          promotion: move.promotion ?? null,
-          move_duration_ms: moveDurationMs,
+    let moveSubmitRes: Response;
+    try {
+      moveSubmitRes = await fetch('/api/game/submit-move', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        gameOver,
-      }),
-    });
+        body: JSON.stringify({
+          gameId: game!.id,
+          clientMoveId,
+          fenBefore,
+          nextFen,
+          nextTurn,
+          statusBefore,
+          tempo: game!.tempo,
+          liveTimeControl: game!.live_time_control,
+          currentTurn: game!.turn,
+          whiteClockMs: game!.white_clock_ms,
+          blackClockMs: game!.black_clock_ms,
+          lastMoveAt: game!.last_move_at,
+          move: {
+            san: move.san,
+            from_sq: sourceSquare,
+            to_sq: targetSquare,
+            promotion: move.promotion ?? null,
+            move_duration_ms: moveDurationMs,
+          },
+          gameOver,
+        }),
+      });
+    } catch {
+      chessRef.current?.undo();
+      setLiveChessVersion((v) => v + 1);
+      setSavingMove(false);
+      setPendingBotClock(null);
+      setSelectedSquare(null);
+      setMessage('Move submit failed. Check your connection and try again.');
+      return;
+    }
     const moveSubmitPayload = (await moveSubmitRes.json().catch(() => ({}))) as {
       row?: GameRow;
       error?: string | { code?: string; message?: string };
@@ -2031,6 +2123,7 @@ export default function GamePage() {
         setGame(moveSubmitPayload.row);
         setReplayStep(null);
         setSavingMove(false);
+        setPendingBotClock(null);
         setSelectedSquare(null);
         setMessage(submitErrorMessage);
         void loadMoveLogs('post_move');
@@ -2042,6 +2135,7 @@ export default function GamePage() {
       chessRef.current?.undo();
       setLiveChessVersion((v) => v + 1);
       setSavingMove(false);
+      setPendingBotClock(null);
       setSelectedSquare(null);
       setMessage(submitErrorMessage);
       return;
@@ -2050,19 +2144,14 @@ export default function GamePage() {
       chessRef.current?.undo();
       setLiveChessVersion((v) => v + 1);
       setSavingMove(false);
+      setPendingBotClock(null);
       setSelectedSquare(null);
       setMessage(submitErrorMessage);
       return;
     }
     const finalRow = moveSubmitPayload.row;
-    const thinkDelayMs =
-      moveSubmitPayload.bot_move_applied && typeof moveSubmitPayload.think_ms === 'number'
-        ? Math.max(0, moveSubmitPayload.think_ms)
-        : 0;
-    if (thinkDelayMs > 0) {
-      await new Promise((resolve) => window.setTimeout(resolve, thinkDelayMs));
-    }
     setGame(finalRow);
+    setPendingBotClock(null);
 
     setReplayStep(null);
     setSavingMove(false);
@@ -2691,21 +2780,28 @@ export default function GamePage() {
   const correspondenceRemainingMs = game.move_deadline_at
     ? Math.max(0, new Date(game.move_deadline_at).getTime() - clockNowMs)
     : correspondenceBaseMs;
-  const whiteClockMs = showCorrespondenceClocks
+  const pendingBotClockNow = pendingBotClock
+    ? botPendingClockDisplayAt(pendingBotClock, clockNowMs)
+    : null;
+  const whiteClockMs = pendingBotClockNow
+    ? pendingBotClockNow.whiteMs
+    : showCorrespondenceClocks
     ? game.turn === 'white'
       ? correspondenceRemainingMs
       : correspondenceBaseMs
     : game.turn === 'white'
       ? Math.max(0, whiteStoredNow - elapsedSinceLastMoveMs)
       : whiteStoredNow;
-  const blackClockMs = showCorrespondenceClocks
+  const blackClockMs = pendingBotClockNow
+    ? pendingBotClockNow.blackMs
+    : showCorrespondenceClocks
     ? game.turn === 'black'
       ? correspondenceRemainingMs
       : correspondenceBaseMs
     : game.turn === 'black'
       ? Math.max(0, blackStoredNow - elapsedSinceLastMoveMs)
       : blackStoredNow;
-  const clockTurn = displayClockTurn(game.turn);
+  const clockTurn = pendingBotClockNow?.activeTurn ?? displayClockTurn(game.turn);
   const correspondencePaceLabel = correspondencePaceCompactLabel(game.live_time_control);
 
   void liveChessVersion;
@@ -3418,7 +3514,40 @@ export default function GamePage() {
             {showAnalysisPanel ? 'Hide analysis' : 'Analyze Game'}
           </button>
         )}
-        {!isPublicViewer && game.status === 'finished' && game.black_player_id && (
+        {!isPublicViewer &&
+          game.status === 'finished' &&
+          game.source_type === 'bot_game' &&
+          (userId === game.white_player_id || userId === game.black_player_id) && (
+            <>
+              <p
+                style={{
+                  width: '100%',
+                  flexBasis: '100%',
+                  margin: '0 0 8px 0',
+                  fontSize: 13,
+                  color: '#888',
+                  lineHeight: 1.45,
+                  maxWidth: 560,
+                }}
+              >
+                <strong>Play Again</strong> starts a fresh unrated computer game with the same
+                difficulty, personality, and clock.
+              </p>
+              <button
+                type="button"
+                data-testid="bot-play-again-button"
+                onClick={() => void handlePlayBotAgain()}
+                disabled={botPlayAgainBusy}
+                style={{ padding: '8px 12px' }}
+              >
+                {botPlayAgainBusy ? 'Starting…' : 'PLAY AGAIN'}
+              </button>
+            </>
+          )}
+        {!isPublicViewer &&
+          game.status === 'finished' &&
+          game.source_type !== 'bot_game' &&
+          game.black_player_id && (
           <>
             <p
               style={{
@@ -3679,7 +3808,11 @@ export default function GamePage() {
               whiteMs={whiteClockMs}
               blackMs={blackClockMs}
               activeTurn={
-                showCorrespondenceClocks ? clockTurn : liveDailyTicking ? clockTurn : null
+                showCorrespondenceClocks || pendingBotClockNow
+                  ? clockTurn
+                  : liveDailyTicking
+                    ? clockTurn
+                    : null
               }
               isCorrespondence={showCorrespondenceClocks}
               paceLabel={correspondencePaceLabel}
