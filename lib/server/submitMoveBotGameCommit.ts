@@ -15,13 +15,17 @@ import { defaultBotGameConfig } from '@/lib/bot/botGameConfig';
 import { botNameFromUserId } from '@/lib/bot/botIdentity';
 import { selectBotMoveForStyle } from '@/lib/bot/botPersonalityStyle';
 import { buildAuthoritativeMovePatch } from '@/lib/gameStateSourceOfTruth';
-import { clockBudgetMsForGame } from '@/lib/gameTimeControl';
-import { normalizeGameTempo } from '@/lib/gameTempo';
 import {
   committedLogMatchesPayload,
   findCommittedMoveLogByKey,
 } from '@/lib/replay/idempotentMoveRecovery';
 import { buildBotGameTurnRpcParams } from '@/lib/replay/botGameTurnRpc';
+import {
+  buildApplyQueuedBotMoveRpcParams,
+  buildBotTurnReservationRpcParams,
+  parseAppliedQueuedBotTurn,
+  parseReservedBotTurn,
+} from '@/lib/replay/botTurnDurabilityRpc';
 import { buildMoveIdempotencyKey } from '@/lib/replay/moveIdempotencyKey';
 import { validateRpcMoveLogPayload } from '@/lib/replay/rpcMoveLogPayload';
 import { recordShadowBotMoveJob, type BotMoveShadowRecordInput } from '@/lib/server/botMoveJobShadow';
@@ -30,7 +34,7 @@ import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const GAME_ROW_SELECT =
-  'id,fen,turn,status,tempo,live_time_control,last_move_at,white_clock_ms,black_clock_ms,white_player_id,black_player_id,source_type,bot_settings,rating_last_update';
+  'id,fen,turn,status,tempo,live_time_control,last_move_at,move_deadline_at,white_clock_ms,black_clock_ms,white_player_id,black_player_id,source_type,bot_settings,rating_last_update';
 
 export type SubmitMoveBotGameInput = {
   gameId: string;
@@ -41,6 +45,7 @@ export type SubmitMoveBotGameInput = {
   toSquare: string;
   moveDurationMs: number;
   humanIdempotencyKey: string;
+  humanSan?: string;
   initialGameRow: Record<string, unknown>;
   gameRow: Record<string, unknown>;
   humanAlreadyCommitted: boolean;
@@ -103,29 +108,6 @@ export function remainingConfiguredBotThinkTimeMs(
   return Math.max(0, configuredMs - elapsedMs);
 }
 
-/**
- * Returns the authoritative remaining clock for the side whose turn is stored
- * in the supplied row. Null means the game is not using a ticking clock.
- */
-export function authoritativeTurnClockRemainingMs(
-  row: Record<string, unknown>,
-  nowMs = Date.now(),
-): number | null {
-  const tempo = normalizeGameTempo(row.tempo == null ? null : String(row.tempo));
-  if (tempo !== 'live' && tempo !== 'daily') return null;
-
-  const turn = String(row.turn ?? '').trim().toLowerCase();
-  if (turn !== 'white' && turn !== 'black') return null;
-
-  const stored = turn === 'white' ? row.white_clock_ms : row.black_clock_ms;
-  const startingClock = Number.isFinite(stored)
-    ? Number(stored)
-    : clockBudgetMsForGame(tempo, row.live_time_control == null ? null : String(row.live_time_control));
-  const movedAtMs = Date.parse(String(row.last_move_at ?? ''));
-  const elapsedMs = Number.isFinite(movedAtMs) ? Math.max(0, nowMs - movedAtMs) : 0;
-  return Math.max(0, startingClock - elapsedMs);
-}
-
 function dbMessage(err: unknown): string {
   return String((err as { message?: string } | null)?.message ?? '').toLowerCase();
 }
@@ -177,8 +159,9 @@ function humanPatchFromRow(
 
 export async function commitBotGameTurn(
   input: SubmitMoveBotGameInput,
+  options?: { supabase?: SupabaseClient },
 ): Promise<SubmitMoveBotGameResult> {
-  const supabase = createServiceRoleClient();
+  const supabase = options?.supabase ?? createServiceRoleClient();
   const {
     gameId,
     userId,
@@ -188,6 +171,7 @@ export async function commitBotGameTurn(
     toSquare,
     moveDurationMs,
     humanIdempotencyKey,
+    humanSan,
     initialGameRow,
     gameRow,
     humanAlreadyCommitted,
@@ -202,7 +186,7 @@ export async function commitBotGameTurn(
     {
       game_id: gameId,
       player_id: userId,
-      san: lastVerboseMove?.san ?? '',
+      san: lastVerboseMove?.san ?? humanSan ?? '',
       from_sq: fromSquare,
       to_sq: toSquare,
       fen_before: preMoveFen || null,
@@ -223,6 +207,8 @@ export async function commitBotGameTurn(
   let botTerminal: ReturnType<typeof terminalStateFromBoard> = null;
   let thinkMs: number | null = null;
   let botShadow: BotShadowContext | null = null;
+  let reservedJobId: string | null = null;
+  let selectedUci: string | null = null;
   const correlationId =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -260,27 +246,28 @@ export async function commitBotGameTurn(
     // Publish the human ply before any engine work or configured think delay.
     // This makes the bot the authoritative side to move in every tab, so no
     // stale client or timeout sweep can still flag the human while we wait.
-    const reservationParams = buildBotGameTurnRpcParams({
+    const reservationParams = buildBotTurnReservationRpcParams({
       gameId,
       expectedFen: preMoveFen,
       humanPatch: {
         fen: humanPatch.fen,
         turn: humanPatch.turn,
-        last_move_at: humanPatch.last_move_at,
-        move_deadline_at: humanPatch.move_deadline_at,
-        white_clock_ms: humanPatch.white_clock_ms,
-        black_clock_ms: humanPatch.black_clock_ms,
-        promote_waiting_to_active:
+        lastMoveAt: humanPatch.last_move_at,
+        moveDeadlineAt: humanPatch.move_deadline_at,
+        whiteClockMs: humanPatch.white_clock_ms,
+        blackClockMs: humanPatch.black_clock_ms,
+        promoteWaitingToActive:
           humanPatch.status === 'active' && String(gameRow.status ?? '') === 'waiting',
       },
-      humanTerminal: null,
       humanMoveLog: humanLogPayload.payload,
+      correlationId,
     });
-    const { data: reservedHumanRow, error: reservationError } = await supabase.rpc(
-      'apply_bot_game_turn_system',
+    const { data: reservedRaw, error: reservationError } = await supabase.rpc(
+      'reserve_bot_game_turn_system',
       reservationParams,
     );
-    if (reservationError || !reservedHumanRow) {
+    const reserved = parseReservedBotTurn(reservedRaw);
+    if (reservationError || !reserved) {
       const reservationMessage = dbMessage(reservationError);
       if (reservationMessage.includes('move_log_invalid_payload')) {
         return { ok: false, kind: 'move_log_invalid', message: 'Move history payload was rejected.' };
@@ -307,7 +294,17 @@ export async function commitBotGameTurn(
         humanRow: postHumanRow,
       };
     }
-    postHumanRow = reservedHumanRow as Record<string, unknown>;
+    postHumanRow = reserved.game;
+    reservedJobId = reserved.jobId;
+    if (reserved.jobStatus === 'completed') {
+      return {
+        ok: true,
+        finalRow: postHumanRow,
+        botMoveApplied: String(postHumanRow.fen ?? '') !== postHumanFen,
+        thinkMs: null,
+        humanWasIdempotentDuplicate: true,
+      };
+    }
 
     const difficultyProfile = getBotDifficultyProfile(pre.botConfig.accl_bot_v1.difficulty);
     thinkMs = randomThinkTimeMs(difficultyProfile);
@@ -363,32 +360,7 @@ export async function commitBotGameTurn(
     if (remainingThinkMs > 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, remainingThinkMs));
     }
-
-    const botClockRemainingMs = authoritativeTurnClockRemainingMs(postHumanRow);
-    if (botClockRemainingMs === 0) {
-      const timeoutResult = pre.botMoverColor === 'white' ? 'black_win' : 'white_win';
-      const { data: timedOutRow, error: timeoutError } = await supabase.rpc('finish_game_system', {
-        p_game_id: gameId,
-        p_result: timeoutResult,
-        p_end_reason: 'timeout',
-      });
-      if (!timeoutError && timedOutRow) {
-        return {
-          ok: true,
-          finalRow: timedOutRow as Record<string, unknown>,
-          botMoveApplied: false,
-          thinkMs,
-          humanWasIdempotentDuplicate: humanAlreadyCommitted,
-        };
-      }
-      return {
-        ok: false,
-        kind: 'commit_failed',
-        message: 'Computer timeout could not be committed. Refresh and try again.',
-        humanRow: postHumanRow,
-        thinkMs,
-      };
-    }
+    selectedUci = selected.move;
 
     botPatch = buildAuthoritativeMovePatch({
       nextFen: botNextFen,
@@ -443,46 +415,67 @@ export async function commitBotGameTurn(
     };
   }
 
-  const compositeParams = buildBotGameTurnRpcParams({
-    gameId,
-    expectedFen: preMoveFen,
-    humanPatch: {
-      fen: humanPatch.fen,
-      turn: humanPatch.turn,
-      last_move_at: humanPatch.last_move_at,
-      move_deadline_at: humanPatch.move_deadline_at,
-      white_clock_ms: humanPatch.white_clock_ms,
-      black_clock_ms: humanPatch.black_clock_ms,
-      promote_waiting_to_active: humanPatch.status === 'active' && String(gameRow.status ?? '') === 'waiting',
-    },
-    humanTerminal: terminal,
-    humanMoveLog: humanLogPayload.payload,
-    botPatch: botPatch
-      ? {
-          fen: botPatch.fen,
-          turn: botPatch.turn,
-          last_move_at: botPatch.last_move_at,
-          move_deadline_at: botPatch.move_deadline_at,
-          white_clock_ms: botPatch.white_clock_ms ?? null,
-          black_clock_ms: botPatch.black_clock_ms ?? null,
-        }
-      : null,
-    botTerminal,
-    botMoveLog: botLogPayload?.ok ? botLogPayload.payload : null,
-  });
+  let committedRow: Record<string, unknown> | null = null;
+  let committedBotMoveApplied = false;
+  let compositeErr: unknown = null;
 
-  const { data: compositeRow, error: compositeErr } = await supabase.rpc(
-    'apply_bot_game_turn_system',
-    compositeParams,
-  );
+  if (reservedJobId && selectedUci && botPatch && botLogPayload?.ok && thinkMs != null) {
+    const queuedParams = buildApplyQueuedBotMoveRpcParams({
+      jobId: reservedJobId,
+      selectedUci,
+      thinkMs,
+      botPatch: {
+        fen: botPatch.fen,
+        turn: botPatch.turn,
+        lastMoveAt: botPatch.last_move_at,
+        moveDeadlineAt: botPatch.move_deadline_at,
+        whiteClockMs: botPatch.white_clock_ms ?? null,
+        blackClockMs: botPatch.black_clock_ms ?? null,
+      },
+      botTerminal,
+      botMoveLog: botLogPayload.payload,
+    });
+    const queuedCommit = await supabase.rpc('apply_queued_bot_move_system', queuedParams);
+    compositeErr = queuedCommit.error;
+    const applied = parseAppliedQueuedBotTurn(queuedCommit.data);
+    if (!queuedCommit.error && applied) {
+      committedRow = applied.game;
+      committedBotMoveApplied = applied.botMoveApplied;
+    }
+  } else {
+    const compositeParams = buildBotGameTurnRpcParams({
+      gameId,
+      expectedFen: preMoveFen,
+      humanPatch: {
+        fen: humanPatch.fen,
+        turn: humanPatch.turn,
+        last_move_at: humanPatch.last_move_at,
+        move_deadline_at: humanPatch.move_deadline_at,
+        white_clock_ms: humanPatch.white_clock_ms,
+        black_clock_ms: humanPatch.black_clock_ms,
+        promote_waiting_to_active:
+          humanPatch.status === 'active' && String(gameRow.status ?? '') === 'waiting',
+      },
+      humanTerminal: terminal,
+      humanMoveLog: humanLogPayload.payload,
+      botPatch: null,
+      botTerminal: null,
+      botMoveLog: null,
+    });
+    const compositeCommit = await supabase.rpc('apply_bot_game_turn_system', compositeParams);
+    compositeErr = compositeCommit.error;
+    if (!compositeCommit.error && compositeCommit.data) {
+      committedRow = compositeCommit.data as Record<string, unknown>;
+    }
+  }
 
-  if (!compositeErr && compositeRow) {
+  if (committedRow) {
     return finalizeBotGameSuccess(
       supabase,
       {
         ok: true,
-        finalRow: compositeRow as Record<string, unknown>,
-        botMoveApplied: Boolean(botLogPayload?.ok),
+        finalRow: committedRow,
+        botMoveApplied: committedBotMoveApplied,
         thinkMs,
         humanWasIdempotentDuplicate: humanAlreadyCommitted,
       },

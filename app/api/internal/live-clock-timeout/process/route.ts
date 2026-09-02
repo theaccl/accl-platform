@@ -4,6 +4,7 @@ import {
   verifyLiveTimeoutSweepSecret,
 } from '@/lib/internalLiveClockTimeoutAuth';
 import { getLiveTimeoutSweepSecretValidationState } from '@/lib/runtimeConfigValidation';
+import { processNextBotMoveRecoveryJob } from '@/lib/server/botMoveRecoveryWorker';
 import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 
 export const runtime = 'nodejs';
@@ -30,14 +31,13 @@ async function runLiveClockTimeoutSweep(batch: number): Promise<Response> {
 
   let finished = 0;
   let rounds = 0;
+  let sweepError: string | null = null;
 
   for (let i = 0; i < MAX_ROUNDS; i++) {
     const { data, error } = await supabase.rpc('expire_live_clock_timeouts', { p_batch: batch });
     if (error) {
-      return new Response(JSON.stringify({ error: error.message, finished, rounds }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
-      });
+      sweepError = error.message;
+      break;
     }
 
     const n = typeof data === 'number' ? data : parseInt(String(data ?? '0'), 10);
@@ -50,8 +50,10 @@ async function runLiveClockTimeoutSweep(batch: number): Promise<Response> {
     }
   }
 
-  return new Response(JSON.stringify({ finished, rounds }), {
-    status: 200,
+  const botRecovery = await processNextBotMoveRecoveryJob(supabase);
+
+  return new Response(JSON.stringify({ finished, rounds, sweep_error: sweepError, bot_recovery: botRecovery }), {
+    status: sweepError ? 503 : 200,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
   });
 }

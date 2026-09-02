@@ -2,10 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  authoritativeTurnClockRemainingMs,
-  remainingConfiguredBotThinkTimeMs,
-} from '@/lib/server/submitMoveBotGameCommit';
+import { remainingConfiguredBotThinkTimeMs } from '@/lib/server/submitMoveBotGameCommit';
 
 test.describe('authoritative bot think time', () => {
   test('waits only for the unused portion of the configured window', () => {
@@ -39,7 +36,7 @@ test.describe('authoritative bot think time', () => {
       join(process.cwd(), 'lib', 'server', 'submitMoveBotGameCommit.ts'),
       'utf8',
     );
-    const reservationIndex = src.indexOf('const reservationParams = buildBotGameTurnRpcParams({');
+    const reservationIndex = src.indexOf('const reservationParams = buildBotTurnReservationRpcParams({');
     const candidateIndex = src.indexOf('const candidates = await buildBotCandidatesFromFen');
     const waitIndex = src.indexOf('await new Promise<void>');
 
@@ -48,43 +45,20 @@ test.describe('authoritative bot think time', () => {
     expect(waitIndex).toBeGreaterThan(candidateIndex);
   });
 
-  test('computes the bot clock from the reserved authoritative turn', () => {
-    const movedAt = '2026-09-02T12:00:00.000Z';
-    const row = {
-      tempo: 'live',
-      live_time_control: '5+3',
-      turn: 'black',
-      last_move_at: movedAt,
-      white_clock_ms: 12_000,
-      black_clock_ms: 900,
-    };
-
-    expect(
-      authoritativeTurnClockRemainingMs(row, Date.parse('2026-09-02T12:00:00.700Z')),
-    ).toBe(200);
-    expect(
-      authoritativeTurnClockRemainingMs(row, Date.parse('2026-09-02T12:00:01.000Z')),
-    ).toBe(0);
-  });
-
-  test('does not treat a non-ticking game as a clock timeout', () => {
-    expect(
-      authoritativeTurnClockRemainingMs({ tempo: 'correspondence', turn: 'black' }, Date.now()),
-    ).toBeNull();
-  });
-
-  test('finishes an expired bot turn before building or committing its move', () => {
+  test('moves the final clock decision into the authoritative queued-turn transaction', () => {
     const src = readFileSync(
-      join(process.cwd(), 'lib', 'server', 'submitMoveBotGameCommit.ts'),
+      join(process.cwd(), 'supabase', 'migrations', '20260902120000_bot_turn_durable_clock_authority.sql'),
       'utf8',
     );
-    const expiryIndex = src.indexOf('const botClockRemainingMs');
-    const finishIndex = src.indexOf("await supabase.rpc('finish_game_system'");
-    const patchIndex = src.indexOf('botPatch = buildAuthoritativeMovePatch({');
+    const lockIndex = src.indexOf('where id = j.game_id\n  for update;');
+    const expiryIndex = src.indexOf('v_flagged := public.bot_turn_flagged_loser(');
+    const finishIndex = src.indexOf("g := public.finish_game_system(j.game_id, v_timeout_result, 'timeout');");
+    const applyIndex = src.indexOf('g := public.apply_bot_game_turn_system(', expiryIndex);
 
+    expect(lockIndex).toBeGreaterThan(-1);
     expect(expiryIndex).toBeGreaterThan(-1);
     expect(finishIndex).toBeGreaterThan(expiryIndex);
-    expect(patchIndex).toBeGreaterThan(finishIndex);
-    expect(src).toContain("p_end_reason: 'timeout'");
+    expect(applyIndex).toBeGreaterThan(finishIndex);
+    expect(src).toContain("last_error = 'bot_clock_expired'");
   });
 });
