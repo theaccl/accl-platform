@@ -37,6 +37,27 @@ test('reference route authenticates, checks generator access, sanitizes, and wri
   expect(code).toContain("'Cache-Control': 'private, no-store'");
 });
 
+test('reference upload is registered before storage and interrupted uploads remain recoverable', async () => {
+  const route = await readFile(
+    join(process.cwd(), 'app/api/image-generations/references/route.ts'),
+    'utf8'
+  );
+  const migration = await readFile(
+    join(
+      process.cwd(),
+      'supabase/migrations/20260902193000_image_generation_reference_upload_recovery.sql'
+    ),
+    'utf8'
+  );
+  expect(route.indexOf("status: 'pending_upload'")).toBeLessThan(
+    route.indexOf(".from('image-generation-references')")
+  );
+  expect(route).toContain("status: removed.error ? 'cleanup_pending' : 'deleted'");
+  expect(route).toContain(".eq('status', 'pending_upload')");
+  expect(migration).toContain("'pending_upload', 'ready', 'cleanup_pending'");
+  expect(migration).toContain('alter column status set default');
+});
+
 test('worker downloads the private reference for generation and disposes it afterward', async () => {
   const code = await readFile(join(process.cwd(), 'lib/imageGenerator/worker.ts'), 'utf8');
   expect(code).toContain(".from('image_generation_references')");

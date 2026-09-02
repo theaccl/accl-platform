@@ -31,7 +31,7 @@ async function processRequest(request: Request, batch: number): Promise<Response
   const expiredReferences = await supabase
     .from('image_generation_references')
     .select('id,storage_path')
-    .in('status', ['ready', 'cleanup_pending'])
+    .in('status', ['pending_upload', 'ready', 'cleanup_pending'])
     .lte('expires_at', new Date().toISOString())
     .order('expires_at')
     .limit(20);

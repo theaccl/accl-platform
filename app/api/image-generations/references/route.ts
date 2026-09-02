@@ -64,6 +64,27 @@ export async function POST(request: Request): Promise<Response> {
 
     const id = randomUUID();
     const storagePath = `${user.id}/${id}-${sanitized.sha256.slice(0, 16)}.webp`;
+    const pendingUploadExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const inserted = await supabase
+      .from('image_generation_references')
+      .insert({
+        id,
+        owner_id: user.id,
+        status: 'pending_upload',
+        storage_path: storagePath,
+        mime_type: sanitized.mimeType,
+        byte_size: sanitized.bytes.byteLength,
+        width: sanitized.width,
+        height: sanitized.height,
+        sha256: sanitized.sha256,
+        expires_at: pendingUploadExpiresAt,
+      })
+      .select('id')
+      .single();
+    if (inserted.error) {
+      return jsonResponse({ error: 'Could not register the private reference image' }, 500);
+    }
+
     const uploaded = await supabase.storage
       .from('image-generation-references')
       .upload(storagePath, sanitized.bytes, {
@@ -71,29 +92,51 @@ export async function POST(request: Request): Promise<Response> {
         cacheControl: '0',
         upsert: false,
       });
-    if (uploaded.error) return jsonResponse({ error: 'Could not store the private reference image' }, 500);
+    if (uploaded.error) {
+      const removed = await supabase.storage.from('image-generation-references').remove([storagePath]);
+      await supabase
+        .from('image_generation_references')
+        .update({
+          status: removed.error ? 'cleanup_pending' : 'deleted',
+          expires_at: new Date().toISOString(),
+          deleted_at: removed.error ? null : new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('owner_id', user.id)
+        .eq('status', 'pending_upload');
+      return jsonResponse({ error: 'Could not store the private reference image' }, 500);
+    }
 
-    const inserted = await supabase
+    const ready = await supabase
       .from('image_generation_references')
-      .insert({
-        id,
-        owner_id: user.id,
-        storage_path: storagePath,
-        mime_type: sanitized.mimeType,
-        byte_size: sanitized.bytes.byteLength,
-        width: sanitized.width,
-        height: sanitized.height,
-        sha256: sanitized.sha256,
+      .update({
+        status: 'ready',
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
       })
+      .eq('id', id)
+      .eq('owner_id', user.id)
+      .eq('status', 'pending_upload')
       .select('id,mime_type,byte_size,width,height,expires_at')
       .single();
-    if (inserted.error) {
-      await supabase.storage.from('image-generation-references').remove([storagePath]);
-      return jsonResponse({ error: 'Could not register the private reference image' }, 500);
+    if (ready.error) {
+      const removed = await supabase.storage.from('image-generation-references').remove([storagePath]);
+      await supabase
+        .from('image_generation_references')
+        .update({
+          status: removed.error ? 'cleanup_pending' : 'deleted',
+          expires_at: new Date().toISOString(),
+          deleted_at: removed.error ? null : new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('owner_id', user.id);
+      return jsonResponse({ error: 'Could not activate the private reference image' }, 500);
     }
 
     return jsonResponse(
-      { reference: inserted.data },
+      { reference: ready.data },
       201,
       { 'Cache-Control': 'private, no-store' }
     );

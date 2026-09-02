@@ -48,7 +48,7 @@ export type ImageGenerationRequestRow = {
 export type ImageGenerationReferenceRow = {
   id: string;
   owner_id: string;
-  status: 'ready' | 'cleanup_pending' | 'deleted' | 'rejected';
+  status: 'pending_upload' | 'ready' | 'cleanup_pending' | 'deleted' | 'rejected';
   storage_path: string;
   mime_type: 'image/png' | 'image/jpeg' | 'image/webp';
   byte_size: number;
