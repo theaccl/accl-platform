@@ -20,6 +20,7 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 - The player entitlement response derives motion access from that same effective tier contract, preventing stale standalone flags from granting Free motion or withholding Plus/Pro motion.
 - Weekly Plus/Pro minting and Pro anniversary minting are server-authoritative, idempotent, and replacement-based. Anniversary timing comes from the provider subscription start, not a browser-supplied date.
 - Gateway provider cost and placement-derivative work are recorded against the owning commission. Single-surface placement records one derivative receipt; Pro/Internal Unlimited matching-set placement records both coordinated derivatives under one run and fails before publication if either receipt cannot be secured. Server-only controls can stop generation, cap attempts, and enforce a per-commission provider-cost ceiling.
+- Every opening and guided refinement receives the versioned, server-controlled ACCL house-style brief before it reaches the provider. Player text and reference images remain creative input rather than trusted instructions. The brief steers medieval-fantasy chess identity, profile-safe composition, still master artwork, and ACCL presentation harmony without exposing the policy to client control.
 - Token minting, stale-job recovery/refunds, reference cleanup, and review-expiry maintenance run even when the image-generation provider is unavailable; only new provider work is blocked by missing provider configuration.
 
 ## Server configuration
@@ -46,7 +47,7 @@ Required for staged Pro billing:
 
 `POST /api/payments/pro/checkout` creates an authenticated subscription Checkout. Stripe subscription webhooks synchronously upsert the billing record and the `image_generator` entitlement in one database transaction. Active, trialing, and not-yet-expired past-due subscriptions retain access. Cancellation, unpaid/paused/expired states, or period expiry revoke it. Duplicate and out-of-order provider events cannot roll entitlement state backward.
 
-The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024×1024 medium-quality PNG candidates, uses OpenAI's default `auto` moderation setting, retries temporary provider failures twice, and applies a three-minute request timeout. Gateway credentials and provider credentials remain server-side.
+The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024×1024 medium-quality PNG candidates, uses OpenAI's default `auto` moderation setting, retries temporary provider failures twice, and applies a three-minute request timeout. The provider adapter composes the versioned `accl-house-style-v1` brief for openings and refinements and adds only the version identifier—not prompt contents—to trusted Gateway attribution tags. Gateway credentials and provider credentials remain server-side.
 
 ## API flow
 

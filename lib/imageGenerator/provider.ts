@@ -1,5 +1,9 @@
 import { generateImage } from 'ai';
 
+import {
+  ACCL_IMAGE_STYLE_VERSION,
+  composeAcclImagePrompt,
+} from '@/lib/imageGenerator/acclArtDirection';
 import type { ImageGenerationCandidateRow, ImageGenerationRequestRow } from '@/lib/imageGenerator/domain';
 
 export const IMAGE_GENERATION_PROVIDER = 'vercel_ai_gateway';
@@ -169,12 +173,18 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
       `tier:${input.membershipTier ?? 'unknown'}`,
       `attempt:${attemptNumber}`,
       `environment:${environment}`,
+      `style:${ACCL_IMAGE_STYLE_VERSION}`,
       ...(input.refinementId ? [`refinement:${input.refinementId}`] : []),
     ];
 
+    const composedPrompt = composeAcclImagePrompt({
+      playerDirection: input.prompt,
+      operation,
+      hasReferences: Boolean(input.referenceImages?.length),
+    });
     const prompt = input.referenceImages?.length
-      ? { text: input.prompt, images: input.referenceImages.map((image) => image.bytes) }
-      : input.prompt;
+      ? { text: composedPrompt, images: input.referenceImages.map((image) => image.bytes) }
+      : composedPrompt;
     const startedAt = Date.now();
     // Keep one upstream call per candidate. Besides provider compatibility, this
     // preserves every Gateway cost receipt; AI SDK's multi-call metadata merge
