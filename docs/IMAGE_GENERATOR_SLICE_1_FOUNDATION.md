@@ -78,7 +78,24 @@ The worker calls OpenAI GPT Image 2 through Vercel AI Gateway. It requests 1024�
 
 The foundation, token-economy, tier-contract, refinement, saved-lineage, and advisor-hardening migrations have been applied and validated in the disposable ACCL staging Supabase project. Production remains untouched.
 
-The local `image_generation_review_expiry_recovery`, `image_generation_durable_idempotent_replays`, and `image_generation_foreign_key_indexes` migrations are prepared for an approved staging review stack. None has been applied remotely. The foreign-key index migration covers refinement-to-candidate and request-to-parent-creation lineage so those integrity checks remain efficient as generation history grows.
+The `image_generation_review_expiry_recovery`, `image_generation_durable_idempotent_replays`, and `image_generation_foreign_key_indexes` migrations are applied and validated only in disposable staging. The foreign-key index migration covers refinement-to-candidate and request-to-parent-creation lineage so those integrity checks remain efficient as generation history grows.
+
+The later `image_generation_durable_storage_cleanup` and `image_generation_reference_upload_recovery` migrations remain local review stacks. They have not been pushed or applied remotely.
+
+## Controlled ACCL-likeness staging checkpoint — 2026-09-03
+
+The feature Preview for commit `6717cb1` completed a second controlled provider checkpoint without touching production or using a paid balance:
+
+1. The branch-scoped Preview model was temporarily set to `prodia/flux-fast-schnell` while the Gateway still had free credit and automatic reload remained disabled.
+2. One clearly identified disposable Plus owner commissioned exactly four candidates; a second disposable player was used only for cross-account denial testing.
+3. The trusted worker was invoked once. The request reached `review` with four private, moderated 1024x1024 PNG candidates totaling 3,761,513 output bytes and `$0.01000000` of Gateway cost. The visible free-credit balance moved from `$4.90` to `$4.89`.
+4. The owner loaded all four candidates together. The second authenticated player received HTTP 404 for the request and candidate access, and an unauthenticated request received HTTP 401.
+5. The review-expiry recovery, durable-idempotency, and foreign-key-index migrations were applied and verified only in the disposable staging project.
+6. All four exact candidate objects were permanently removed through the Storage API. The two disposable Auth users and their associated profile, entitlement, token-ledger, request, candidate, and cost-event records were removed and verified absent. Unrelated storage content was left untouched.
+7. The branch-scoped Preview model was restored to `openai/gpt-image-2`, the Preview-only queue secret was rotated, and commit `6717cb1` was redeployed without pushing the two queued local review stacks.
+8. The resulting Preview deployment reached Ready. The branch alias loaded the clean Image Generator screen without candidate images or browser console warnings/errors.
+
+The second controlled checkpoint is complete. No further generation was performed during cleanup, and production remained untouched.
 
 ## Controlled live staging checkpoint — 2026-08-31
 
