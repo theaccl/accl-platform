@@ -149,6 +149,8 @@ test.describe('profile rating ticker gap-fill', () => {
     const chart = src('components/profile/ratings/RatingTickerChart.tsx');
     expect(chart).toContain('rating-point-finished-link');
     expect(chart).toContain('finishedGameHref');
+    expect(chart).toContain('Open game');
+    expect(chart).toContain('canLinkFinishedGames && active.gameId');
     expect(finishedGameHref('abc')).toBe('/finished/abc');
     expect(finishedGameTrainHref('abc')).toBe('/finished/abc/train');
     expect(chart).not.toContain('/game/${');
@@ -189,7 +191,11 @@ test.describe('profile rating ticker gap-fill', () => {
 
   test('mobile expanded drawer is profile-scoped', () => {
     const drawer = src('components/profile/ratings/ExpandedRatingTickerDrawer.tsx');
+    const panel = src('components/profile/ratings/RatingTrackDetailPanel.tsx');
     expect(drawer).toContain('expanded-rating-ticker-drawer');
-    expect(drawer).toContain('sm:hidden');
+    expect(panel).toContain('rating-ticker-expand-mobile');
+    expect(panel).toContain('expandMobile');
+    expect(panel).not.toContain('sm:hidden');
+    expect(drawer).not.toContain('sm:hidden');
   });
 });

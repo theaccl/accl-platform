@@ -1,0 +1,478 @@
+.overlay {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.svgRoot {
+  display: block;
+}
+
+.seriesStack {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.seriesSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.seriesSvg :global([data-testid^='landscape-ticker-hit-']) {
+  pointer-events: stroke;
+}
+
+.seriesSvg :global([data-testid^='landscape-ticker-marker-']) {
+  pointer-events: auto;
+}
+
+.frame {
+  position: relative;
+  overflow: hidden;
+  min-height: 11rem;
+  height: min(48dvh, 18rem);
+}
+
+.eventList {
+  max-height: 7rem;
+  overflow-y: auto;
+}
+
+.pointDetail {
+  position: relative;
+}
+
+.header {
+  flex-shrink: 0;
+}
+
+.currentRating {
+  display: block;
+}
+
+.laneTabs {
+  flex-shrink: 0;
+}
+
+.familyPager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.familyDotButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.familyDot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--accl-accent-crimson, #9e3434);
+  opacity: 0.42;
+  box-shadow: none;
+  transform: scale(1);
+}
+
+.familyDot[data-active='true'] {
+  width: 0.62rem;
+  height: 0.62rem;
+  background: var(--accl-accent-crimson-bright, #ef4444);
+  opacity: 1;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accl-accent-crimson-bright, #ef4444) 50%, transparent);
+  transform: scale(1.15);
+}
+
+.familyDotButton:focus-visible {
+  outline: 2px solid var(--accl-accent-crimson-bright, #ef4444);
+  outline-offset: 1px;
+  border-radius: 999px;
+}
+
+.bodyScroll {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
+}
+
+.familyViewport {
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.familyTrack {
+  display: flex;
+  width: 300%;
+  min-height: 100%;
+  transition: transform 220ms ease;
+}
+
+.familyTrack[data-reduced-motion='true'] {
+  transition: none;
+}
+
+.familyPanel {
+  display: flex;
+  width: 33.3333%;
+  min-width: 0;
+  height: auto;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: visible;
+}
+
+.chartSlot {
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.chartWrap {
+  position: relative;
+}
+
+.categoryControls {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  overflow: hidden;
+  padding-bottom: 0.25rem;
+}
+
+.familyUnavailable {
+  display: flex;
+  min-height: 11rem;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  border-radius: 0.5rem;
+  border: 1px dashed #2f3f54;
+  background: #0b121c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .familyTrack {
+    transition: none;
+  }
+}
+
+.overlay[data-landscape-fit='true'] {
+  height: var(--ticker-vvh, 100svh);
+  max-height: var(--ticker-vvh, 100svh);
+}
+
+.overlay[data-landscape-fit='true'] .header {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.overlay[data-landscape-fit='true'] .currentRating,
+.overlay[data-landscape-fit='true'] .orientationHint,
+.overlay[data-landscape-fit='true'] .eventList,
+.overlay[data-landscape-fit='true'] .seriesSummary {
+  display: none;
+}
+
+.overlay[data-landscape-fit='true'] .bodyScroll {
+  overflow: hidden;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  gap: 0.25rem;
+}
+
+.overlay[data-landscape-fit='true'] .familyTrack {
+  min-height: 0;
+  height: 100%;
+}
+
+.overlay[data-landscape-fit='true'] .familyPanel {
+  gap: 0.25rem;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+.overlay[data-landscape-fit='true'] .familyViewport {
+  overflow: hidden;
+  flex: 1 1 0%;
+  min-height: 0;
+  overscroll-behavior: none;
+}
+
+.overlay[data-landscape-fit='true'] .categoryControls {
+  overflow: hidden;
+  padding-bottom: 0;
+  gap: 0.2rem;
+}
+
+.overlay[data-landscape-fit='true'] .categoryControls :global(button) {
+  flex: 0 1 auto;
+  min-height: 2rem;
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+}
+
+.categoryControls :global(button[data-dominant='true']),
+.categoryControls :global(button[data-subject='true']) {
+  box-shadow: 0 0 0 1px currentColor, 0 0 8px color-mix(in srgb, currentColor 42%, transparent);
+}
+
+.overlay[data-landscape-fit='true'] .header > button {
+  min-height: 2rem;
+}
+
+.overlay[data-landscape-fit='true'] .laneTabs {
+  overflow: hidden;
+}
+
+.overlay[data-landscape-fit='true'] .laneTabs :global([role='tablist']) {
+  overflow: hidden;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
+
+.overlay[data-landscape-fit='true'] .laneTabs :global(button) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.overlay[data-landscape-fit='true'] .chartWrap {
+  height: 100%;
+}
+
+.overlay[data-landscape-fit='true'] .chartSlot {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+.overlay[data-landscape-fit='true'] .frame {
+  height: 100%;
+  min-height: 4.5rem;
+}
+
+.overlay[data-landscape-fit='true'] .pointDetail {
+  position: absolute;
+  left: 0.35rem;
+  right: 0.35rem;
+  bottom: 0.35rem;
+  z-index: 6;
+  max-height: 4.25rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+}
+
+.expandMobile {
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (min-width: 1024px) and (min-height: 600px) {
+  .expandMobile {
+    display: none !important;
+  }
+}
+
+.heroGlow,
+.heroCore,
+.quietGlow,
+.quietCore {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.heroGlow,
+.heroCore {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: landscapeTickerDraw 1.2s ease-out forwards;
+}
+
+.quietGlow,
+.quietCore {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: landscapeTickerDraw 0.48s ease-out forwards;
+}
+
+.settledGlow,
+.settledCore {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+}
+
+.heroHead {
+  offset-rotate: 0deg;
+  animation: landscapeTickerHead 1.2s ease-out forwards;
+}
+
+.spark {
+  offset-rotate: 0deg;
+  animation: landscapeTickerSpark 1.2s ease-out forwards;
+}
+
+.bloom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: landscapeTickerBloom 0.5s ease-out 1.1s both;
+}
+
+.quietBloom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: landscapeTickerQuietBloom 0.32s ease-out 0.16s both;
+}
+
+.perimeter {
+  fill: none;
+  animation: landscapeTickerPerimeter 0.7s ease-out 1.15s both;
+}
+
+.singleBloom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: landscapeTickerBloom 0.55s ease-out both;
+}
+
+@keyframes landscapeTickerDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes landscapeTickerHead {
+  from {
+    offset-distance: 0%;
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes landscapeTickerSpark {
+  from {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  80% {
+    opacity: 0.35;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes landscapeTickerBloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  40% {
+    opacity: 0.9;
+    transform: scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes landscapeTickerQuietBloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  45% {
+    opacity: 0.7;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes landscapeTickerPerimeter {
+  0% {
+    opacity: 0;
+    stroke-width: 1.5;
+  }
+  35% {
+    opacity: 0.85;
+    stroke-width: 3;
+  }
+  100% {
+    opacity: 0;
+    stroke-width: 1.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroGlow,
+  .heroCore,
+  .quietGlow,
+  .quietCore,
+  .heroHead,
+  .spark,
+  .bloom,
+  .quietBloom,
+  .perimeter,
+  .singleBloom {
+    animation: none !important;
+  }
+
+  .heroGlow,
+  .heroCore,
+  .quietGlow,
+  .quietCore {
+    stroke-dashoffset: 0;
+  }
+
+  .heroHead,
+  .spark,
+  .bloom,
+  .quietBloom,
+  .perimeter,
+  .singleBloom {
+    opacity: 0;
+  }
+}

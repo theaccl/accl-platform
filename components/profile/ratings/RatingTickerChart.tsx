@@ -10,6 +10,15 @@ import {
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import {
+  landscapeTickerPathFromPoints,
+  landscapeTickerRatingDomain,
+  type LandscapeTickerPlotGeometry,
+} from '@/lib/profile/landscapeTickerPath';
+import type { RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
+import { formatOccurredAtInZone } from '@/lib/profile/ratingTickerTimeZone';
+import type { RatingLane } from '@/lib/ratingHistoryMetrics';
+import { CompactRatingTickerAxes } from '@/components/profile/ratings/CompactRatingTickerAxes';
+import {
   RATING_CURRENT_NO_HISTORY,
   RATING_HISTORY_EMPTY,
 } from '@/components/profile/ratings/ratingTickerEmptyStates';
@@ -18,6 +27,9 @@ type Props = {
   points: RatingHistoryPoint[];
   currentRating: number | null;
   canLinkFinishedGames: boolean;
+  lane: RatingLane;
+  window: RatingLaneWindow | null;
+  carryInRating?: number | null;
   /** Taller chart when opened in mobile drawer. */
   expanded?: boolean;
 };
@@ -25,12 +37,16 @@ type Props = {
 const CHART_W = 560;
 const CHART_H = 160;
 const CHART_H_EXPANDED = 220;
-const PAD = 16;
+const PAD = 30;
+const TOP_AXIS_BAND = 34;
 
 export function RatingTickerChart({
   points,
   currentRating,
   canLinkFinishedGames,
+  lane,
+  window: laneWindow,
+  carryInRating = null,
   expanded = false,
 }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -43,7 +59,8 @@ export function RatingTickerChart({
 
   const legendKinds = useMemo(() => chartPointMarkerLegendKinds(sorted), [sorted]);
 
-  if (sorted.length === 0) {
+  const hasCarryIn = typeof carryInRating === 'number' && Number.isFinite(carryInRating);
+  if ((sorted.length === 0 && !hasCarryIn) || !laneWindow) {
     const msg =
       typeof currentRating === 'number' && Number.isFinite(currentRating)
         ? RATING_CURRENT_NO_HISTORY
@@ -58,32 +75,33 @@ export function RatingTickerChart({
     );
   }
 
-  const ratings = sorted.map((p) => p.ratingAfter);
-  const minR = Math.min(...ratings, ...(currentRating != null ? [currentRating] : []));
-  const maxR = Math.max(...ratings, ...(currentRating != null ? [currentRating] : []));
-  const span = Math.max(maxR - minR, 40);
-  const yMin = minR - span * 0.08;
-  const yMax = maxR + span * 0.08;
-
-  const toX = (i: number) =>
-    sorted.length === 1
-      ? CHART_W / 2
-      : PAD + (i / (sorted.length - 1)) * (CHART_W - PAD * 2);
-  const toY = (r: number) => {
-    const t = (r - yMin) / (yMax - yMin);
-    return chartH - PAD - t * (chartH - PAD * 2);
+  const ratingDomain = landscapeTickerRatingDomain(
+    [sorted],
+    [currentRating, carryInRating].filter((n): n is number => typeof n === 'number'),
+  )!;
+  const geometry: LandscapeTickerPlotGeometry = {
+    width: CHART_W,
+    height: chartH,
+    pad: PAD,
+    topAxisBand: TOP_AXIS_BAND,
+    minT: laneWindow.startMs,
+    maxT: laneWindow.endMs,
+    minR: ratingDomain.minR,
+    maxR: ratingDomain.maxR,
   };
-
-  const polyline =
-    sorted.length === 1
-      ? `${toX(0)},${toY(sorted[0].ratingAfter)} ${toX(0)},${toY(sorted[0].ratingAfter)}`
-      : sorted.map((p, i) => `${toX(i)},${toY(p.ratingAfter)}`).join(' ');
+  const path = landscapeTickerPathFromPoints(sorted, geometry, { carryInRating });
 
   const active = sorted.find((p) => p.id === activeId) ?? sorted[sorted.length - 1];
   const activeMarker = active ? chartPointMarkerForPoint(active) : 'none';
 
   return (
-    <div data-testid="rating-ticker-chart" className="space-y-2">
+    <div
+      data-testid="rating-ticker-chart"
+      data-lane={lane}
+      data-time-caption={laneWindow.caption}
+      data-carry-in-only={path?.plotted.length === 0 ? 'true' : 'false'}
+      className="space-y-2"
+    >
       {legendKinds.length > 0 ? (
         <ul
           className="m-0 flex list-none flex-wrap gap-2 p-0 text-[10px] text-gray-400"
@@ -104,18 +122,34 @@ export function RatingTickerChart({
         viewBox={`0 0 ${CHART_W} ${chartH}`}
         className="w-full max-w-full rounded-lg border border-[#2f3f54] bg-[#0b121c]"
         role="img"
-        aria-label="Rating history chart"
+        aria-label={`Rating history chart, ${lane} lane, ${laneWindow.caption}`}
       >
-        <polyline fill="none" stroke="#38bdf8" strokeWidth="2" points={polyline} />
-        {sorted.map((p, i) => {
+        <CompactRatingTickerAxes
+          geometry={geometry}
+          lane={lane}
+          window={laneWindow}
+          testIdPrefix="compact-rating"
+        />
+        {path ? (
+          <path
+            data-testid="rating-ticker-series-path"
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d={path.d}
+          />
+        ) : null}
+        {(path?.plotted ?? []).map(({ point: p, x, y }) => {
           const style = chartPointMarkerStyle(p, active?.id === p.id);
           const r = active?.id === p.id ? 7 : style.showRing ? 5 : 4;
           return (
             <g key={p.id}>
               {style.showRing ? (
                 <circle
-                  cx={toX(i)}
-                  cy={toY(p.ratingAfter)}
+                  cx={x}
+                  cy={y}
                   r={r + 3}
                   fill="none"
                   stroke={style.stroke}
@@ -124,13 +158,15 @@ export function RatingTickerChart({
                 />
               ) : null}
               <circle
-                cx={toX(i)}
-                cy={toY(p.ratingAfter)}
+                cx={x}
+                cy={y}
                 r={r}
                 fill={style.fill}
                 stroke={style.stroke}
                 strokeWidth="1"
                 data-marker-kind={style.kind}
+                data-testid="rating-ticker-point"
+                data-occurred-at={p.occurredAt}
                 className="cursor-pointer"
                 onClick={() => setActiveId(p.id)}
                 onKeyDown={(e) => {
@@ -158,7 +194,8 @@ export function RatingTickerChart({
             </span>
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            {new Date(active.occurredAt).toLocaleString()} · {active.result}
+            {formatOccurredAtInZone(active.occurredAt, laneWindow.timeZone)} {laneWindow.timeZone} ·{' '}
+            {active.result}
             {active.badgeStateAfter ? ` · badge ${active.badgeStateAfter}` : ''}
             {active.badgeEvent && active.badgeEvent !== 'none' ? ` · ${active.badgeEvent}` : ''}
             {active.streakAfter != null ? ` · streak ${active.streakAfter}` : ''}
@@ -168,9 +205,9 @@ export function RatingTickerChart({
               <Link
                 href={finishedGameHref(active.gameId)}
                 data-testid="rating-point-finished-link"
-                className="font-semibold text-sky-300"
+                className="inline-flex min-h-9 items-center rounded-md border border-sky-400/60 bg-sky-400/10 px-3 py-1.5 font-semibold text-sky-200 hover:bg-sky-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
               >
-                Finished game
+                Open game
               </Link>
               <Link
                 href={finishedGameTrainHref(active.gameId)}
