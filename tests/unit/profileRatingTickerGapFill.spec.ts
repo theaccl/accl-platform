@@ -149,6 +149,8 @@ test.describe('profile rating ticker gap-fill', () => {
     const chart = src('components/profile/ratings/RatingTickerChart.tsx');
     expect(chart).toContain('rating-point-finished-link');
     expect(chart).toContain('finishedGameHref');
+    expect(chart).toContain('Open game');
+    expect(chart).toContain('canLinkFinishedGames && active.gameId');
     expect(finishedGameHref('abc')).toBe('/finished/abc');
     expect(finishedGameTrainHref('abc')).toBe('/finished/abc/train');
     expect(chart).not.toContain('/game/${');

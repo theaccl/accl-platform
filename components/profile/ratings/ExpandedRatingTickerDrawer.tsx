@@ -486,9 +486,9 @@ function LandscapeTickerOverlay({
                                 <Link
                                   href={finishedGameHref(p.gameId)}
                                   data-testid="landscape-ticker-list-finished-link"
-                                  className="text-xs font-semibold text-sky-300"
+                                  className="inline-flex min-h-9 items-center rounded-md border border-sky-400/60 bg-sky-400/10 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
                                 >
-                                  Finished game
+                                  Open game
                                 </Link>
                                 <Link
                                   href={finishedGameTrainHref(p.gameId)}

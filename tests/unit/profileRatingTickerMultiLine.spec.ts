@@ -70,6 +70,7 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     const chart = src('components/profile/ratings/MultiLineRatingTickerChart.tsx');
     expect(chart).toContain('data-testid="multi-line-finished-link"');
     expect(chart).toContain('activePoint.point.gameId');
+    expect(chart).toContain('Open game');
   });
 
   test('legend toggle hides series via visibleTrackIds', () => {

@@ -396,7 +396,10 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
     await page.getByTestId('landscape-ticker-chart-focus').focus();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByTestId('landscape-ticker-point-detail')).toBeVisible();
-    await expect(page.getByTestId('landscape-ticker-finished-link')).toBeVisible();
+    const openGame = page.getByTestId('landscape-ticker-finished-link');
+    await expect(openGame).toBeVisible();
+    await expect(openGame).toHaveText('Open game');
+    await expect(openGame).toHaveAttribute('href', /\/finished\//);
     await expect(page.getByTestId('landscape-ticker-list-finished-link').first()).toBeAttached();
     await expect(page.getByTestId('landscape-ticker-list-finished-link').first()).not.toBeVisible();
 
@@ -728,7 +731,9 @@ test.describe('landscape ticker actual-component DOM behavior', () => {
       const detailBox = toBox((await detail.boundingBox())!);
       expect(detailBox.height).toBeGreaterThan(0);
       expect(detailBox.top < vh && detailBox.bottom > 0).toBe(true);
-      await expect(page.getByTestId('landscape-ticker-finished-link')).toBeVisible();
+      const openGame = page.getByTestId('landscape-ticker-finished-link');
+      await expect(openGame).toBeVisible();
+      await expect(openGame).toHaveText('Open game');
     }
   });
 

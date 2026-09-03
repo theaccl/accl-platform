@@ -71,6 +71,9 @@ test.describe('compact ticker UTC temporal axes', () => {
     await expect(page.getByTestId('rating-ticker-point')).toHaveCount(1);
     await expect(page.getByTestId('rating-ticker-point-detail')).toContainText('UTC');
     await expect(page.getByTestId('rating-ticker-point-detail')).toContainText('win');
+    const openGame = page.getByTestId('rating-point-finished-link');
+    await expect(openGame).toHaveText('Open game');
+    await expect(openGame).toHaveAttribute('href', '/finished/g-d-1');
     await capture(page, 'single-overall-800.png');
   });
 
@@ -106,6 +109,10 @@ test.describe('compact ticker UTC temporal axes', () => {
     await expect(page.getByTestId('multi-line-hover-tooltip')).toContainText(
       'Aug 1, 2026, 12:00:00 PM UTC',
     );
+    await page.getByTestId('multi-line-point-free_day').click();
+    const openGame = page.getByTestId('multi-line-finished-link');
+    await expect(openGame).toHaveText('Open game');
+    await expect(openGame).toHaveAttribute('href', '/finished/g-d-1');
     await capture(page, 'comparison-overall-800.png');
   });
 });
