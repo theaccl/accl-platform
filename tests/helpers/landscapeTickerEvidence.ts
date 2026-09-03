@@ -478,7 +478,7 @@ export async function assertDominantCrossingPixel(
   let invokedFinish = false;
   let pausedForCapture = false;
   let finishFailures: string[] = [];
-  let clockAdvancedMs = 0;
+  const clockAdvancedMs = 0;
   let seekCurrentTimeMs: number | null = null;
   let soughtAnimationCount = 0;
   if (mode === 'settled') {

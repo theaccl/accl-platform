@@ -97,6 +97,10 @@ export type GalaxyFitMeasurement = {
 };
 
 export async function settleVisualViewport(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('resize'));
+    window.visualViewport?.dispatchEvent(new Event('resize'));
+  });
   await page.clock.fastForward(VIEWPORT_SETTLE_FAST_FORWARD_MS);
 }
 
