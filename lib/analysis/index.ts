@@ -22,6 +22,7 @@ export type {
   IntegrityControlledTruthResponse,
   IntegrityAuditLog,
   IntegrityPolicyVerdict,
+  TruthPayload,
   IntegrityRefusalReason,
   RecommendedAction,
   ActionRecommendation,

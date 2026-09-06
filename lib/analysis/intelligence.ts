@@ -24,7 +24,7 @@ export type IntegrityContext = {
   explicitConsentMode?: boolean;
 };
 
-type TruthPayload = {
+export type TruthPayload = {
   rows: AnalyzedMove[];
   engine?: {
     best_move: string;

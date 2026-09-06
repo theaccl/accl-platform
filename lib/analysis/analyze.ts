@@ -38,6 +38,16 @@ export async function runEngineAnalysis(params: {
   moves: { san: string }[];
 }): Promise<AnalysisResult> {
   const evalResult = await params.adapter.evaluate(params.fen, params.depth, params.multiPv);
+  return buildEngineAnalysisResult({ ...params, evalResult });
+}
+
+export function buildEngineAnalysisResult(params: {
+  fen: string;
+  depth: number;
+  moves: { san: string }[];
+  evalResult: Awaited<ReturnType<StockfishWebAdapter['evaluate']>>;
+}): AnalysisResult {
+  const { evalResult } = params;
   const candidateMovesSan = evalResult.candidateMoves
     .map((uci) => uciToSan(params.fen, uci))
     .filter((san): san is string => Boolean(san));

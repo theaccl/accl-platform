@@ -5,9 +5,22 @@ import {
   ProtectedAnalysisPrecheckError,
   runProtectedAnalysisRequest,
 } from '@/lib/analysis/protectedAnalysisServer';
-import { SupabaseModeratorQueueStore, type IntelligenceMode, type OverlapInput } from '@/lib/analysis';
+import { ProtectedReviewRuntimeDisabledError } from '@/lib/analysis/protectedReviewRuntime.server';
+import {
+  ChessTruthError,
+  SupabaseModeratorQueueStore,
+  type IntelligenceMode,
+  type OverlapInput,
+} from '@/lib/analysis';
+import {
+  EngineRuntimeConfigurationError,
+  EngineRuntimeRemoteError,
+  runtimeHttpStatus,
+} from '@/lib/chess/runtime';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
+export const preferredRegion = 'iad1';
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 const stableFetch: typeof fetch = (...args) => nativeFetch(...args);
@@ -19,10 +32,18 @@ type ProtectedAnalysisBody = {
   overlap?: OverlapInput;
 };
 
-function jsonError(message: string, status: number): Response {
-  return new Response(JSON.stringify({ error: message }), {
+function jsonError(
+  message: string,
+  status: number,
+  options?: { code?: string; retryable?: boolean; retryAfterSeconds?: number }
+): Response {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (options?.retryAfterSeconds) {
+    headers['Retry-After'] = String(options.retryAfterSeconds);
+  }
+  return new Response(JSON.stringify({ error: message, ...options }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
   });
 }
 
@@ -86,13 +107,38 @@ export async function POST(request: Request): Promise<Response> {
       gameId,
       overlap: body.overlap,
       moderatorQueueSink,
+      signal: request.signal,
     });
   } catch (e) {
     if (e instanceof ProtectedAnalysisPrecheckError) {
       return jsonError(e.message, e.status);
     }
-    const msg = e instanceof Error ? e.message : 'Protected analysis failed';
-    return jsonError(msg, 500);
+    if (e instanceof EngineRuntimeRemoteError) {
+      const failure = e.envelope.error;
+      return jsonError(failure.code, runtimeHttpStatus(failure.code), {
+        code: failure.code,
+        retryable: failure.retryable,
+        retryAfterSeconds: failure.retryable ? 1 : undefined,
+      });
+    }
+    if (
+      e instanceof ProtectedReviewRuntimeDisabledError ||
+      e instanceof EngineRuntimeConfigurationError
+    ) {
+      return jsonError('ENGINE_POOL_UNAVAILABLE', 503, {
+        code: 'ENGINE_POOL_UNAVAILABLE',
+        retryable: true,
+        retryAfterSeconds: 1,
+      });
+    }
+    if (e instanceof ChessTruthError) {
+      return jsonError(e.code, e.code === 'INVALID_FEN' ? 400 : 503, {
+        code: e.code,
+        retryable: e.code !== 'INVALID_FEN',
+        retryAfterSeconds: e.code === 'INVALID_FEN' ? undefined : 1,
+      });
+    }
+    return jsonError('Protected analysis failed', 500);
   }
 
   return new Response(

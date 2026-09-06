@@ -83,6 +83,168 @@ function createFakeServiceClient() {
 }
 
 test.describe('Protected analysis wiring', () => {
+  test('finished review binds the request to canonical intake and passes canonical moves only', async () => {
+    const userId = '00000000-0000-0000-0000-00000000aa01';
+    const gameId = '00000000-0000-0000-0000-00000000ab01';
+    const finalFen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+    const gameRow = {
+      id: gameId,
+      status: 'finished',
+      rated: false,
+      tournament_id: null,
+      fen: finalFen,
+      white_player_id: userId,
+      black_player_id: '00000000-0000-0000-0000-00000000aa02',
+    };
+    const client = {
+      from: () => {
+        const api = {
+          select: () => api,
+          eq: () => api,
+          maybeSingle: async () => ({ data: gameRow, error: null }),
+        };
+        return api;
+      },
+      rpc: async () => ({
+        data: {
+          schema_version: 'fgi.1',
+          game: {
+            ...gameRow,
+            analysis_partition: 'free',
+            play_context: 'free',
+            tempo: null,
+            live_time_control: null,
+            source_type: 'human_game',
+            mode: null,
+            winner_id: null,
+            result: '1/2-1/2',
+            end_reason: 'draw',
+            finished_at: '2026-09-06T00:00:00.000Z',
+            created_at: '2026-09-06T00:00:00.000Z',
+            final_fen: finalFen,
+            final_turn: 'w',
+          },
+          players: { white: null, black: null },
+          move_logs: [
+            {
+              san: 'e4',
+              fen_before: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+              fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+              created_at: '2026-09-06T00:00:01.000Z',
+              from_sq: 'e2',
+              to_sq: 'e4',
+            },
+            {
+              san: 'e5',
+              fen_before: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+              fen_after: finalFen,
+              created_at: '2026-09-06T00:00:02.000Z',
+              from_sq: 'e7',
+              to_sq: 'e5',
+            },
+          ],
+        },
+        error: null,
+      }),
+    } as unknown as Parameters<typeof runProtectedAnalysisRequest>[0]['serviceClient'];
+    let providerInput: { fen: string; mode: string; moves: { san: string }[] } | undefined;
+
+    const result = await runProtectedAnalysisRequest({
+      serviceClient: client,
+      userId,
+      gameId,
+      fen: finalFen,
+      mode: 'analyst',
+      protectedReviewTruthProvider: async (input) => {
+        providerInput = input;
+        return {
+          rows: input.moves.map((move, index) => ({
+            index,
+            san: move.san,
+            classification: 'good' as const,
+            analyzerType: 'engine' as const,
+          })),
+          engine: { best_move: 'Nf3', candidate_moves: ['Nf3'], confidence: 0.5, depth: 12 },
+          mode: input.mode,
+          tablebaseHook: null,
+          openingDbHook: null,
+        };
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(providerInput).toEqual({
+      fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+      mode: 'analyst',
+      moves: [{ san: 'e4' }, { san: 'e5' }],
+    });
+  });
+
+  test('finished review rejects a position absent from canonical intake before runtime', async () => {
+    const userId = '00000000-0000-0000-0000-00000000aa01';
+    const gameId = '00000000-0000-0000-0000-00000000ab01';
+    const finalFen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+    const gameRow = {
+      id: gameId,
+      status: 'finished',
+      rated: false,
+      tournament_id: null,
+      fen: finalFen,
+      white_player_id: userId,
+      black_player_id: '00000000-0000-0000-0000-00000000aa02',
+    };
+    const client = {
+      from: () => {
+        const api = {
+          select: () => api,
+          eq: () => api,
+          maybeSingle: async () => ({ data: gameRow, error: null }),
+        };
+        return api;
+      },
+      rpc: async () => ({
+        data: {
+          schema_version: 'fgi.1',
+          game: {
+            ...gameRow,
+            analysis_partition: 'free',
+            play_context: 'free',
+            tempo: null,
+            live_time_control: null,
+            source_type: 'human_game',
+            mode: null,
+            winner_id: null,
+            result: '1/2-1/2',
+            end_reason: 'draw',
+            finished_at: '2026-09-06T00:00:00.000Z',
+            created_at: '2026-09-06T00:00:00.000Z',
+            final_fen: finalFen,
+            final_turn: 'w',
+          },
+          players: { white: null, black: null },
+          move_logs: [],
+        },
+        error: null,
+      }),
+    } as unknown as Parameters<typeof runProtectedAnalysisRequest>[0]['serviceClient'];
+    let called = false;
+
+    await expect(
+      runProtectedAnalysisRequest({
+        serviceClient: client,
+        userId,
+        gameId,
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        mode: 'analyst',
+        protectedReviewTruthProvider: async () => {
+          called = true;
+          throw new Error('must not run');
+        },
+      })
+    ).rejects.toMatchObject({ status: 403 });
+    expect(called).toBe(false);
+  });
+
   test('protected server path passes real user/game identifiers into anti-cheat persistence', async () => {
     const fake = createFakeServiceClient();
     await runProtectedAnalysisRequest({
@@ -222,5 +384,8 @@ test.describe('Protected analysis wiring', () => {
     const gamePage = readFileSync('app/game/[id]/page.tsx', 'utf8');
     expect(gamePage.includes('anti_cheat_events')).toBe(false);
     expect(gamePage.includes('/api/protected/analysis')).toBe(true);
+    expect(gamePage.includes('const controller = new AbortController()')).toBe(true);
+    expect(gamePage.includes('signal: controller.signal')).toBe(true);
+    expect(gamePage.includes('controller.abort()')).toBe(true);
   });
 });
