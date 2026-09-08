@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RatingMode } from '@/lib/acclTimeControls';
 import { visibleTimeControlsForMode } from '@/lib/acclTimeControls';
 import { acclOverallRankLabelForLane } from '@/lib/profile/acclOverallRank';
 import { loadProfileRatingDashboardData } from '@/lib/loadProfileRatingDashboard';
+import { loadCompareTickerPeriod } from '@/lib/profile/loadCompareTickerPeriod';
 import {
   broadModeUnlockPolicyForMode,
   loadOwnSuccessfulPerformance,
@@ -52,9 +53,18 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
   const [selectedDetail, setSelectedDetail] = useState<string>('accl');
   const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof loadProfileRatingDashboardData>>>({
     historyByTrack: {},
+    historySourceByTrack: {},
     badgeByTrack: {},
     gamesCountByTrack: {},
   });
+  const comparePeriodLoader = useCallback(
+    (period: Parameters<typeof loadCompareTickerPeriod>[4]) =>
+      loadCompareTickerPeriod(supabase, profileUserId, isSelf, selectedDetail, period, {
+        dashboardSource: dashboard.historySourceByTrack[selectedDetail],
+        dashboardPoints: dashboard.historyByTrack[selectedDetail] ?? [],
+      }),
+    [dashboard.historyByTrack, dashboard.historySourceByTrack, isSelf, profileUserId, selectedDetail],
+  );
   const [successfulPerformance, setSuccessfulPerformance] =
     useState<OwnSuccessfulPerformanceResult | null>(null);
   const [successfulPerformanceLoading, setSuccessfulPerformanceLoading] = useState(false);
@@ -220,6 +230,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
         isSelf={isSelf}
         canLinkFinishedGames={isSelf}
         historyByTrack={dashboard.historyByTrack}
+        comparePeriodLoader={comparePeriodLoader}
       />
 
       {isSelf ? (

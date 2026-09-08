@@ -15,6 +15,7 @@ export type ProfileBadgeStateByTrack = Partial<Record<string, PlayerBadgeStateRo
 
 export type ProfileRatingDashboardData = {
   historyByTrack: Record<string, RatingHistoryPoint[]>;
+  historySourceByTrack: Record<string, 'ledger' | 'games' | 'none'>;
   badgeByTrack: ProfileBadgeStateByTrack;
   gamesCountByTrack: Record<string, number>;
 };
@@ -32,7 +33,7 @@ export async function loadProfileRatingDashboardData(
   trackIds: string[],
 ): Promise<ProfileRatingDashboardData> {
   if (!isSelf) {
-    return { historyByTrack: {}, badgeByTrack: {}, gamesCountByTrack: {} };
+    return { historyByTrack: {}, historySourceByTrack: {}, badgeByTrack: {}, gamesCountByTrack: {} };
   }
 
   const [gamesRes, badgeRes, ledgerRes] = await Promise.all([
@@ -65,10 +66,16 @@ export async function loadProfileRatingDashboardData(
   const games = (gamesRes.data ?? []) as ProfileHistoryGameRow[];
   const ledgerRows = (ledgerRes.error ? [] : (ledgerRes.data ?? [])) as RatingHistoryLedgerRow[];
   const historyByTrack: Record<string, RatingHistoryPoint[]> = {};
+  const historySourceByTrack: Record<string, 'ledger' | 'games' | 'none'> = {};
   for (const trackId of trackIds) {
     const fromLedger = buildRatingHistoryPointsFromLedger(ledgerRows, profileUserId, trackId);
     const fromGames = buildRatingHistoryPointsForTrack(games, profileUserId, trackId);
     historyByTrack[trackId] = fromLedger.length > 0 ? fromLedger : fromGames;
+    historySourceByTrack[trackId] = fromLedger.length > 0
+      ? 'ledger'
+      : fromGames.length > 0
+        ? 'games'
+        : 'none';
   }
 
   const badgeByTrack: ProfileBadgeStateByTrack = {};
@@ -96,5 +103,5 @@ export async function loadProfileRatingDashboardData(
     trackIds,
   );
 
-  return { historyByTrack, badgeByTrack, gamesCountByTrack };
+  return { historyByTrack, historySourceByTrack, badgeByTrack, gamesCountByTrack };
 }

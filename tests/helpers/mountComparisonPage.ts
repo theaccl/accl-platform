@@ -66,6 +66,7 @@ export type MountComparisonOptions = {
   crossing?: boolean;
   single?: boolean;
   accl?: boolean;
+  compareCoverage?: 'complete' | 'incomplete';
   viewport?: { width: number; height: number };
 };
 
@@ -123,6 +124,7 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
     crossing: Boolean(opts.crossing),
     single: Boolean(opts.single),
     accl: Boolean(opts.accl),
+    compareCoverage: opts.compareCoverage ?? 'complete',
   };
   await page.addScriptTag({
     content: `window.__HARNESS_OPTIONS = ${JSON.stringify(harnessOptions)};`,
