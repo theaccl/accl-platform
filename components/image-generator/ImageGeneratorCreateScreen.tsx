@@ -12,9 +12,15 @@ import { GenerationTokenCoin } from "@/components/image-generator/GenerationToke
 import PromptInput3 from "@/components/prompt-input-3";
 import { REFERENCE_IMAGE_MAX_BYTES } from "@/lib/imageGenerator/domain";
 import type { GeneratorMembershipTier, GeneratorTierContract } from "@/lib/imageGenerator/membership";
+import {
+  generationStatusFetchDisposition,
+  generationStatusRetryDelay,
+  type GenerationStatusFetchDisposition,
+} from "@/lib/imageGenerator/presentationState";
 import { supabase } from "@/lib/supabaseClient";
 
 type AccessState = "loading" | "signed_out" | "free" | "pro" | "error";
+type GenerationLoadState = "idle" | "waiting_for_auth" | "loading" | "active" | "retrying";
 
 type GenerationResponse = {
   generation?: { id?: string; status?: string };
@@ -27,6 +33,10 @@ type GenerationStatusResponse = {
   refinements?: Array<{ id: string; source_candidate_id: string; ordinal: number; status: string }>;
   error?: string;
 };
+
+type CandidateAccessResult =
+  | { disposition: "success"; candidate: ReviewCandidate }
+  | { disposition: Exclude<GenerationStatusFetchDisposition, "success"> };
 
 const REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const GENERATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -70,6 +80,7 @@ export function ImageGeneratorCreateScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [generationLoadState, setGenerationLoadState] = useState<GenerationLoadState>("idle");
   const [candidates, setCandidates] = useState<ReviewCandidate[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvedId, setApprovedId] = useState<string | null>(null);
@@ -107,8 +118,15 @@ export function ImageGeneratorCreateScreen() {
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("generation");
-    if (id && GENERATION_ID_PATTERN.test(id)) setGenerationId(id);
-  }, []);
+    if (!id) return;
+    if (GENERATION_ID_PATTERN.test(id)) {
+      setGenerationId(id);
+      setGenerationLoadState("waiting_for_auth");
+      return;
+    }
+    rememberGenerationInUrl(null);
+    setMessage("This private generation link is invalid.");
+  }, [rememberGenerationInUrl]);
 
   useEffect(() => {
     if (!referenceFile) {
@@ -172,39 +190,102 @@ export function ImageGeneratorCreateScreen() {
 
   useEffect(() => {
     if (!generationId || (candidates.length > 0 && !hasRefinementProcessing)) return;
+    if (access === "loading" || access === "error") return;
+    if (access === "signed_out") {
+      setGenerationLoadState("waiting_for_auth");
+      return;
+    }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let retryAttempt = 0;
+
+    const clearLoadedGeneration = (nextMessage: string) => {
+      setGenerationId(null);
+      setGenerationStatus(null);
+      setGenerationLoadState("idle");
+      setCandidates([]);
+      setRefinements([]);
+      setSelectedRefinementCandidateId(null);
+      setApprovedId(null);
+      setPlacementComplete(false);
+      rememberGenerationInUrl(null);
+      setMessage(nextMessage);
+    };
+
+    const retry = () => {
+      if (cancelled) return;
+      setGenerationLoadState("retrying");
+      setMessage("The private review connection was interrupted. ACCL is retrying safely.");
+      const delay = generationStatusRetryDelay(retryAttempt);
+      retryAttempt += 1;
+      timer = setTimeout(() => void poll(), delay);
+    };
+
+    const handleDisposition = (disposition: GenerationStatusFetchDisposition) => {
+      if (disposition === "signed_out") {
+        setAccess("signed_out");
+        setGenerationLoadState("waiting_for_auth");
+        return;
+      }
+      if (disposition === "unavailable") {
+        clearLoadedGeneration("This private generation is unavailable. It may have expired or been removed.");
+        return;
+      }
+      retry();
+    };
 
     const poll = async () => {
       const sessionResult = await supabase.auth.getSession();
       const token = sessionResult.data.session?.access_token?.trim();
-      if (!token || cancelled) return;
+      if (cancelled) return;
+      if (!token) {
+        setAccess("signed_out");
+        setGenerationLoadState("waiting_for_auth");
+        return;
+      }
+      setGenerationLoadState((current) => current === "active" ? current : "loading");
       try {
         const response = await fetch(`/api/image-generations/${generationId}`, {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         });
         const payload = (await response.json()) as GenerationStatusResponse;
-        if (!response.ok) throw new Error(payload.error ?? "generation_status_failed");
+        const disposition = generationStatusFetchDisposition(response.status);
+        if (disposition !== "success") {
+          handleDisposition(disposition);
+          return;
+        }
+        retryAttempt = 0;
         const status = payload.generation?.status ?? "queued";
         setGenerationStatus(status);
+        setGenerationLoadState("active");
         const nextRefinements = payload.refinements ?? [];
         setRefinements(nextRefinements);
 
         if (status === "review" && payload.candidates?.length) {
           const signedCandidates = await Promise.all(
-            payload.candidates.map(async (candidate) => {
+            payload.candidates.map(async (candidate): Promise<CandidateAccessResult> => {
               const accessResponse = await fetch(`/api/image-generations/${generationId}/candidates/${candidate.id}/access`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${token}` },
               });
               const accessPayload = (await accessResponse.json()) as { url?: string };
-              if (!accessResponse.ok || !accessPayload.url) throw new Error("candidate_access_failed");
-              return { ...candidate, url: accessPayload.url } as ReviewCandidate;
+              const accessDisposition = generationStatusFetchDisposition(accessResponse.status);
+              return accessDisposition === "success" && accessPayload.url
+                ? { disposition: "success", candidate: { ...candidate, url: accessPayload.url } as ReviewCandidate }
+                : { disposition: accessDisposition === "success" ? "retry" : accessDisposition };
             })
           );
+          const accessFailure = signedCandidates.find((result) => result.disposition !== "success");
+          if (accessFailure) {
+            handleDisposition(accessFailure.disposition);
+            return;
+          }
           if (!cancelled) {
-            setCandidates(signedCandidates);
+            const readyCandidates = signedCandidates
+              .filter((result): result is Extract<CandidateAccessResult, { disposition: "success" }> => result.disposition === "success")
+              .map((result) => result.candidate);
+            setCandidates(readyCandidates);
             const stillProcessing = nextRefinements.some((item) => item.status === "queued" || item.status === "running");
             setMessage(stillProcessing ? "The atelier is preparing two guided candidates." : "Your private candidates are ready. Choose the one you want to keep.");
             if (stillProcessing) timer = setTimeout(() => void poll(), 3000);
@@ -212,13 +293,17 @@ export function ImageGeneratorCreateScreen() {
           return;
         }
         if (["failed", "cancelled", "expired"].includes(status)) {
-          setMessage(status === "expired" ? "This private review window expired." : "This generation could not be completed. Please try again.");
+          clearLoadedGeneration(
+            status === "expired"
+              ? "This private review window expired. You can begin a new commission."
+              : "This generation could not be completed. Please try again."
+          );
           if (status === "failed" || status === "cancelled") void loadAccess();
           return;
         }
         timer = setTimeout(() => void poll(), 3000);
       } catch {
-        if (!cancelled) timer = setTimeout(() => void poll(), 5000);
+        retry();
       }
     };
 
@@ -227,7 +312,7 @@ export function ImageGeneratorCreateScreen() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [candidates.length, generationId, hasRefinementProcessing, loadAccess]);
+  }, [access, candidates.length, generationId, hasRefinementProcessing, loadAccess, rememberGenerationInUrl]);
 
   const selectReference = (file: File, slot: 'primary' | 'secondary' = 'primary') => {
     setReferenceError(null);
@@ -256,6 +341,7 @@ export function ImageGeneratorCreateScreen() {
     setGenerationId(null);
     rememberGenerationInUrl(null);
     setGenerationStatus(null);
+    setGenerationLoadState("idle");
     setCandidates([]);
     setApprovedId(null);
     setRefinements([]);
@@ -309,6 +395,7 @@ export function ImageGeneratorCreateScreen() {
       setGenerationId(id);
       rememberGenerationInUrl(id);
       setGenerationStatus(payload.generation?.status ?? "queued");
+      setGenerationLoadState("active");
       const candidateCount = tierContract?.initialCandidates ?? 3;
       setMessage(`Your reference and description are secured. The atelier is preparing ${candidateCount} private candidates.`);
       if (!unlimitedTokens) {
@@ -436,7 +523,13 @@ export function ImageGeneratorCreateScreen() {
   const formDisabled = access !== "pro" || !canCommission || generationId !== null;
   const candidateCount = tierContract?.initialCandidates ?? 3;
   const maxReferences = tierContract?.maxReferences ?? 1;
-  const generationInProgress = generationId != null && candidates.length === 0 && !["failed", "cancelled", "expired"].includes(generationStatus ?? "");
+  const generationInProgress = generationId != null
+    && access !== "loading"
+    && access !== "signed_out"
+    && access !== "error"
+    && generationLoadState !== "waiting_for_auth"
+    && candidates.length === 0
+    && !["failed", "cancelled", "expired"].includes(generationStatus ?? "");
   const refinementAllowance = tierContract?.touchUpGuides ?? 0;
   const canRefine = approvedId == null && !hasRefinementProcessing && refinements.length < refinementAllowance;
 

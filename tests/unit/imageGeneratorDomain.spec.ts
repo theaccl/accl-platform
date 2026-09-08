@@ -14,6 +14,10 @@ import {
   MAX_IMAGE_CANDIDATES,
 } from '../../lib/imageGenerator/domain';
 import { parseClaimedRequest } from '../../lib/imageGenerator/provider';
+import {
+  generationStatusFetchDisposition,
+  generationStatusRetryDelay,
+} from '../../lib/imageGenerator/presentationState';
 
 test('expanded membership generation limits stay locked', () => {
   expect(MAX_INITIAL_IMAGE_CANDIDATES).toBe(5);
@@ -63,4 +67,17 @@ test('worker only accepts a running claimed request', () => {
     owner_id: 'owner',
     status: 'running',
   });
+});
+
+test('generation review polling retries only temporary failures', () => {
+  expect(generationStatusFetchDisposition(200)).toBe('success');
+  expect(generationStatusFetchDisposition(401)).toBe('signed_out');
+  expect(generationStatusFetchDisposition(403)).toBe('unavailable');
+  expect(generationStatusFetchDisposition(404)).toBe('unavailable');
+  expect(generationStatusFetchDisposition(408)).toBe('retry');
+  expect(generationStatusFetchDisposition(429)).toBe('retry');
+  expect(generationStatusFetchDisposition(503)).toBe('retry');
+  expect(generationStatusRetryDelay(0)).toBe(3_000);
+  expect(generationStatusRetryDelay(1)).toBe(6_000);
+  expect(generationStatusRetryDelay(20)).toBe(15_000);
 });

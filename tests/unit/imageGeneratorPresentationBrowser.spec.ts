@@ -17,3 +17,11 @@ test('Image Generator and Vault presentation render without browser errors', asy
   await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });
+
+test('a signed-out private generation link never shows false generation progress', async ({ page }) => {
+  await page.goto('/image-generator?generation=480a7a7c-f741-43d5-866d-cb2aa72fcf3e');
+
+  await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByText('The atelier is creating')).toHaveCount(0);
+  await expect(page.getByText(/Preparing \d+ private candidates/)).toHaveCount(0);
+});
