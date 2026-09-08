@@ -27,6 +27,18 @@ test('candidate access uses an expiring private signed URL', async () => {
   expect(code).toContain("'Cache-Control': 'private, no-store'");
 });
 
+test('first candidate presentation is claimed privately and only once', async () => {
+  const code = await source('app/api/image-generations/[id]/presentation/route.ts');
+  expect(code).toContain("guardRequest(request, 'image_generation')");
+  expect(code).toContain('resolveAuthenticatedUser(request)');
+  expect(code).toContain('imageGenerationReviewExpired(');
+  expect(code).toContain(".eq('owner_id', user.id)");
+  expect(code).toContain(".eq('status', 'review')");
+  expect(code).toContain(".is('first_presented_at', null)");
+  expect(code).toContain(".update({ first_presented_at: presentedAt })");
+  expect(code).toContain("'Cache-Control': 'private, no-store'");
+});
+
 test('placement copies only an approved candidate into the two allowed public surfaces', async () => {
   const code = await source('app/api/profile/imagery/route.ts');
   expect(code).toContain(".eq('status', 'approved')");

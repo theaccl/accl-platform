@@ -122,9 +122,16 @@ test('licensed presentation effects remain lazy, reduced-motion safe, and mobile
   expect(screen).toContain('useReducedMotion() === true');
   expect(screen).toContain('window.matchMedia("(min-width: 768px)")');
   expect(screen).toContain('presentationMotionEnabled');
+  expect(screen).toContain('status === "approved"');
+  expect(screen).toContain('setApprovedId(readyCandidates[0]?.id ?? null)');
   expect(review).toContain('BlurHighlight');
   expect(review).toContain('<Flicker');
-  expect(review).toContain('!prefersReducedMotion');
+  expect(review).toContain('richMotionEnabled && motionAllowed');
+  expect(review).toContain('holdingActive && richMotionEnabled && motionAllowed');
+  expect(review).toContain('approvedId == null && motionAllowed');
+  expect(review).toContain('candidatePresentationPhase');
+  expect(review).toContain('data-presentation-phase={phase}');
+  expect(review).toContain('Rejected');
   expect(rays).toContain('dpr={[1, 1.5]}');
   expect(rays).toContain('powerPreference: "low-power"');
 });

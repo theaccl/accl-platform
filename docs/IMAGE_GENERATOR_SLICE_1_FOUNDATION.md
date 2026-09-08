@@ -14,6 +14,7 @@ The owner-approved source of truth is [`docs/image-generator/ACCL_GENERATION_TOK
 - Candidate review lasts 24 hours.
 - The review boundary fails closed at the API deadline: expired review candidates cannot receive new signed URLs, queued refinements cannot start after expiry, and the trusted maintenance pass persists expired request/candidate state without deleting private objects before a retention policy is approved.
 - Exactly one candidate may be approved. The approval transaction rejects the remaining candidates.
+- Candidate presentation is lifecycle-bound: a private authenticated server claim records each candidate's first reveal, unaccepted review cards receive a lightweight holding treatment, reduced-motion users receive still presentation, and all candidate motion stops as soon as one candidate is accepted. Reloading an accepted commission restores the winning private candidate and profile-placement choices without replaying the reveal.
 - Accepted candidates remain private saved creations with immutable parent/root lineage. Pro/Internal Unlimited may spend a new commission token to further a saved creation.
 - Placement publishes a still derivative. Candidate originals remain in the private bucket.
 - Motion visibility is resolved server-side by membership, surface, and viewer audience. Reduced-motion preferences always receive the still fallback.

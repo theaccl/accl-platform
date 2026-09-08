@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { Check, Clock3, Crown, ImageIcon, ImagePlus, LockKeyhole, ShieldCheck, X } from "lucide-react";
-import { useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 
 import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-generator/CandidateReviewGrid";
@@ -82,6 +82,7 @@ export function ImageGeneratorCreateScreen() {
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [generationLoadState, setGenerationLoadState] = useState<GenerationLoadState>("idle");
   const [candidates, setCandidates] = useState<ReviewCandidate[]>([]);
+  const [firstPresentationCandidateIds, setFirstPresentationCandidateIds] = useState<string[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvedId, setApprovedId] = useState<string | null>(null);
   const [placing, setPlacing] = useState<'profile_image' | 'profile_background' | 'matching_set' | null>(null);
@@ -204,6 +205,7 @@ export function ImageGeneratorCreateScreen() {
       setGenerationStatus(null);
       setGenerationLoadState("idle");
       setCandidates([]);
+      setFirstPresentationCandidateIds([]);
       setRefinements([]);
       setSelectedRefinementCandidateId(null);
       setApprovedId(null);
@@ -262,9 +264,16 @@ export function ImageGeneratorCreateScreen() {
         const nextRefinements = payload.refinements ?? [];
         setRefinements(nextRefinements);
 
-        if (status === "review" && payload.candidates?.length) {
+        if ((status === "review" || status === "approved") && payload.candidates?.length) {
+          const accessibleCandidates = status === "approved"
+            ? payload.candidates.filter((candidate) => candidate.status === "approved")
+            : payload.candidates;
+          if (accessibleCandidates.length === 0) {
+            retry();
+            return;
+          }
           const signedCandidates = await Promise.all(
-            payload.candidates.map(async (candidate): Promise<CandidateAccessResult> => {
+            accessibleCandidates.map(async (candidate): Promise<CandidateAccessResult> => {
               const accessResponse = await fetch(`/api/image-generations/${generationId}/candidates/${candidate.id}/access`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${token}` },
@@ -281,13 +290,37 @@ export function ImageGeneratorCreateScreen() {
             handleDisposition(accessFailure.disposition);
             return;
           }
+          let firstPresentationIds: string[] = [];
+          if (status === "review") {
+            const presentationResponse = await fetch(`/api/image-generations/${generationId}/presentation`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const presentationPayload = (await presentationResponse.json()) as {
+              first_presentation_candidate_ids?: string[];
+            };
+            const presentationDisposition = generationStatusFetchDisposition(presentationResponse.status);
+            if (presentationDisposition !== "success") {
+              handleDisposition(presentationDisposition);
+              return;
+            }
+            firstPresentationIds = presentationPayload.first_presentation_candidate_ids ?? [];
+          }
           if (!cancelled) {
             const readyCandidates = signedCandidates
               .filter((result): result is Extract<CandidateAccessResult, { disposition: "success" }> => result.disposition === "success")
               .map((result) => result.candidate);
             setCandidates(readyCandidates);
+            setFirstPresentationCandidateIds(firstPresentationIds);
+            if (status === "approved") setApprovedId(readyCandidates[0]?.id ?? null);
             const stillProcessing = nextRefinements.some((item) => item.status === "queued" || item.status === "running");
-            setMessage(stillProcessing ? "The atelier is preparing two guided candidates." : "Your private candidates are ready. Choose the one you want to keep.");
+            setMessage(
+              status === "approved"
+                ? "Your accepted identity is ready for profile placement."
+                : stillProcessing
+                  ? "The atelier is preparing two guided candidates."
+                  : "Your private candidates are ready. Choose the one you want to keep."
+            );
             if (stillProcessing) timer = setTimeout(() => void poll(), 3000);
           }
           return;
@@ -343,6 +376,7 @@ export function ImageGeneratorCreateScreen() {
     setGenerationStatus(null);
     setGenerationLoadState("idle");
     setCandidates([]);
+    setFirstPresentationCandidateIds([]);
     setApprovedId(null);
     setRefinements([]);
     setSelectedRefinementCandidateId(null);
@@ -427,6 +461,7 @@ export function ImageGeneratorCreateScreen() {
       });
       if (!response.ok) throw new Error("candidate_approval_failed");
       setApprovedId(candidateId);
+      setFirstPresentationCandidateIds([]);
       setCandidates((current) => current.map((candidate) => ({ ...candidate, status: candidate.id === candidateId ? "approved" : "rejected" })));
       setMessage("Candidate accepted. Next, you can prepare it for a profile icon or background.");
     } catch {
@@ -610,8 +645,17 @@ export function ImageGeneratorCreateScreen() {
           </aside>
         </div>
 
-        {generationInProgress ? <CandidateBuildUp candidateCount={candidateCount} reducedMotion={!presentationMotionEnabled} /> : null}
-        {candidates.length > 0 ? <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={membershipTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} /> : null}
+        <AnimatePresence mode="wait" initial={false}>
+          {generationInProgress ? (
+            <motion.div key="candidate-build-up" initial={prefersReducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.985 }} transition={{ duration: prefersReducedMotion ? 0 : 0.28 }}>
+              <CandidateBuildUp candidateCount={candidateCount} reducedMotion={!presentationMotionEnabled} />
+            </motion.div>
+          ) : candidates.length > 0 ? (
+            <motion.div key="candidate-review" initial={prefersReducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: prefersReducedMotion ? 0 : 0.32 }}>
+              <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={membershipTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} firstPresentationCandidateIds={firstPresentationCandidateIds} richMotionEnabled={presentationMotionEnabled} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         {selectedRefinementCandidateId && canRefine ? (
           <section className="mt-5 rounded-2xl border border-violet-400/25 bg-violet-950/15 p-5" aria-labelledby="guided-refinement-title">
             <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-violet-200">Included in this commission</p>

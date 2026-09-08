@@ -15,6 +15,7 @@ import {
 } from '../../lib/imageGenerator/domain';
 import { parseClaimedRequest } from '../../lib/imageGenerator/provider';
 import {
+  candidatePresentationPhase,
   generationStatusFetchDisposition,
   generationStatusRetryDelay,
 } from '../../lib/imageGenerator/presentationState';
@@ -24,6 +25,14 @@ test('expanded membership generation limits stay locked', () => {
   expect(MAX_IMAGE_CANDIDATES).toBe(13);
   expect(CANDIDATE_REVIEW_HOURS).toBe(24);
   expect(CANDIDATE_SIGNED_URL_SECONDS).toBe(60);
+});
+
+test('candidate presentation motion ends when a candidate is accepted', () => {
+  expect(candidatePresentationPhase({ status: 'review', accepted: false, firstPresentation: true, motionAllowed: true })).toBe('reveal');
+  expect(candidatePresentationPhase({ status: 'review', accepted: false, firstPresentation: false, motionAllowed: true })).toBe('holding');
+  expect(candidatePresentationPhase({ status: 'review', accepted: false, firstPresentation: true, motionAllowed: false })).toBe('still');
+  expect(candidatePresentationPhase({ status: 'approved', accepted: true, firstPresentation: true, motionAllowed: true })).toBe('accepted_still');
+  expect(candidatePresentationPhase({ status: 'rejected', accepted: false, firstPresentation: true, motionAllowed: true })).toBe('rejected_still');
 });
 
 test('web capture handling is a cover/deterrent and never claims a hard block', () => {
