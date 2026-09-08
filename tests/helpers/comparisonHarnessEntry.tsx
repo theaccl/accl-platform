@@ -4,12 +4,14 @@ import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/Rating
 import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { LANDSCAPE_TICKER_CROSSING_HISTORY } from './landscapeTickerCrossingFixture';
+import type { ComparePeriod } from '@/lib/profile/compareMode';
 
 type HarnessOptions = {
   empty?: boolean;
   crossing?: boolean;
   single?: boolean;
   accl?: boolean;
+  compareCoverage?: 'complete' | 'incomplete';
 };
 
 function readOptions(): HarnessOptions {
@@ -125,6 +127,23 @@ function buildHistory(): Record<string, RatingHistoryPoint[]> {
   };
 }
 
+function harnessPeriodLoader(
+  history: RatingHistoryPoint[],
+  period: ComparePeriod,
+  coverage: 'complete' | 'incomplete' = 'complete',
+) {
+  return Promise.resolve({
+    status: coverage,
+    points: history,
+    coverage: {
+      startMs: period.startMs,
+      endMs: coverage === 'complete' ? period.endMs : period.startMs,
+      priorToStartResolved: coverage === 'complete',
+    },
+    ...(coverage === 'incomplete' ? { message: 'Fixture coverage is incomplete.' } : {}),
+  });
+}
+
 export function ComparisonHarness() {
   const initial = readOptions();
   const empty = Boolean(initial.empty);
@@ -152,6 +171,13 @@ export function ComparisonHarness() {
           isSelf
           canLinkFinishedGames
           historyByTrack={historyByTrack}
+          comparePeriodLoader={(period) =>
+            harnessPeriodLoader(
+              historyByTrack[accl ? 'accl' : 'free_day'] ?? [],
+              period,
+              initial.compareCoverage,
+            )
+          }
         />
       ) : (
         <RatingFamilyComparisonPanel historyByTrack={historyByTrack} canLinkFinishedGames />
