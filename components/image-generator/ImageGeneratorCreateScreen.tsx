@@ -11,7 +11,7 @@ import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-ge
 import { GenerationTokenCoin } from "@/components/image-generator/GenerationTokenCoin";
 import PromptInput3 from "@/components/prompt-input-3";
 import { REFERENCE_IMAGE_MAX_BYTES } from "@/lib/imageGenerator/domain";
-import type { GeneratorMembershipTier, GeneratorTierContract } from "@/lib/imageGenerator/membership";
+import { GENERATOR_TIER_CONTRACTS, isGeneratorMembershipTier, type GeneratorMembershipTier, type GeneratorTierContract } from "@/lib/imageGenerator/membership";
 import {
   generationStatusFetchDisposition,
   generationStatusRetryDelay,
@@ -80,6 +80,7 @@ export function ImageGeneratorCreateScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [commissionTier, setCommissionTier] = useState<GeneratorMembershipTier | null>(null);
   const [generationLoadState, setGenerationLoadState] = useState<GenerationLoadState>("idle");
   const [candidates, setCandidates] = useState<ReviewCandidate[]>([]);
   const [firstPresentationCandidateIds, setFirstPresentationCandidateIds] = useState<string[]>([]);
@@ -203,6 +204,7 @@ export function ImageGeneratorCreateScreen() {
     const clearLoadedGeneration = (nextMessage: string) => {
       setGenerationId(null);
       setGenerationStatus(null);
+      setCommissionTier(null);
       setGenerationLoadState("idle");
       setCandidates([]);
       setFirstPresentationCandidateIds([]);
@@ -260,6 +262,8 @@ export function ImageGeneratorCreateScreen() {
         retryAttempt = 0;
         const status = payload.generation?.status ?? "queued";
         setGenerationStatus(status);
+        setCommissionTier(isGeneratorMembershipTier(payload.generation?.membership_tier)
+          ? payload.generation.membership_tier : null);
         setGenerationLoadState("active");
         const nextRefinements = payload.refinements ?? [];
         setRefinements(nextRefinements);
@@ -374,6 +378,7 @@ export function ImageGeneratorCreateScreen() {
     setGenerationId(null);
     rememberGenerationInUrl(null);
     setGenerationStatus(null);
+    setCommissionTier(null);
     setGenerationLoadState("idle");
     setCandidates([]);
     setFirstPresentationCandidateIds([]);
@@ -565,7 +570,8 @@ export function ImageGeneratorCreateScreen() {
     && generationLoadState !== "waiting_for_auth"
     && candidates.length === 0
     && !["failed", "cancelled", "expired"].includes(generationStatus ?? "");
-  const refinementAllowance = tierContract?.touchUpGuides ?? 0;
+  const commissionContract = commissionTier ? GENERATOR_TIER_CONTRACTS[commissionTier] : null;
+  const refinementAllowance = commissionContract?.touchUpGuides ?? 0;
   const canRefine = approvedId == null && !hasRefinementProcessing && refinements.length < refinementAllowance;
 
   return (
@@ -652,7 +658,7 @@ export function ImageGeneratorCreateScreen() {
             </motion.div>
           ) : candidates.length > 0 ? (
             <motion.div key="candidate-review" initial={prefersReducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: prefersReducedMotion ? 0 : 0.32 }}>
-              <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={membershipTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} firstPresentationCandidateIds={firstPresentationCandidateIds} richMotionEnabled={presentationMotionEnabled} />
+              <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={commissionTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} firstPresentationCandidateIds={firstPresentationCandidateIds} richMotionEnabled={presentationMotionEnabled} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -676,7 +682,7 @@ export function ImageGeneratorCreateScreen() {
             <h2 id="placement-title" className="mt-2 font-display text-2xl font-bold text-white">Place your finished imagery</h2>
             <p className="mt-1 text-sm text-white/55">ACCL publishes optimized still derivatives. Your private candidate original remains protected.</p>
             <div className="mt-4 flex flex-wrap gap-3">
-              {membershipTier === 'pro' || membershipTier === 'internal_unlimited' ? (
+              {commissionContract?.placement === 'matching_icon_and_background' ? (
                 <button type="button" disabled={placing != null || placementComplete} onClick={() => void placeAcceptedCandidate('matching_set')} className="min-h-11 rounded-xl bg-[var(--accl-accent-gold)] px-5 text-sm font-bold text-black transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{placing === 'matching_set' ? 'Placing matching set…' : placementComplete ? 'Matching set placed' : 'Place matching icon + background'}</button>
               ) : (
                 <>

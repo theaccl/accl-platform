@@ -1,4 +1,4 @@
-import type { GeneratorMembershipTier } from '@/lib/imageGenerator/membership';
+import { isGeneratorMembershipTier, type GeneratorMembershipTier } from '@/lib/imageGenerator/membership';
 
 export type CosmeticMotionSurface =
   | 'profile_icon'
@@ -32,6 +32,8 @@ export function resolveCosmeticMotion(input: {
     reason,
   });
   if (input.reducedMotion) return still('reduced_motion');
+  if (!isGeneratorMembershipTier(input.tier)) return still('tier_still_only');
+  if (input.context === 'community') return still('surface_restricted');
   if (input.tier === 'free') return still('tier_still_only');
 
   if (input.tier === 'plus') {
@@ -49,9 +51,6 @@ export function resolveCosmeticMotion(input: {
   }
   if (!input.explicitlyAuthorizedPublicSurface) return still('authorization_required');
   if ((input.context === 'chat' || input.context === 'game') && input.surface !== 'profile_icon') {
-    return still('surface_restricted');
-  }
-  if (input.context === 'community' && input.surface === 'profile_background') {
     return still('surface_restricted');
   }
   return { allowMotion: true, requiresStillFallback: true, reason: 'allowed' };

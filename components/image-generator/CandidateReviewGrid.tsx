@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Check, LockKeyhole, ShieldAlert, Sparkles, WandSparkles, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { CaptureProtectionDecision } from "@/lib/imageGenerator/captureProtection";
 import { candidatePresentationPhase } from "@/lib/imageGenerator/presentationState";
@@ -52,6 +52,7 @@ export function CandidateReviewGrid({
   richMotionEnabled = false,
 }: CandidateReviewGridProps) {
   const [captureDecision, setCaptureDecision] = useState(NO_CAPTURE_DECISION);
+  const reviewElement = useRef<HTMLElement>(null);
   const prefersReducedMotion = useReducedMotion() === true;
   const motionAllowed = !prefersReducedMotion;
   const firstPresentationIds = useMemo(
@@ -60,6 +61,16 @@ export function CandidateReviewGrid({
   );
   const holdingActive = approvedId == null && candidates.some((candidate) => candidate.status === "review");
 
+  useLayoutEffect(() => {
+    if (approvedId == null) return;
+    // Finish already-running reveals even when their end target has not changed.
+    // Keep image nodes mounted: their short-lived private URLs may have expired.
+    for (const animation of reviewElement.current?.getAnimations({ subtree: true }) ?? []) {
+      if (animation.effect?.getComputedTiming().endTime === Infinity) animation.cancel();
+      else animation.finish();
+    }
+  }, [approvedId]);
+
   useEffect(() => {
     const adapter = new WebCaptureProtectionAdapter({ onDecision: setCaptureDecision });
     adapter.enable();
@@ -67,7 +78,7 @@ export function CandidateReviewGrid({
   }, []);
 
   return (
-    <section className="relative isolate mt-8 overflow-hidden rounded-3xl border border-[var(--accl-border-subtle)] bg-black/10 px-4 py-8 sm:px-6" aria-labelledby="private-candidates-title">
+    <section ref={reviewElement} className="relative isolate mt-8 overflow-hidden rounded-3xl border border-[var(--accl-border-subtle)] bg-black/10 px-4 py-8 sm:px-6" aria-labelledby="private-candidates-title">
       {holdingActive && richMotionEnabled && motionAllowed ? <Flicker className="-z-10 opacity-20" spacing={38} particleSize={1} colorPalette={["#d4a017", "#7c3aed"]} glowColor="#d4a017" overlay={0.84} overlayColor="#08070b" rate={0.18} flickerChance={0.16} /> : null}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

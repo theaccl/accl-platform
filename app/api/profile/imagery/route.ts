@@ -4,6 +4,7 @@ import { placeProfileImageSchema, parseJsonBody } from '@/lib/imageGenerator/api
 import { recordPlacementDerivativeCost } from '@/lib/imageGenerator/costAccounting';
 import { createProfileStillDerivative } from '@/lib/imageGenerator/derivatives';
 import type { ImageGenerationCandidateRow } from '@/lib/imageGenerator/domain';
+import { preflightProfilePlacement } from '@/lib/imageGenerator/placementPreflight';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
 import { guardRequest } from '@/lib/server/requestGuard';
@@ -26,10 +27,16 @@ export async function POST(request: Request): Promise<Response> {
       .eq('id', parsed.data.candidate_id)
       .eq('owner_id', user.id)
       .eq('status', 'approved')
+      .eq('moderation_status', 'approved')
       .maybeSingle();
     if (candidateResult.error) return jsonResponse({ error: 'Could not load approved candidate' }, 500);
     if (!candidateResult.data) return jsonResponse({ error: 'Approved candidate not found' }, 404);
     const candidate = candidateResult.data as ImageGenerationCandidateRow;
+    const preflight = await preflightProfilePlacement(supabase, user.id, candidate, parsed.data.surface);
+    if ('error' in preflight) return jsonResponse({ error: preflight.error }, preflight.status);
+    if (preflight.replay) {
+      return jsonResponse({ placement: preflight.replay[parsed.data.surface] }, 200, { 'Cache-Control': 'private, no-store' });
+    }
     const downloaded = await supabase.storage
       .from('image-generation-candidates')
       .download(candidate.storage_path);

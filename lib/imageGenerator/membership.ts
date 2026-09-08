@@ -74,10 +74,14 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
   },
 };
 
+export function isGeneratorMembershipTier(tier: unknown): tier is GeneratorMembershipTier {
+  return typeof tier === 'string' && Object.hasOwn(GENERATOR_TIER_CONTRACTS, tier);
+}
+
 export function generatorTierSupportsMatchingSet(
   tier: unknown
 ): tier is Extract<GeneratorMembershipTier, 'pro' | 'internal_unlimited'> {
-  if (typeof tier !== 'string' || !(tier in GENERATOR_TIER_CONTRACTS)) return false;
+  if (!isGeneratorMembershipTier(tier)) return false;
   return GENERATOR_TIER_CONTRACTS[tier as GeneratorMembershipTier].placement ===
     'matching_icon_and_background';
 }

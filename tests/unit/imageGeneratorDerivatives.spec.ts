@@ -38,6 +38,29 @@ test('profile background derivative is a cropped 1600x900 still WebP', async () 
   expect(metadata.pages ?? 1).toBe(1);
 });
 
+test('icon and background crops preserve square geometry and strip source metadata', async () => {
+  const square = await sharp({ create: { width: 200, height: 200, channels: 3, background: '#ff0000' } }).png().toBuffer();
+  const source = await sharp({ create: { width: 1200, height: 600, channels: 3, background: '#0000ff' } })
+    .composite([{ input: square, gravity: 'centre' }]).withMetadata().png().toBuffer();
+  for (const surface of ['profile_image', 'profile_background'] as const) {
+    const derivative = await createProfileStillDerivative(source, surface);
+    const metadata = await sharp(derivative.bytes).metadata();
+    expect(metadata.exif).toBeUndefined();
+    expect(metadata.icc).toBeUndefined();
+    const { data, info } = await sharp(derivative.bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const xs: number[] = []; const ys: number[] = [];
+    for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+      const pixel = (y * info.width + x) * info.channels;
+      if (data[pixel] > 180 && data[pixel + 2] < 80) { xs.push(x); ys.push(y); }
+    }
+    expect(xs.length).toBeGreaterThan(1000);
+    const width = xs.reduce((max, x) => Math.max(max, x), 0) - xs.reduce((min, x) => Math.min(min, x), info.width) + 1;
+    const height = ys.reduce((max, y) => Math.max(max, y), 0) - ys.reduce((min, y) => Math.min(min, y), info.height) + 1;
+    expect(width / height).toBeGreaterThan(0.95);
+    expect(width / height).toBeLessThan(1.05);
+  }
+});
+
 test('placement route uploads the derivative instead of the private raw candidate', async () => {
   const code = await readFile(join(process.cwd(), 'app/api/profile/imagery/route.ts'), 'utf8');
   expect(code).toContain('createProfileStillDerivative(');
