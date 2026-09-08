@@ -45,6 +45,7 @@ import {
   stepCtPeriod,
   utcDayKey,
   type CompareOpResult,
+  type ComparePeriod,
   type CompareSessionState,
 } from '../../lib/profile/compareMode';
 import {
@@ -117,6 +118,14 @@ function withCts(lane: CompareSessionState['lane'], anchors: number[]): CompareS
   let s = createCompareSession(lane, NOW);
   for (const a of anchors) s = must(addCompareTicker(s, a, NOW));
   return s;
+}
+
+function completeCoverage(period: ComparePeriod) {
+  return {
+    startMs: period.startMs,
+    endMs: period.endMs,
+    priorToStartResolved: true,
+  };
 }
 
 test.describe('R042 compare mode — lane ownership and availability', () => {
@@ -255,13 +264,44 @@ test.describe('R042 compare mode — future periods prohibited', () => {
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.reason).toBe('future_period');
   });
+
+  test('raw future anchors inside the current UTC day/week/month/year are rejected', () => {
+    const futureAnchors = {
+      day: Date.parse('2026-09-07T18:00:00Z'),
+      week: Date.parse('2026-09-10T00:00:00Z'),
+      month: Date.parse('2026-09-20T00:00:00Z'),
+      year: Date.parse('2026-12-01T00:00:00Z'),
+    } as const;
+
+    for (const lane of ['day', 'week', 'month', 'year'] as const) {
+      expect(isAnchorSelectable(lane, futureAnchors[lane], NOW), lane).toBe(false);
+
+      const empty = createCompareSession(lane, NOW);
+      const added = addCompareTicker(empty, futureAnchors[lane], NOW);
+      expect(added.ok, `add ${lane}`).toBe(false);
+      if (!added.ok) expect(added.reason).toBe('future_period');
+
+      const existing = withCts(lane, [AUG_ANCHOR]);
+      const assigned = setCtAnchor(existing, 'ct1', futureAnchors[lane], NOW);
+      expect(assigned.ok, `set ${lane}`).toBe(false);
+      if (!assigned.ok) expect(assigned.reason).toBe('future_period');
+    }
+  });
+
+  test('past anchors and the current instant remain selectable', () => {
+    for (const lane of ['day', 'week', 'month', 'year'] as const) {
+      expect(isAnchorSelectable(lane, AUG_ANCHOR, NOW), `${lane} past`).toBe(true);
+      expect(isAnchorSelectable(lane, NOW, NOW), `${lane} now`).toBe(true);
+    }
+  });
 });
 
 test.describe('R042 compare mode — truthful empty / carry-in periods', () => {
   const augustDay = compareAnchorPeriod('day', AUG_ANCHOR)!;
 
   test('no in-window events and no prior event → truly empty (draw nothing)', () => {
-    const occ = periodOccupancy([], augustDay);
+    const occ = periodOccupancy([], augustDay, completeCoverage(augustDay));
+    expect(occ.coverage).toBe('complete');
     expect(occ.ratingEvents).toBe(0);
     expect(occ.games).toBe(0);
     expect(occ.carryInRating).toBeNull();
@@ -272,7 +312,8 @@ test.describe('R042 compare mode — truthful empty / carry-in periods', () => {
 
   test('no in-window events but a real prior event → carry-in hold, no markers', () => {
     const prior = [point({ id: 'p0', occurredAt: '2026-07-20T00:00:00Z', ratingAfter: 1544 })];
-    const occ = periodOccupancy(prior, augustDay);
+    const occ = periodOccupancy(prior, augustDay, completeCoverage(augustDay));
+    expect(occ.coverage).toBe('complete');
     expect(occ.ratingEvents).toBe(0);
     expect(occ.games).toBe(0);
     expect(occ.carryInRating).toBe(1544);
@@ -287,11 +328,47 @@ test.describe('R042 compare mode — truthful empty / carry-in periods', () => {
       point({ id: 'far', occurredAt: '2026-08-20T11:00:00Z', ratingAfter: 9999 }),
     ];
     expect(pointsInPeriod(pts, augustDay)).toHaveLength(2);
-    const occ = periodOccupancy(pts, augustDay);
+    const occ = periodOccupancy(pts, augustDay, completeCoverage(augustDay));
+    expect(occ.coverage).toBe('complete');
     expect(occ.ratingEvents).toBe(2);
     expect(occ.games).toBe(2);
     expect(occ.netRatingChange).toBe(60);
     expect(occ.isEmpty).toBe(false);
+  });
+
+  test('incomplete coverage never claims empty, carry-in, or complete movement', () => {
+    const partial = [
+      point({
+        id: 'visible',
+        occurredAt: '2026-08-15T10:00:00Z',
+        ratingBefore: 1500,
+        ratingAfter: 1520,
+      }),
+    ];
+    const occ = periodOccupancy(partial, augustDay, {
+      startMs: augustDay.startMs + 1,
+      endMs: augustDay.endMs,
+      priorToStartResolved: false,
+    });
+    expect(occ).toEqual({
+      coverage: 'incomplete',
+      ratingEvents: 1,
+      games: 1,
+      carryInRating: null,
+      isEmpty: false,
+      isCarryInHold: false,
+      netRatingChange: null,
+    });
+  });
+
+  test('coverage must span the full period and resolve the prior baseline', () => {
+    for (const coverage of [
+      { startMs: augustDay.startMs + 1, endMs: augustDay.endMs, priorToStartResolved: true },
+      { startMs: augustDay.startMs, endMs: augustDay.endMs - 1, priorToStartResolved: true },
+      { startMs: augustDay.startMs, endMs: augustDay.endMs, priorToStartResolved: false },
+    ]) {
+      expect(periodOccupancy([], augustDay, coverage).coverage).toBe('incomplete');
+    }
   });
 });
 
@@ -398,6 +475,15 @@ test.describe('R042 compare mode — game-link truthfulness', () => {
  * ================================================================== */
 
 test.describe('R042 correction 1 — UTC day-open reset contract', () => {
+  test('session creation requires a finite UTC open instant', () => {
+    expect(() => createCompareSession('month', Number.NaN)).toThrow(
+      'compare session open instant is not finite',
+    );
+    expect(() => createCompareSession('month', Number.POSITIVE_INFINITY)).toThrow(
+      'compare session open instant is not finite',
+    );
+  });
+
   test('utcDayKey is a UTC calendar day, independent of clock time within it', () => {
     expect(utcDayKey(NOW)).toBe(NOW_DAY_KEY);
     expect(utcDayKey(Date.parse('2026-09-07T23:59:59Z'))).toBe('2026-09-07');
@@ -491,7 +577,8 @@ test.describe('R042 correction 3 — rating events vs real games', () => {
       point({ id: 'g1', occurredAt: '2026-08-05T10:00:00Z', eventType: 'game', gameId: 'g1', ratingBefore: 1500, ratingAfter: 1512 }),
       point({ id: 'batch', occurredAt: '2026-08-20T10:00:00Z', eventType: 'tournament_batch', gameId: null, result: 'event_settlement', ratingBefore: 1512, ratingAfter: 1530 }),
     ];
-    const occ = periodOccupancy(pts, augustMonth);
+    const occ = periodOccupancy(pts, augustMonth, completeCoverage(augustMonth));
+    expect(occ.coverage).toBe('complete');
     expect(occ.ratingEvents).toBe(2); // both drive chart movement
     expect(occ.games).toBe(1); // only the real game counts
     expect(occ.netRatingChange).toBe(30); // 1530 - 1500 across all events

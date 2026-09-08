@@ -123,6 +123,8 @@ export type ComparePeriod = {
 
 /** Truthful occupancy of a CT period. Never invents movement. */
 export type ComparePeriodOccupancy = {
+  /** Whether the supplied history proves this period and its prior baseline. */
+  coverage: 'complete' | 'incomplete';
   /**
    * All legitimate in-window rating events — games *and* non-game ledger events
    * (tournament batches, bracket settlements, admin adjustments, backfills).
@@ -145,6 +147,18 @@ export type ComparePeriodOccupancy = {
   isCarryInHold: boolean;
   /** Net change across in-window rating events (last.after - first.before). Null when none. */
   netRatingChange: number | null;
+};
+
+/**
+ * Evidence supplied by the history loader for one requested period. A bounded
+ * slice is complete only when it spans the entire period and also resolved the
+ * last event before the period start (including the truthful "none exists"
+ * result).
+ */
+export type CompareHistoryCoverage = {
+  startMs: number;
+  endMs: number;
+  priorToStartResolved: boolean;
 };
 
 /* ------------------------------------------------------------------ *
@@ -277,6 +291,9 @@ export function isAnchorSelectable(
   nowMs: number,
   timeZone: string = RATING_TICKER_DISPLAY_TIME_ZONE,
 ): boolean {
+  if (!Number.isFinite(anchorMs) || !Number.isFinite(nowMs) || anchorMs > nowMs) {
+    return false;
+  }
   const period = compareAnchorPeriod(lane, anchorMs, timeZone);
   if (!period) return false;
   return isPeriodSelectable(period, nowMs);
@@ -317,13 +334,34 @@ export function countRealGames(points: RatingHistoryPoint[]): number {
 export function periodOccupancy(
   points: RatingHistoryPoint[],
   period: ComparePeriod,
+  coverage: CompareHistoryCoverage,
 ): ComparePeriodOccupancy {
   const inWindow = pointsInPeriod(points, period);
-  const carryInRating = lastRatingAfterBefore(points, period.startMs);
   const ratingEvents = inWindow.length;
   const games = countRealGames(inWindow);
+  const coverageComplete =
+    Number.isFinite(coverage.startMs) &&
+    Number.isFinite(coverage.endMs) &&
+    coverage.startMs <= period.startMs &&
+    coverage.endMs >= period.endMs &&
+    coverage.priorToStartResolved;
+
+  if (!coverageComplete) {
+    return {
+      coverage: 'incomplete',
+      ratingEvents,
+      games,
+      carryInRating: null,
+      isEmpty: false,
+      isCarryInHold: false,
+      netRatingChange: null,
+    };
+  }
+
+  const carryInRating = lastRatingAfterBefore(points, period.startMs);
   if (ratingEvents === 0) {
     return {
+      coverage: 'complete',
       ratingEvents: 0,
       games: 0,
       carryInRating,
@@ -333,6 +371,7 @@ export function periodOccupancy(
     };
   }
   return {
+    coverage: 'complete',
     ratingEvents,
     games,
     carryInRating,
@@ -427,18 +466,22 @@ export function rankOf(state: CompareSessionState, id: CompareSeriesId): Compare
 /**
  * Create a fresh compare session, stamped with the UTC day it is opened on.
  * `openedAtMs` is required so the day-open contract is explicit; a non-finite
- * value yields an empty key, which forces a reset on the first real reopen.
+ * value is rejected instead of silently creating a 1970 or unstamped session.
  */
 export function createCompareSession(
-  lane: CompareLane = 'month',
-  openedAtMs = 0,
+  lane: CompareLane,
+  openedAtMs: number,
 ): CompareSessionState {
+  const openedUtcDayKey = utcDayKey(openedAtMs);
+  if (!openedUtcDayKey) {
+    throw new TypeError('compare session open instant is not finite');
+  }
   return {
     lane,
     cts: [],
     layout: 'independent',
     introSeen: false,
-    openedUtcDayKey: utcDayKey(openedAtMs) ?? '',
+    openedUtcDayKey,
   };
 }
 
@@ -479,6 +522,9 @@ export function addCompareTicker(
 ): CompareOpResult {
   if (!isCompareEnabled(state.lane)) return fail(state, 'compare_disabled_overall');
   if (state.cts.length >= MAX_COMPARE_TICKERS) return fail(state, 'slots_full');
+  if (!Number.isFinite(anchorMs)) return fail(state, 'invalid_anchor');
+  if (!Number.isFinite(nowMs)) return fail(state, 'invalid_anchor');
+  if (anchorMs > nowMs) return fail(state, 'future_period');
   const period = compareAnchorPeriod(state.lane as CompareBucketLane, anchorMs, timeZone);
   if (!period) return fail(state, 'invalid_anchor');
   if (!isPeriodSelectable(period, nowMs)) return fail(state, 'future_period');
@@ -535,6 +581,9 @@ export function setCtAnchor(
 ): CompareOpResult {
   if (!isCompareEnabled(state.lane)) return fail(state, 'compare_disabled_overall');
   if (!state.cts.some((c) => c.slot === slot)) return fail(state, 'unknown_slot');
+  if (!Number.isFinite(anchorMs)) return fail(state, 'invalid_anchor');
+  if (!Number.isFinite(nowMs)) return fail(state, 'invalid_anchor');
+  if (anchorMs > nowMs) return fail(state, 'future_period');
   const period = compareAnchorPeriod(state.lane as CompareBucketLane, anchorMs, timeZone);
   if (!period) return fail(state, 'invalid_anchor');
   if (!isPeriodSelectable(period, nowMs)) return fail(state, 'future_period');
