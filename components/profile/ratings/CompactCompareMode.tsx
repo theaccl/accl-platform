@@ -77,6 +77,12 @@ function eventLabel(point: RatingHistoryPoint): string {
   return `${point.occurredAt.slice(0, 16).replace('T', ' ')} UTC · ${family}${control}${opponent}`;
 }
 
+function compareResultLabel(point: RatingHistoryPoint): string {
+  // The legacy ledger builder maps admin_adjustment to draw. Use the retained
+  // authoritative event type so a CT never presents an adjustment as a game result.
+  return point.eventType === 'manual_admin_adjustment' ? 'Rating adjustment' : point.result;
+}
+
 export function CompactCompareMode({
   lane,
   isSelf,
@@ -101,6 +107,10 @@ export function CompactCompareMode({
     const order = rankedSeriesOrder(session).filter((id): id is CompareTickerSlot => id !== 'main');
     return order.map((slot) => session.cts.find((ct) => ct.slot === slot)!).filter(Boolean);
   }, [session]);
+
+  useEffect(() => {
+    setActivePanel((previous) => Math.min(previous, orderedCts.length));
+  }, [orderedCts.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -329,6 +339,7 @@ export function CompactCompareMode({
                       lane={period.lane}
                       window={asLaneWindow(period)}
                       carryInRating={occupancy?.coverage === 'complete' ? occupancy.carryInRating : null}
+                      formatEventResult={compareResultLabel}
                     />
                   ) : null}
                 </article>

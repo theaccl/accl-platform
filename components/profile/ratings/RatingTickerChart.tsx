@@ -30,6 +30,8 @@ type Props = {
   lane: RatingLane;
   window: RatingLaneWindow | null;
   carryInRating?: number | null;
+  /** Optional event wording for comparison consumers; Main keeps its existing label. */
+  formatEventResult?: (point: RatingHistoryPoint) => string;
   /** Taller chart when opened in mobile drawer. */
   expanded?: boolean;
 };
@@ -47,6 +49,7 @@ export function RatingTickerChart({
   lane,
   window: laneWindow,
   carryInRating = null,
+  formatEventResult,
   expanded = false,
 }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -195,7 +198,7 @@ export function RatingTickerChart({
           </p>
           <p className="mt-1 text-xs text-gray-400">
             {formatOccurredAtInZone(active.occurredAt, laneWindow.timeZone)} {laneWindow.timeZone} ·{' '}
-            {active.result}
+            {formatEventResult ? formatEventResult(active) : active.result}
             {active.badgeStateAfter ? ` · badge ${active.badgeStateAfter}` : ''}
             {active.badgeEvent && active.badgeEvent !== 'none' ? ` · ${active.badgeEvent}` : ''}
             {active.streakAfter != null ? ` · streak ${active.streakAfter}` : ''}

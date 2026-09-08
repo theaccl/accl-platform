@@ -12,6 +12,7 @@ type HarnessOptions = {
   single?: boolean;
   accl?: boolean;
   compareCoverage?: 'complete' | 'incomplete';
+  compareAdjustment?: boolean;
 };
 
 function readOptions(): HarnessOptions {
@@ -173,7 +174,19 @@ export function ComparisonHarness() {
           historyByTrack={historyByTrack}
           comparePeriodLoader={(period) =>
             harnessPeriodLoader(
-              historyByTrack[accl ? 'accl' : 'free_day'] ?? [],
+              initial.compareAdjustment
+                ? [point({
+                    id: 'preview-adjustment',
+                    ratingTrackId: accl ? 'accl' : 'free_day',
+                    eventType: 'manual_admin_adjustment',
+                    result: 'draw',
+                    gameId: null,
+                    occurredAt: '2026-08-29T20:00:00Z',
+                    ratingBefore: 1510,
+                    ratingAfter: 1522,
+                    ratingDelta: 12,
+                  })]
+                : historyByTrack[accl ? 'accl' : 'free_day'] ?? [],
               period,
               initial.compareCoverage,
             )

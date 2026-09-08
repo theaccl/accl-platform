@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { mountComparisonPanel } from '../helpers/mountComparisonPage';
 
@@ -137,3 +139,83 @@ test('complete carry-in, true empty, and incomplete coverage stay distinguishabl
   await expect(page.getByTestId('compare-summary-ct1')).toHaveText('Coverage incomplete — totals withheld');
   await expect(page.getByText('Fixture coverage is incomplete.')).toBeVisible();
 });
+
+test('comparison adjustments retain ratings and UTC time without claiming a drawn game', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    compareAdjustment: true,
+    viewport: { width: 1000, height: 760 },
+  });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  const ct = page.getByTestId('compare-panel-ct1');
+  await ct.getByRole('button', { name: 'Previous period', exact: true }).click();
+  await expect(ct.getByTestId('compare-summary-ct1')).toHaveText('0 games · 1 rating events · +12');
+  await expect(ct).toContainText('1510 → 1522');
+  await expect(ct).toContainText('Aug 29, 2026, 8:00:00 PM UTC · Rating adjustment');
+  await expect(ct).not.toContainText('draw');
+  await expect(ct.getByRole('link', { name: 'Open game', exact: true })).toHaveCount(0);
+  await expect(ct.getByRole('link', { name: 'Trainer review', exact: true })).toHaveCount(0);
+  if (process.env.R042_CAPTURE_DIR) {
+    mkdirSync(process.env.R042_CAPTURE_DIR, { recursive: true });
+    await ct.screenshot({ path: join(process.env.R042_CAPTURE_DIR, 'comparison-adjustment.png') });
+  }
+  // Main's existing game result rendering is unaffected by the CT-specific formatter.
+  await page.getByTestId('rating-lane-tab-overall').click();
+  await expect(page.getByTestId('compare-panel-main')).toContainText('win');
+  await expect(page.getByTestId('compare-panel-main')).not.toContainText('Rating adjustment');
+});
+
+test('Previous panel moves immediately after removing the last visible comparison', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, viewport: { width: 390, height: 844 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('compare-add-ticker').click();
+  const next = page.getByRole('button', { name: 'Next panel', exact: true });
+  await next.click();
+  await next.click();
+  await next.click();
+  await page.getByRole('button', { name: 'Remove CT3', exact: true }).click();
+  const strip = page.getByTestId('compare-panel-strip');
+  const before = await strip.evaluate((el) => el.scrollLeft);
+  await page.getByRole('button', { name: 'Previous panel', exact: true }).click();
+  await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeLessThan(before - 100);
+  await expect(page.getByTestId('compare-panel-ct1')).toBeInViewport({ ratio: 0.5 });
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 1000 }]) {
+  test(`Main owns working major-family controls at ${viewport.width}px`, async ({ page }) => {
+    await mountComparisonPanel(page, { single: true, accl: true, viewport });
+    const main = page.getByTestId('compare-panel-main');
+    const options = main.getByTestId('accl-ticker-major-family-options');
+    await expect(options.getByRole('button')).toHaveCount(5);
+    await page.getByTestId('compare-mode-toggle').click();
+    const ct = page.getByTestId('compare-panel-ct1');
+    for (const track of ['tournament', 'free_bullet', 'free_blitz', 'free_rapid', 'free_day']) {
+      const button = main.getByTestId(`accl-ticker-option-${track}`);
+      await button.press('Enter');
+      await expect(button).toHaveAttribute('aria-pressed', 'true');
+      await expect(main.getByTestId(`multi-line-series-${track}`)).toHaveCount(1);
+    }
+    await expect(ct.getByTestId('accl-ticker-major-family-options')).toHaveCount(0);
+    await expect(main.getByTestId('multi-line-rating-chart')).toHaveAttribute('data-dominance-order', 'accl tournament free_bullet free_blitz free_rapid free_day');
+    await main.getByTestId('accl-ticker-option-free_blitz').press('Enter');
+    await expect(main.getByTestId('multi-line-series-free_blitz')).toHaveCount(0);
+    await expect(main.getByTestId('multi-line-series-free_day')).toHaveCount(1);
+    await page.getByTestId('rating-lane-tab-year').click();
+    await expect(main.getByTestId('accl-ticker-option-free_day')).toHaveAttribute('aria-pressed', 'true');
+    await expect(ct.getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'year');
+    const contained = await options.evaluate((el) => {
+      const panel = el.closest('article')!.getBoundingClientRect();
+      return [...el.querySelectorAll('button')].every((button) => {
+        const box = button.getBoundingClientRect();
+        return box.left >= panel.left - 1 && box.right <= panel.right + 1;
+      });
+    });
+    expect(contained).toBe(true);
+    if (process.env.R042_CAPTURE_DIR) {
+      mkdirSync(process.env.R042_CAPTURE_DIR, { recursive: true });
+      await main.screenshot({ path: join(process.env.R042_CAPTURE_DIR, `main-family-controls-${viewport.width}.png`) });
+    }
+  });
+}
