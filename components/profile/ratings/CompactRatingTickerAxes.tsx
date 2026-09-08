@@ -75,7 +75,12 @@ export function CompactRatingTickerAxes({ geometry, lane, window, testIdPrefix }
                 data-testid={`${testIdPrefix}-x-tick-${tick.priority}`}
                 data-tick-priority={tick.priority}
               >
-                {tick.label}
+                <tspan x={x}>{tick.label}</tspan>
+                {tick.detailLabel ? (
+                  <tspan x={x} dy="9" fontSize="7">
+                    {tick.detailLabel}
+                  </tspan>
+                ) : null}
               </text>
             </g>
           );

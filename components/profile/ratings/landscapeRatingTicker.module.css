@@ -293,6 +293,11 @@
   align-items: center;
 }
 
+.expandAlways {
+  display: inline-flex;
+  align-items: center;
+}
+
 @media (min-width: 1024px) and (min-height: 600px) {
   .expandMobile {
     display: none !important;

@@ -6,6 +6,13 @@ import type { MajorFamilySeriesData } from '@/lib/profileRatingChartLevels';
 import { filterPointsByLane, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
+type ComparableRatingSeries = {
+  trackId: string;
+  label: string;
+  color: string;
+  points: RatingHistoryPoint[];
+};
+
 export { buildMajorFamilySeriesData, countMajorFamilyInputPoints } from '@/lib/profileRatingChartLevels';
 
 export function filterMajorFamilySeriesByLane(
@@ -22,7 +29,7 @@ export function filterMajorFamilySeriesByLane(
 
 /** Points that share an exact authoritative timestamp (no cross-family fabrication). */
 export function pointsAtExactTimestamp(
-  series: MajorFamilySeriesData[],
+  series: ComparableRatingSeries[],
   occurredAt: string,
   visibleTrackIds: ReadonlySet<string>,
 ): { trackId: string; label: string; color: string; point: RatingHistoryPoint }[] {

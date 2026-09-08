@@ -123,7 +123,7 @@ export function LandscapeRatingTickerChart({
     return () => ro.disconnect();
   }, []);
 
-  const topAxisBand = size.height < 160 ? 28 : TOP_AXIS_BAND;
+  const topAxisBand = lane === 'month' ? 42 : size.height < 160 ? 28 : TOP_AXIS_BAND;
   const pad = size.height < 160 ? 20 : PAD;
 
   const geometry = useMemo((): LandscapeTickerPlotGeometry | null => {
@@ -434,7 +434,12 @@ export function LandscapeRatingTickerChart({
                       data-testid={`landscape-ticker-x-tick-${tick.priority}`}
                       data-tick-priority={tick.priority}
                     >
-                      {tick.label}
+                      <tspan x={x}>{tick.label}</tspan>
+                      {tick.detailLabel ? (
+                        <tspan x={x} dy="9" fontSize="7.5">
+                          {tick.detailLabel}
+                        </tspan>
+                      ) : null}
                     </text>
                   </g>
                 );

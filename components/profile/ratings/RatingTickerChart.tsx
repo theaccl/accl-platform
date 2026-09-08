@@ -83,7 +83,7 @@ export function RatingTickerChart({
     width: CHART_W,
     height: chartH,
     pad: PAD,
-    topAxisBand: TOP_AXIS_BAND,
+    topAxisBand: lane === 'month' ? 42 : TOP_AXIS_BAND,
     minT: laneWindow.startMs,
     maxT: laneWindow.endMs,
     minR: ratingDomain.minR,

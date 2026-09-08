@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import type { MajorFamilySeriesData } from '@/lib/profileRatingChartLevels';
 import { frontMostId, sortItemsByDominance } from '@/lib/profile/ratingLineDominanceOrder';
 import { pointsAtExactTimestamp } from '@/lib/profileRatingFamilyComparison';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
@@ -18,7 +17,12 @@ import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 import { CompactRatingTickerAxes } from '@/components/profile/ratings/CompactRatingTickerAxes';
 
 type Props = {
-  series: MajorFamilySeriesData[];
+  series: Array<{
+    trackId: string;
+    label: string;
+    color: string;
+    points: RatingHistoryPoint[];
+  }>;
   visibleTrackIds: ReadonlySet<string>;
   dominanceOrder: readonly string[];
   canLinkFinishedGames: boolean;
@@ -102,7 +106,7 @@ export function MultiLineRatingTickerChart({
       width: MULTI_LINE_CHART_W,
       height: chartH,
       pad: MULTI_LINE_CHART_PAD,
-      topAxisBand: MULTI_LINE_TOP_AXIS_BAND,
+      topAxisBand: lane === 'month' ? 42 : MULTI_LINE_TOP_AXIS_BAND,
       minT: laneWindow.startMs,
       maxT: laneWindow.endMs,
       minR: ratingDomain.minR,
@@ -129,7 +133,7 @@ export function MultiLineRatingTickerChart({
     }
 
     return { items, paths, geometry };
-  }, [series, visibleTrackIds, chartH, carryInRatings, laneWindow]);
+  }, [series, visibleTrackIds, chartH, carryInRatings, lane, laneWindow]);
 
   const visibleSeries = useMemo(() => {
     const visible = series.filter((s) => visibleTrackIds.has(s.trackId));
@@ -282,7 +286,7 @@ export function MultiLineRatingTickerChart({
                     />
                     {row.label}
                   </span>
-                  <span>{row.point.ratingAfter.toLocaleString()}</span>
+                  <span>{String(row.point.ratingAfter)}</span>
                 </li>
               ))}
             </ul>

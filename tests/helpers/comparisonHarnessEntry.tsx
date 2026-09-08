@@ -9,6 +9,7 @@ type HarnessOptions = {
   empty?: boolean;
   crossing?: boolean;
   single?: boolean;
+  accl?: boolean;
 };
 
 function readOptions(): HarnessOptions {
@@ -37,6 +38,17 @@ function point(
 
 function buildHistory(): Record<string, RatingHistoryPoint[]> {
   return {
+    accl: [
+      point({
+        id: 'a-1',
+        ratingTrackId: 'accl',
+        ratingBefore: 1490,
+        ratingAfter: 1505,
+        ratingDelta: 15,
+        occurredAt: '2026-08-12T12:00:00Z',
+        gameId: 'g-a-1',
+      }),
+    ],
     tournament: [
       point({
         id: 't-1',
@@ -118,6 +130,7 @@ export function ComparisonHarness() {
   const empty = Boolean(initial.empty);
   const crossing = Boolean(initial.crossing);
   const single = Boolean(initial.single);
+  const accl = Boolean(initial.accl);
   const historyByTrack = empty
     ? {}
     : crossing
@@ -131,10 +144,10 @@ export function ComparisonHarness() {
     >
       {single ? (
         <RatingTrackDetailPanel
-          trackLabel="Daily Overall"
-          ratingTrackId="free_day"
-          currentRating={1508}
-          points={historyByTrack.free_day ?? []}
+          trackLabel={accl ? 'ACCL Rating' : 'Daily Overall'}
+          ratingTrackId={accl ? 'accl' : 'free_day'}
+          currentRating={accl ? 1505 : 1508}
+          points={historyByTrack[accl ? 'accl' : 'free_day'] ?? []}
           badge={null}
           isSelf
           canLinkFinishedGames

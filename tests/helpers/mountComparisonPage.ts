@@ -65,6 +65,7 @@ export type MountComparisonOptions = {
   empty?: boolean;
   crossing?: boolean;
   single?: boolean;
+  accl?: boolean;
   viewport?: { width: number; height: number };
 };
 
@@ -121,6 +122,7 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
     empty: Boolean(opts.empty),
     crossing: Boolean(opts.crossing),
     single: Boolean(opts.single),
+    accl: Boolean(opts.accl),
   };
   await page.addScriptTag({
     content: `window.__HARNESS_OPTIONS = ${JSON.stringify(harnessOptions)};`,

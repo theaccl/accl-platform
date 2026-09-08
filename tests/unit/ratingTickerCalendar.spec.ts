@@ -185,6 +185,11 @@ test.describe('rating ticker calendar and timezone helpers', () => {
         .map((tick) => tick.label),
     ).toEqual(['W32', 'W33', 'W34']);
     expect(
+      ticksForLaneWindow(month, 720)
+        .filter((tick) => tick.priority === 'primary')
+        .map((tick) => tick.detailLabel),
+    ).toEqual(['Aug 3–9', 'Aug 10–16', 'Aug 17–23']);
+    expect(
       ticksForLaneWindow(month, 720).filter(
         (tick) => tick.priority === 'secondary' && tick.label === '',
       ).length,
@@ -193,6 +198,30 @@ test.describe('rating ticker calendar and timezone helpers', () => {
     expect(
       ratingLaneWindow('month', Date.parse('2025-12-31T12:00:00Z'), 'UTC')?.caption,
     ).toBe('2025 · Dec · ISO 2025-W49–2026-W01 · UTC');
+    const december = ratingLaneWindow(
+      'month',
+      Date.parse('2025-12-31T12:00:00Z'),
+      'UTC',
+    )!;
+    expect(
+      ticksForLaneWindow(december, 720).find((tick) => tick.label === 'W01')?.detailLabel,
+    ).toBe('Dec 29–Jan 4');
+
+    const september = ratingLaneWindow(
+      'month',
+      Date.parse('2026-09-08T12:00:00Z'),
+      'UTC',
+    )!;
+    expect(
+      ticksForLaneWindow(september, 720)
+        .filter((tick) => tick.priority === 'primary')
+        .map((tick) => tick.label),
+    ).toEqual(['W37']);
+    expect(
+      ticksForLaneWindow(september, 720)
+        .filter((tick) => tick.priority === 'primary')
+        .map((tick) => tick.detailLabel),
+    ).toEqual(['Sep 7–13']);
 
     const overall = ratingLaneWindow('overall', Date.parse('2026-11-15T12:00:00Z'), 'UTC', {
       firstEventMs: Date.parse('2026-08-01T12:00:00Z'),

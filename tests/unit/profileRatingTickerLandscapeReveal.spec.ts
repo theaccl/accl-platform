@@ -334,7 +334,7 @@ test.describe('profile rating ticker landscape interactive reveal', () => {
       "document.body.style.overflow = 'hidden'",
     );
     expect(drawer).not.toContain('sm:hidden');
-    expect(src('components/profile/ratings/RatingTrackDetailPanel.tsx')).toContain('expandMobile');
+    expect(src('components/profile/ratings/RatingTrackDetailPanel.tsx')).toContain('expandAlways');
     expect(src('components/profile/ratings/RatingTrackDetailPanel.tsx')).not.toContain('sm:hidden');
     expect(src('components/profile/ratings/RatingFamilyComparisonPanel.tsx')).toContain('expandMobile');
     expect(src('components/profile/ratings/RatingFamilyComparisonPanel.tsx')).not.toContain('sm:hidden');

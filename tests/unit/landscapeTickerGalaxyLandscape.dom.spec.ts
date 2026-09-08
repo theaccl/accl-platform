@@ -31,16 +31,16 @@ test.describe('galaxy landscape expand reachability', () => {
   }
 
   for (const viewport of EXPAND_HIDDEN_VIEWPORTS) {
-    test(`both Expand controls are hidden at ${viewport.label}`, async ({ page }) => {
-      await mountLandscapeTicker(page, { open: false, viewport });
-      await assertExpandDisplay(page, 'rating-ticker-expand-mobile', false);
+    test(`individual Expand stays reachable and comparison Expand is hidden at ${viewport.label}`, async ({ page }) => {
+      await mountComparisonPanel(page, { single: true, accl: true, viewport });
+      await assertExpandDisplay(page, 'rating-ticker-expand-mobile', true);
 
       await mountComparisonPanel(page, { crossing: true, viewport });
       await assertExpandDisplay(page, 'rating-comparison-expand-mobile', false);
     });
   }
 
-  test('harness Expand uses the production expandMobile class, not sm:hidden', () => {
+  test('harness Expand uses the production responsive class, not sm:hidden', () => {
     const harness = readFileSync(
       join(process.cwd(), 'tests/helpers/landscapeTickerHarnessEntry.tsx'),
       'utf8',
@@ -52,6 +52,7 @@ test.describe('galaxy landscape expand reachability', () => {
     expect(harness).toContain('styles.expandMobile');
     expect(harness).not.toContain('sm:hidden');
     expect(css).toContain('.expandMobile');
+    expect(css).toContain('.expandAlways');
     expect(css).toContain('@media (min-width: 1024px) and (min-height: 600px)');
     expect(existsSync(join(process.cwd(), 'lib/profile/landscapeTickerSwipe.ts'))).toBe(false);
   });

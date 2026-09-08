@@ -36,6 +36,7 @@ export type RatingLaneWindow = {
 export type TimeTick = {
   t: number;
   label: string;
+  detailLabel?: string;
   priority: 'endpoint' | 'primary' | 'secondary';
 };
 
@@ -83,6 +84,16 @@ function isoWeekRangeLabel(first: IsoWeekId, last: IsoWeekId): string {
     return `${isoWeekLabel(first)}–W${pad2(last.isoWeek)}`;
   }
   return `ISO ${first.isoWeekYear}-W${pad2(first.isoWeek)}–${last.isoWeekYear}-W${pad2(last.isoWeek)}`;
+}
+
+function isoWeekDateSpanLabel(iso: IsoWeekId): string {
+  const first = MONTH_SHORT[iso.monday.month - 1];
+  const last = MONTH_SHORT[iso.sunday.month - 1];
+  const dates =
+    first === last
+      ? `${first} ${iso.monday.day}–${iso.sunday.day}`
+      : `${first} ${iso.monday.day}–${last} ${iso.sunday.day}`;
+  return dates;
 }
 
 export function isoWeekFromInstant(ms: number, timeZone: string): IsoWeekId {
@@ -236,10 +247,15 @@ export function ticksForLaneWindow(
   const endExclusive = instantToCivil(Math.max(startMs, endMs - 1), tz);
   const candidates: TimeTick[] = [];
 
-  const push = (t: number, label: string, priority: TimeTick['priority']) => {
+  const push = (
+    t: number,
+    label: string,
+    priority: TimeTick['priority'],
+    detailLabel?: string,
+  ) => {
     if (t < startMs - 1 || t > endMs + 1) return;
     const clamped = Math.min(Math.max(t, startMs), endMs);
-    candidates.push({ t: clamped, label, priority });
+    candidates.push({ t: clamped, label, detailLabel, priority });
   };
 
   push(startMs, lane === 'day' ? dayBoundaryLabel(startMs, tz, 'start') : formatCivil(start), 'endpoint');
@@ -293,7 +309,12 @@ export function ticksForLaneWindow(
     while (cursor < endMs) {
       const iso = isoWeekFromInstant(cursor, tz);
       if (iso.startMs > startMs && iso.startMs < endMs) {
-        push(iso.startMs, `W${pad2(iso.isoWeek)}`, 'primary');
+        push(
+          iso.startMs,
+          `W${pad2(iso.isoWeek)}`,
+          'primary',
+          isoWeekDateSpanLabel(iso),
+        );
       }
       cursor = iso.endMs;
     }

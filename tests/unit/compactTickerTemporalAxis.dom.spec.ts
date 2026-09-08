@@ -61,6 +61,9 @@ test.describe('compact ticker UTC temporal axes', () => {
     await capture(page, 'single-week-800.png');
     await assertLane(page, 'rating', 'rating-ticker-chart', 'compact-rating', 'month');
     await expect(page.locator('[data-time-boundary="iso-week"]')).toHaveCount(3);
+    await expect(
+      page.getByTestId('compact-rating-x-tick-primary').filter({ hasText: 'W32' }),
+    ).toContainText('Aug 3–9');
     await capture(page, 'single-month-800.png');
     await assertLane(page, 'rating', 'rating-ticker-chart', 'compact-rating', 'year');
     await expect(page.getByTestId('compact-rating-x-tick-primary')).toHaveCount(11);
