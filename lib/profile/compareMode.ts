@@ -90,12 +90,18 @@ export type CompareTicker = {
  * Compare *session* state. Everything here resets on the next open after a UTC
  * date change (invariant 12). Account-level visual preferences are a separate
  * model (see `CompareVisualPreferences`) and are never stored here.
+ *
+ * `openedUtcDayKey` records the UTC day (YYYY-MM-DD) the session was last opened
+ * on. Reset is driven off this key, not off wall-clock midnight: a session that
+ * is already open when midnight passes is never disrupted; it resets only on the
+ * next explicit reopen that lands on a different UTC day.
  */
 export type CompareSessionState = {
   lane: CompareLane;
   cts: CompareTicker[];
   layout: CompareLayout;
   introSeen: boolean;
+  openedUtcDayKey: string;
 };
 
 /* ------------------------------------------------------------------ *
@@ -117,17 +123,27 @@ export type ComparePeriod = {
 
 /** Truthful occupancy of a CT period. Never invents movement. */
 export type ComparePeriodOccupancy = {
+  /**
+   * All legitimate in-window rating events — games *and* non-game ledger events
+   * (tournament batches, bracket settlements, admin adjustments, backfills).
+   * Chart movement is drawn from these; every real rating change is preserved.
+   */
+  ratingEvents: number;
+  /**
+   * Actual games only (eventType 'game'). Non-game ledger events are never
+   * counted here, so a header "game count" stays honest.
+   */
   games: number;
   /**
    * Rating carried into the period from the last real event strictly before it.
    * Null when the viewer had no prior event — then an empty period is truly empty.
    */
   carryInRating: number | null;
-  /** No in-window games and no carry-in: draw nothing. */
+  /** No in-window rating events and no carry-in: draw nothing. */
   isEmpty: boolean;
-  /** No in-window games but a real carry-in exists: draw a flat hold, no markers. */
+  /** No in-window rating events but a real carry-in exists: flat hold, no markers. */
   isCarryInHold: boolean;
-  /** Net change across in-window games (last.after - first.before). Null when empty. */
+  /** Net change across in-window rating events (last.after - first.before). Null when none. */
   netRatingChange: number | null;
 };
 
@@ -142,6 +158,7 @@ export type CompareOpFailure =
   | 'future_period'
   | 'invalid_anchor'
   | 'invalid_rank'
+  | 'rank_gap'
   | 'no_op';
 
 export type CompareOpResult =
@@ -168,6 +185,20 @@ export function isCompareEnabled(lane: CompareLane): boolean {
 export function activeCompareTickers(state: CompareSessionState): CompareTicker[] {
   if (!isCompareEnabled(state.lane)) return [];
   return [...state.cts];
+}
+
+/**
+ * UTC day key (YYYY-MM-DD) for an instant. The reset contract is defined on the
+ * UTC calendar day (Day begins 00:00 UTC), independent of any display zone.
+ * Returns null for a non-finite instant.
+ */
+export function utcDayKey(ms: number): string | null {
+  if (!Number.isFinite(ms)) return null;
+  const d = new Date(ms);
+  const y = String(d.getUTCFullYear()).padStart(4, '0');
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -267,9 +298,21 @@ export function pointsInPeriod(
   });
 }
 
+/** A history point is a real game only when its event type is 'game'. */
+export function isRealGameEvent(point: Pick<RatingHistoryPoint, 'eventType'>): boolean {
+  return point.eventType === 'game';
+}
+
+/** Count actual games (excludes tournament_batch / bracket_settlement / etc.). */
+export function countRealGames(points: RatingHistoryPoint[]): number {
+  return points.reduce((n, p) => (isRealGameEvent(p) ? n + 1 : n), 0);
+}
+
 /**
- * Truthful occupancy for a CT period. Empty periods stay empty; a carry-in hold
- * is drawn only when a real prior event exists. Never fabricates movement.
+ * Truthful occupancy for a CT period. Chart movement uses every legitimate
+ * rating event; the game count reports only actual games. Empty periods stay
+ * empty; a carry-in hold is drawn only when a real prior event exists. Never
+ * fabricates movement.
  */
 export function periodOccupancy(
   points: RatingHistoryPoint[],
@@ -277,9 +320,11 @@ export function periodOccupancy(
 ): ComparePeriodOccupancy {
   const inWindow = pointsInPeriod(points, period);
   const carryInRating = lastRatingAfterBefore(points, period.startMs);
-  const games = inWindow.length;
-  if (games === 0) {
+  const ratingEvents = inWindow.length;
+  const games = countRealGames(inWindow);
+  if (ratingEvents === 0) {
     return {
+      ratingEvents: 0,
       games: 0,
       carryInRating,
       isEmpty: carryInRating == null,
@@ -288,6 +333,7 @@ export function periodOccupancy(
     };
   }
   return {
+    ratingEvents,
     games,
     carryInRating,
     isEmpty: false,
@@ -332,10 +378,12 @@ export function canLinkCompareEvent(point: Pick<RatingHistoryPoint, 'gameId'>): 
  * dates, and reveal state are intentionally *not* inputs here, which
  * structurally guarantees they can never reorder lines.
  *
- * Returns Main first, then CTs by ascending rank.
+ * Returns Main first, then CTs by ascending rank. When Main is Overall,
+ * Compare Mode is disabled and this returns Main alone — disabled CTs never
+ * leak into render ordering even though their anchors are retained internally.
  */
 export function rankedSeriesOrder(state: CompareSessionState): CompareSeriesId[] {
-  const ctsByRank = [...state.cts]
+  const ctsByRank = activeCompareTickers(state)
     .sort((a, b) => a.rank - b.rank)
     .map((c) => c.slot);
   return [MAIN_SERIES_ID, ...ctsByRank];
@@ -361,10 +409,14 @@ export function resolvePointerOwner(
   return null;
 }
 
-/** Rank of a series id in the current state, or null if that CT is not active. */
+/**
+ * Rank of a series id, or null if that CT is not active. Main is always rank 1.
+ * When Compare Mode is disabled (Overall), CTs report null — consistent with
+ * them being absent from ordering, reveal, and pointer resolution.
+ */
 export function rankOf(state: CompareSessionState, id: CompareSeriesId): CompareRank | null {
   if (id === MAIN_SERIES_ID) return MAIN_RANK;
-  const ct = state.cts.find((c) => c.slot === id);
+  const ct = activeCompareTickers(state).find((c) => c.slot === id);
   return ct ? ct.rank : null;
 }
 
@@ -372,8 +424,22 @@ export function rankOf(state: CompareSessionState, id: CompareSeriesId): Compare
  * Session construction and lane control
  * ------------------------------------------------------------------ */
 
-export function createCompareSession(lane: CompareLane = 'month'): CompareSessionState {
-  return { lane, cts: [], layout: 'independent', introSeen: false };
+/**
+ * Create a fresh compare session, stamped with the UTC day it is opened on.
+ * `openedAtMs` is required so the day-open contract is explicit; a non-finite
+ * value yields an empty key, which forces a reset on the first real reopen.
+ */
+export function createCompareSession(
+  lane: CompareLane = 'month',
+  openedAtMs = 0,
+): CompareSessionState {
+  return {
+    lane,
+    cts: [],
+    layout: 'independent',
+    introSeen: false,
+    openedUtcDayKey: utcDayKey(openedAtMs) ?? '',
+  };
 }
 
 /**
@@ -505,8 +571,13 @@ export function stepCtPeriod(
  * ------------------------------------------------------------------ */
 
 /**
- * Assign `newRank` (2..4) to a CT. Assigning an occupied rank swaps the two CTs
- * (invariant 9). Rank 1 (Main) can never be assigned to a CT.
+ * Assign `newRank` (2..4) to a CT.
+ *  - Occupied target → swaps the two CTs (invariant 9).
+ *  - Unoccupied target → rejected as `rank_gap`, because with N active CTs the
+ *    only valid ranks are the contiguous set 2..N+1 and every one of them is
+ *    already occupied; moving onto any other rank would open a gap (e.g. a sole
+ *    CT jumping from 2 to 4). This keeps a single CT at 2 and two CTs at 2 and 3.
+ *  - Rank 1 (Main) can never be assigned to a CT.
  */
 export function assignCtRank(
   state: CompareSessionState,
@@ -518,10 +589,11 @@ export function assignCtRank(
   if (!target) return fail(state, 'unknown_slot');
   if (target.rank === newRank) return fail(state, 'no_op');
   const holder = state.cts.find((c) => c.rank === newRank && c.slot !== slot);
+  if (!holder) return fail(state, 'rank_gap');
   const oldRank = target.rank;
   const cts = state.cts.map((c) => {
     if (c.slot === slot) return { ...c, rank: newRank };
-    if (holder && c.slot === holder.slot) return { ...c, rank: oldRank };
+    if (c.slot === holder.slot) return { ...c, rank: oldRank };
     return c;
   });
   return ok({ ...state, cts });
@@ -589,74 +661,126 @@ export function markIntroSeen(state: CompareSessionState): CompareSessionState {
  * ------------------------------------------------------------------ */
 
 /**
- * Reset the compare *session* for a new UTC day: active CTs, anchors, rank
- * setup, progression, layout, and intro-seen all clear. The Main lane is
- * preserved because it is a chart-window choice, not comparison session data.
+ * Unconditional reset of the compare *session*: active CTs, anchors, rank setup,
+ * progression, layout, and intro-seen all clear, and the session is re-stamped
+ * with the UTC day of `openedAtMs`. The Main lane is preserved because it is a
+ * chart-window choice, not comparison session data.
  *
  * This function deliberately takes and returns ONLY session state — it has no
  * access to and cannot mutate account-level visual preferences (invariant 13).
  */
-export function resetCompareSessionForNewUtcDay(
+export function resetCompareSession(
   state: CompareSessionState,
+  openedAtMs: number,
 ): CompareSessionState {
-  return createCompareSession(state.lane);
+  return createCompareSession(state.lane, openedAtMs);
+}
+
+/**
+ * Day-open contract (invariant 12). Call this on every open of the compare
+ * surface. It resets deterministically only when the current UTC day differs
+ * from the day the session was last opened on:
+ *  - same UTC day  → returned unchanged (same-day reopen is non-destructive);
+ *  - different day → full reset, re-stamped to the new UTC day;
+ *  - midnight passing while already open never calls this and never disrupts an
+ *    open session — reset happens on the *next* reopen, not at the boundary.
+ * A non-finite `nowMs` is treated as "no reliable clock" and left unchanged.
+ */
+export function reopenCompareSessionForUtcDay(
+  state: CompareSessionState,
+  nowMs: number,
+): CompareSessionState {
+  const key = utcDayKey(nowMs);
+  if (!key || key === state.openedUtcDayKey) return state;
+  return resetCompareSession(state, nowMs);
 }
 
 /* ------------------------------------------------------------------ *
  * Account-level visual preferences — a SEPARATE, persistent model
  * ------------------------------------------------------------------ */
 
+/**
+ * Free accessibility presets, available to everyone (never paywalled). Custom is
+ * intentionally NOT a member here — the premium per-line model is deferred to
+ * Stack 6 (see `CompareCustomPerLineOpacity`) so Stack 1 cannot cement an
+ * inaccurate shape.
+ */
 export type CompareVisualPreset =
   | 'default'
   | 'high_contrast'
   | 'main_focus'
-  | 'equal_visibility'
-  | 'custom';
+  | 'equal_visibility';
 
-export type CompareSlotOpacity = { main: number; progressionCt: number; parkedCt: number };
+/** Render opacity by visual role (Main / promoted CT / parked CT). */
+export type CompareRoleOpacity = { main: number; progressionCt: number; parkedCt: number };
+
+/**
+ * Reserved Stack-6 premium shape. Per-line customization binds INDEPENDENTLY to
+ * Main, CT1, CT2, and CT3 — not to the parked/promoted role. Defined here only
+ * to record the correct contract; Stack 1 does not build, gate, or persist it.
+ */
+export type CompareCustomPerLineOpacity = {
+  main: number;
+  ct1: number;
+  ct2: number;
+  ct3: number;
+};
 
 /** Preset opacities (Main / progression CT / parked CT), verbatim from the spec. */
-export const COMPARE_PRESET_OPACITY: Record<
-  Exclude<CompareVisualPreset, 'custom'>,
-  CompareSlotOpacity
-> = {
+export const COMPARE_PRESET_OPACITY: Record<CompareVisualPreset, CompareRoleOpacity> = {
   default: { main: 100, progressionCt: 90, parkedCt: 30 },
   high_contrast: { main: 100, progressionCt: 100, parkedCt: 60 },
   main_focus: { main: 100, progressionCt: 70, parkedCt: 15 },
   equal_visibility: { main: 100, progressionCt: 100, parkedCt: 100 },
 };
 
-/** Recommended safe visibility floors (percent). */
+/** Main stays within a safe visibility floor on screen and in export. */
 export const MAIN_OPACITY_FLOOR = 70;
-export const CT_OPACITY_FLOOR = 10;
+/** CTs may rest as faint as 10% on screen because Progression brings them back. */
+export const CT_ONSCREEN_OPACITY_FLOOR = 10;
+/** Export/screenshot clamps faint CTs to a higher floor so they stay legible. */
+export const CT_EXPORT_OPACITY_FLOOR = 40;
 
 /**
  * Account-level visual preferences. Persist across UTC reset; stored separately
- * from `CompareSessionState`. Custom per-slot values are premium (gated later).
+ * from `CompareSessionState` (the required session-vs-account separation). The
+ * premium per-line custom values are a Stack-6 concern and are not modeled here.
  */
 export type CompareVisualPreferences = {
   preset: CompareVisualPreset;
-  custom?: CompareSlotOpacity;
 };
 
 export function createDefaultVisualPreferences(): CompareVisualPreferences {
   return { preset: 'default' };
 }
 
-/** Resolve the opacity table for the active preset (custom falls back to Default). */
-export function resolvePresetOpacity(prefs: CompareVisualPreferences): CompareSlotOpacity {
-  if (prefs.preset === 'custom' && prefs.custom) return prefs.custom;
-  const base = COMPARE_PRESET_OPACITY[
-    (prefs.preset === 'custom' ? 'default' : prefs.preset)
-  ];
-  return { ...base };
+/** Resolve the role opacity table for the active free preset. */
+export function resolvePresetOpacity(prefs: CompareVisualPreferences): CompareRoleOpacity {
+  return { ...COMPARE_PRESET_OPACITY[prefs.preset] };
 }
 
-/** Clamp faint CTs to a safe export floor while always keeping Main legible. */
-export function clampOpacityForExport(op: CompareSlotOpacity): CompareSlotOpacity {
+/**
+ * On-screen resting clamp: Main to its safe floor, CTs to the 10% resting floor.
+ * A parked CT can legitimately sit this faint because a reachable Progression
+ * action brings it into view in one step.
+ */
+export function clampOpacityForScreen(op: CompareRoleOpacity): CompareRoleOpacity {
   return {
     main: Math.min(100, Math.max(MAIN_OPACITY_FLOOR, op.main)),
-    progressionCt: Math.min(100, Math.max(CT_OPACITY_FLOOR, op.progressionCt)),
-    parkedCt: Math.min(100, Math.max(CT_OPACITY_FLOOR, op.parkedCt)),
+    progressionCt: Math.min(100, Math.max(CT_ONSCREEN_OPACITY_FLOOR, op.progressionCt)),
+    parkedCt: Math.min(100, Math.max(CT_ONSCREEN_OPACITY_FLOOR, op.parkedCt)),
+  };
+}
+
+/**
+ * Export/screenshot clamp: Main to its safe floor, and faint CTs to the higher
+ * ~40% export floor (distinct from the 10% on-screen resting floor) so nothing
+ * vanishes in a static image that has no Progression affordance.
+ */
+export function clampOpacityForExport(op: CompareRoleOpacity): CompareRoleOpacity {
+  return {
+    main: Math.min(100, Math.max(MAIN_OPACITY_FLOOR, op.main)),
+    progressionCt: Math.min(100, Math.max(CT_EXPORT_OPACITY_FLOOR, op.progressionCt)),
+    parkedCt: Math.min(100, Math.max(CT_EXPORT_OPACITY_FLOOR, op.parkedCt)),
   };
 }
