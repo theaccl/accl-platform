@@ -82,6 +82,21 @@ test('Compare Mode setup and CT controls are keyboard reachable', async ({ page 
   await expect(page.getByText('Choose from games')).toBeFocused();
 });
 
+test('UTC-day reset happens on next reopen, never while the comparison is open', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, viewport: { width: 800, height: 700 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await expect(page.locator('[data-testid^="compare-panel-ct"]')).toHaveCount(2);
+
+  await page.clock.fastForward(8 * 60 * 60 * 1000);
+  await expect(page.locator('[data-testid^="compare-panel-ct"]')).toHaveCount(2);
+
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await expect(page.locator('[data-testid^="compare-panel-ct"]')).toHaveCount(0);
+  await expect(page.getByTestId('compare-add-ticker')).toContainText('(0/3)');
+});
+
 test('CTs retain independent anchors while sharing Main week, and removal frees its space', async ({ page }) => {
   await mountComparisonPanel(page, { single: true, viewport: { width: 1000, height: 760 } });
   await page.getByTestId('rating-lane-tab-week').click();

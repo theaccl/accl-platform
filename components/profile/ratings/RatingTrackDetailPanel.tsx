@@ -298,7 +298,6 @@ export function RatingTrackDetailPanel({
           isSelf={isSelf}
           canLinkFinishedGames={canLinkFinishedGames}
           gamePickerPoints={compareGamePickerPoints}
-          nowMs={nowMs}
           loadPeriod={comparePeriodLoader}
         >
           {mainTicker}

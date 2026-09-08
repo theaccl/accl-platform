@@ -13,6 +13,7 @@ import {
   periodOccupancy,
   rankedSeriesOrder,
   removeCompareTicker,
+  reopenCompareSessionForUtcDay,
   setCtAnchor,
   setMainLane,
   stepCtPeriod,
@@ -38,7 +39,6 @@ type Props = {
   canLinkFinishedGames: boolean;
   gamePickerPoints: RatingHistoryPoint[];
   children: ReactNode;
-  nowMs?: number;
   loadPeriod: ComparePeriodLoader;
 };
 
@@ -83,13 +83,12 @@ export function CompactCompareMode({
   canLinkFinishedGames,
   gamePickerPoints,
   children,
-  nowMs: suppliedNowMs,
   loadPeriod,
 }: Props) {
-  const [nowMs] = useState(() => suppliedNowMs ?? Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<CompareSessionState>(() =>
-    createCompareSession(lane, suppliedNowMs ?? Date.now()),
+    createCompareSession(lane, Date.now()),
   );
   const [loads, setLoads] = useState<Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>>>({});
   const [activePanel, setActivePanel] = useState(0);
@@ -116,9 +115,27 @@ export function CompactCompareMode({
       const period = ctPeriod(session, ct.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
       if (!period) continue;
       const runner = loadPeriod(period, ct.slot);
-      void runner.then((result) => {
-        if (!cancelled) setLoads((previous) => ({ ...previous, [ct.slot]: result }));
-      });
+      void runner
+        .then((result) => {
+          if (!cancelled) setLoads((previous) => ({ ...previous, [ct.slot]: result }));
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setLoads((previous) => ({
+              ...previous,
+              [ct.slot]: {
+                status: 'incomplete',
+                points: [],
+                coverage: {
+                  startMs: period.startMs,
+                  endMs: period.startMs,
+                  priorToStartResolved: false,
+                },
+                message: 'This historical period could not be fully verified.',
+              },
+            }));
+          }
+        });
     }
     return () => { cancelled = true; };
   }, [lane, loadPeriod, open, session]);
@@ -130,7 +147,17 @@ export function CompactCompareMode({
   }
 
   function addTicker() {
-    apply(addCompareTicker(session, nowMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE));
+    const currentMs = Date.now();
+    setNowMs(currentMs);
+    apply(addCompareTicker(session, currentMs, currentMs, RATING_TICKER_DISPLAY_TIME_ZONE));
+    setOpen(true);
+  }
+
+  function openExistingSession() {
+    const currentMs = Date.now();
+    setNowMs(currentMs);
+    setSession((previous) => reopenCompareSessionForUtcDay(previous, currentMs));
+    setActivePanel(0);
     setOpen(true);
   }
 
@@ -167,7 +194,7 @@ export function CompactCompareMode({
         ) : (
           <button
             type="button"
-            onClick={orderedCts.length ? () => setOpen((value) => !value) : addTicker}
+            onClick={open ? () => setOpen(false) : orderedCts.length ? openExistingSession : addTicker}
             className="rounded-md border border-sky-400/60 px-3 py-2 text-xs font-semibold text-sky-200"
             data-testid="compare-mode-toggle"
           >
