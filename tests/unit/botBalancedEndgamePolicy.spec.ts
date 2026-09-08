@@ -6,6 +6,7 @@ import { assessStaticBotMove } from '@/lib/bot/botMoveSafety';
 import type { BotCandidateLine } from '@/lib/bot/botPersonality';
 import {
   buildSafeBotShortlist,
+  maybeBlunderPick,
   selectBotMoveForStyle,
 } from '@/lib/bot/botPersonalityStyle';
 
@@ -93,6 +94,34 @@ test.describe('Balanced and Endgame shared safe-shortlist policy', () => {
 
     expect(selectBotMoveForStyle('endgame', [top, equalStrength], 6, 0, () => 0)?.move).toBe('e3e4');
     expect(selectBotMoveForStyle('endgame', [top, equalStrength, boundary], 6, 0, () => 0)?.move).toBe('e3f4');
+  });
+
+  test('Endgame inaccuracy cannot pick a stronger displaced engine line', () => {
+    const top = engineLine('e3e4', 35, 1, endgameEvidence());
+    const activeKing = engineLine('e3d4', 28, 2, endgameEvidence({ kingActivityDelta: 2 }));
+    const lessActiveKing = engineLine('e3f4', 25, 3, endgameEvidence({ kingActivityDelta: 1 }));
+
+    expect(selectBotMoveForStyle('endgame', [top, activeKing], 6, 1, () => 0)).toEqual({
+      move: 'e3d4', rationale: 'engine-safe:endgame-l6',
+    });
+    expect(selectBotMoveForStyle('endgame', [top, activeKing, lessActiveKing], 6, 1, () => 0)).toEqual({
+      move: 'e3f4', rationale: 'engine-safe:humanized-inaccuracy-l6',
+    });
+  });
+
+  test('engine inaccuracies exclude equal or unknown scores and respect either evaluation sign', () => {
+    for (const score of [30, -30]) {
+      const preferred = engineLine('e3d4', score, 2);
+      const stronger = engineLine('e3e4', score + 7, 1);
+      const equal = engineLine('e3f4', score, 3);
+      const unknown = engineLine('e3d3', 0, 4);
+      unknown.scoreCp = null;
+      unknown.engineScoreCp = null;
+      const worse = engineLine('e3f3', score - 3, 5);
+      expect(maybeBlunderPick([unknown, worse], 1, () => 0)).toBeNull();
+      expect(maybeBlunderPick([preferred, stronger, equal, unknown], 1, () => 0)).toBeNull();
+      expect(maybeBlunderPick([preferred, stronger, equal, unknown, worse], 1, () => 0)).toBe(worse);
+    }
   });
 
   test('Endgame ordering cannot displace an available forced mate', () => {

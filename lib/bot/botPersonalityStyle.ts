@@ -330,8 +330,18 @@ export function maybeBlunderPick(
   blunderProbability: number,
   random: () => number = Math.random,
 ): BotCandidateLine | null {
-  if (safeLines.length < 2 || random() >= blunderProbability) return null;
-  const pool = safeLines.slice(1);
+  if (safeLines.length < 2) return null;
+  const preferredScore = engineScore(safeLines[0]);
+  const staticFallback = safeLines[0].source !== 'engine' && safeLines[0].engineRank == null;
+  // Personality ordering can place the engine's better line after its chosen
+  // near-equal alternative. Only a proven score loss is an engine inaccuracy;
+  // retain the existing heuristic fallback pool when no engine score exists.
+  const pool = safeLines.slice(1).filter((line) => {
+    if (preferredScore === null) return staticFallback;
+    const score = engineScore(line);
+    return score !== null && score < preferredScore;
+  });
+  if (pool.length === 0 || random() >= blunderProbability) return null;
   return pool[Math.floor(random() * pool.length)] ?? null;
 }
 
