@@ -186,6 +186,32 @@ test.describe('Trap shared safe-shortlist policy', () => {
     });
   });
 
+  test('engine inaccuracies retain worse safe lines without stronger Trap evidence', () => {
+    for (const level of [3, 4, 5, 6] as const) {
+      const top = trapLine('g8f6', 40, 1);
+      const worse = trapLine('b8c6', 15, 2);
+      const unsafe = trapLine('d8d2', 39, 3);
+      unsafe.staticRiskCp = 900;
+      unsafe.features!.movedPieceEnPrise = true;
+      const lines = [top, worse, unsafe];
+      const probability = getBotDifficultyProfile(level).blunderProbability;
+      expect(selectBotMoveForStyle('trap', lines, level, 0, () => 0)?.move).toBe(top.move);
+      expect(selectBotMoveForStyle('trap', lines, level, probability, () => 0)).toEqual({
+        move: worse.move, rationale: `engine-safe:humanized-inaccuracy-l${level}`,
+      });
+    }
+  });
+
+  test('a preferred trap still retains worse safe lines without Trap evidence for inaccuracy', () => {
+    const top = trapLine('g8f6', 40, 1);
+    const trap = trapLine('d8a5', 33, 2, { tacticalGain: true });
+    const worse = trapLine('b8c6', 15, 3);
+    expect(selectBotMoveForStyle('trap', [top, trap, worse], 6, 0, () => 0)?.move).toBe(trap.move);
+    expect(selectBotMoveForStyle('trap', [top, trap, worse], 6, 1, () => 0)).toEqual({
+      move: worse.move, rationale: 'engine-safe:humanized-inaccuracy-l6',
+    });
+  });
+
   test('candidate construction records three-ply best-reply evidence', async () => {
     const candidates = await buildBotCandidatesFromFen(
       'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',

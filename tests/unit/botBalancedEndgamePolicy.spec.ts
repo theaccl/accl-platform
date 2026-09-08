@@ -138,6 +138,19 @@ test.describe('Balanced and Endgame shared safe-shortlist policy', () => {
     expect(selectBotMoveForStyle('endgame', [mate, conversion], 3, 1, () => 0.99)?.move).toBe('h5h7');
   });
 
+  test('mate-scored engine rank one survives every style and strength before mate-in-one', () => {
+    const matePlan = engineLine('e3e4', 0, 1, endgameEvidence());
+    matePlan.scoreCp = null;
+    matePlan.engineScoreCp = null;
+    const numeric = engineLine('e3d4', 500, 2, endgameEvidence({ kingActivityDelta: 2 }));
+    for (const level of [1, 2, 3, 4, 5, 6] as const) {
+      expect(buildSafeBotShortlist([numeric, matePlan], level).map(line => line.move)).toEqual(['e3e4']);
+      for (const style of ['balanced', 'aggressive', 'defensive', 'endgame', 'trap', 'chaos'] as const) {
+        expect(selectBotMoveForStyle(style, [numeric, matePlan], level, 1, () => 0.99)?.move).toBe('e3e4');
+      }
+    }
+  });
+
   test('Endgame falls back to engine order when no endgame-specific phase exists', () => {
     const top = engineLine('g1f3', 24, 1);
     const stylistic = engineLine('e1d2', 22, 2, {

@@ -111,6 +111,11 @@ export function buildSafeBotShortlist(
 
   const engineLines = valid.filter((line) => line.source === 'engine' || line.engineRank != null);
   if (engineLines.length > 0) {
+    const top = [...engineLines].sort(engineOrder)[0];
+    // The legacy engine boundary represents mate scores as null. Numeric
+    // alternatives cannot establish equivalence to that rank-one line, even
+    // when mate is several plies away and the static mate-in-one flag is false.
+    if (top?.engineRank === 1 && engineScore(top) === null) return [top];
     const assessed = annotateEngineLossFromBest(engineLines);
     const safe = assessed
       .filter((line) => {
@@ -372,7 +377,13 @@ export function selectBotMoveForStyle(
 
   const ordered = style === 'chaos' ? safe : styleOrder(style, safe, difficulty);
 
-  const inaccuracy = maybeBlunderPick(ordered, blunderProbability, random);
+  // Trap evidence chooses the preferred head; intentional strength variation
+  // may still use worse moves from the shared safe shortlist. Preserve the
+  // existing eligibility requirements of the other personalities.
+  const inaccuracyPool = style === 'trap'
+    ? [ordered[0], ...safe.filter((line) => line.move !== ordered[0].move)]
+    : ordered;
+  const inaccuracy = maybeBlunderPick(inaccuracyPool, blunderProbability, random);
   const picked = inaccuracy ?? (style === 'chaos' ? ordered[Math.floor(random() * ordered.length)] : ordered[0]);
   if (!picked) return null;
 
