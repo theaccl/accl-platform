@@ -213,7 +213,9 @@ function trapSelectionPool(
   const engineOrdered = [...lines].sort(engineOrder);
   const top = engineOrdered[0];
   if (!top) return [];
-  if (top.source !== 'engine' && top.engineRank == null) return [top];
+  // Preserve deterministic fallback order and safe alternatives so lower
+  // strengths can still apply their configured intentional inaccuracy.
+  if (top.source !== 'engine' && top.engineRank == null) return engineOrdered;
 
   const topStrength = trapPlanStrength(top);
   const alternatives = engineOrdered

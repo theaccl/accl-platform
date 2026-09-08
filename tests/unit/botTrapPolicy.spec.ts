@@ -134,6 +134,58 @@ test.describe('Trap shared safe-shortlist policy', () => {
     );
   });
 
+  for (const level of [1, 2, 3, 6] as const) {
+    test(`level ${level} fallback retains safe inaccuracies at its configured probability`, async () => {
+      const profile = getBotDifficultyProfile(level);
+      const candidates = await buildBotCandidatesFromFen(
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        profile,
+        {
+          personalityStyle: 'trap',
+          evaluatePosition: async () => { throw new Error('simulated engine outage'); },
+        },
+      );
+      expect(candidates.every((line) => line.source === 'static-fallback')).toBe(true);
+      const unsafe = { ...candidates[0], move: 'a1a8', staticRiskCp: 900 };
+      const lines = [...candidates, unsafe];
+      const safe = buildSafeBotShortlist(lines, level);
+      expect(safe.length).toBeGreaterThan(1);
+      expect(safe.some((line) => line.move === unsafe.move)).toBe(false);
+
+      // At the probability boundary, no inaccuracy occurs and the neutral
+      // deterministic fallback remains authoritative.
+      expect(selectBotMoveForStyle('trap', lines, level, profile.blunderProbability,
+        () => profile.blunderProbability)?.move).toBe(safe[0].move);
+
+      // Every retained alternative is reachable when an inaccuracy is drawn;
+      // an unsafe candidate must never re-enter that selection pool.
+      for (let index = 1; index < safe.length; index += 1) {
+        const draws = [profile.blunderProbability / 2, (index - 0.5) / (safe.length - 1)];
+        const selected = selectBotMoveForStyle('trap', lines, level, profile.blunderProbability,
+          () => draws.shift() ?? 0);
+        expect(selected).toEqual({
+          move: safe[index].move,
+          rationale: `static-fallback:humanized-inaccuracy-l${level}`,
+        });
+      }
+    });
+  }
+
+  test('fallback forced mate precedes the restored inaccuracy pool', () => {
+    const mate = trapLine('h5h7', 40, 1);
+    const quiet = trapLine('h5e5', 39, 2);
+    for (const line of [mate, quiet]) {
+      line.source = 'static-fallback';
+      line.engineRank = null;
+      line.engineScoreCp = null;
+    }
+    mate.features!.mate = true;
+    expect(selectBotMoveForStyle('trap', [mate, quiet], 1, 1, () => 0)).toEqual({
+      move: 'h5h7',
+      rationale: 'static-fallback:forced-mate-l1',
+    });
+  });
+
   test('candidate construction records three-ply best-reply evidence', async () => {
     const candidates = await buildBotCandidatesFromFen(
       'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
