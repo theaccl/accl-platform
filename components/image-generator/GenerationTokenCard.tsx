@@ -33,6 +33,7 @@ const TOKEN_EVENT_LABELS: Record<string, string> = {
   commission_reservation: 'Commission reserved',
   commission_spend: 'Commission started',
   commission_refund: 'Commission refunded',
+  generator_issue_replacement: 'Generator issue — token replaced',
   administrative_adjustment: 'Account adjustment',
   internal_unlimited_commission: 'Unlimited commission',
   rating_bracket_award: 'Rating milestone reward',

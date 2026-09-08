@@ -92,11 +92,20 @@ Required event types include:
 - `commission_reservation`
 - `commission_spend`
 - `commission_refund`
+- `generator_issue_replacement`
 - `administrative_adjustment`
 
 A token is reserved when the player confirms a commission. It becomes spent when trusted generation processing begins. A failed commission that produces no reviewable result returns the reserved token. Cancelling before processing also returns it. Retries within the same commission must not spend additional tokens unless the player explicitly begins a separately priced commission.
 
 Client-side balance displays are informational only. They cannot mint, spend, or refund tokens.
+
+### Generator issue review — owner decision, September 8, 2026
+
+Tokens are used when processing begins. Players can report a generator issue and choose manual or AI review. Reporting alone does not restore the token. A legitimate issue confirmed through review replaces the spent token once, with an auditable decision. AI may approve a replacement directly; if confused or uncertain, it must hand the report to manual review.
+
+The replacement preserves the original spend history. A token already returned through automatic recovery cannot also receive a report-based replacement. Internal Unlimited commissions remain auditable and do not mint replacement tokens where none were charged. Existing automatic recovery for a commission that produces no reviewable result remains in place.
+
+The initial implementation automatically approves only clearly supported technical defects or objectively unusable commissions. Prompt mismatch, subjective concerns, missing evidence, and all negative or uncertain AI assessments remain eligible for manual review rather than automatic rejection. Broader qualifying criteria have not yet been locked by the owner.
 
 ---
 

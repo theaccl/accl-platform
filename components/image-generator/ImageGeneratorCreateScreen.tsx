@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-generator/CandidateReviewGrid";
 import { GenerationTokenCoin } from "@/components/image-generator/GenerationTokenCoin";
+import { GeneratorIssueReport } from "@/components/image-generator/GeneratorIssueReport";
 import PromptInput3 from "@/components/prompt-input-3";
 import { REFERENCE_IMAGE_MAX_BYTES } from "@/lib/imageGenerator/domain";
 import { GENERATOR_TIER_CONTRACTS, isGeneratorMembershipTier, type GeneratorMembershipTier, type GeneratorTierContract } from "@/lib/imageGenerator/membership";
@@ -693,6 +694,7 @@ export function ImageGeneratorCreateScreen() {
             </div>
           </section>
         ) : null}
+        {generationId && generationLoadState === 'active' && generationStatus !== 'queued' ? <GeneratorIssueReport key={generationId} generationId={generationId} onReplacement={loadAccess} /> : null}
       </div>
     </div>
   );

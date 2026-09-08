@@ -118,3 +118,52 @@ test('synthetic recovered Plus commission retains single-placement choices after
   expect(state.placements).toEqual([{ candidate_id: candidateIds[0], surface: 'profile_background' }]);
   expect(state.pageErrors).toEqual([]);
 });
+
+for (const method of ['manual', 'ai']) test(`generator issue ${method} submission survives a lost response and shows the replacement`, async ({ page, baseURL }, testInfo) => {
+  const state = await privateReview(page, baseURL, { approved: true });
+  let report: Record<string, unknown> | null = null;
+  let submissions = 0;
+  await page.route(`**/api/image-generations/${generationId}/issues`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON();
+      expect(body.review_method).toBe(method);
+      expect(body).not.toHaveProperty('replacement_amount');
+      report ??= { id: 'synthetic-report', request_id: generationId, ...body, status: 'pending_manual', replacement_amount: 0,
+        resolution_note: method === 'ai' ? 'AI could not confidently complete this review. Your report is waiting for manual review.' : null };
+      submissions++;
+      if (submissions === 1) return route.abort('failed');
+    }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ report }) });
+  });
+  await page.getByRole('button', { name: 'Report a generator issue', exact: true }).click();
+  await page.getByLabel('What went wrong?').fill('All candidates contain the same rendering defect.');
+  await page.getByLabel('Review method', { exact: true }).selectOption(method);
+  await page.getByRole('button', { name: 'Submit issue report', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit issue report', exact: true }).click();
+  await expect(page.getByText('Waiting for manual review.', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Report a generator issue', exact: true }).click();
+  await expect(page.getByText('Waiting for manual review.', { exact: true })).toBeVisible();
+  report = { ...(report ?? {}), status: 'approved', replacement_amount: 1, resolution_note: 'Confirmed the rendering defect.' };
+  await page.route('**/api/image-generations/entitlements', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    image_generator: true, can_commission: true, membership_tier: 'plus', generator_contract: GENERATOR_TIER_CONTRACTS.plus,
+    generation_tokens: { balance: 2, unlimited: false },
+  }) }));
+  await page.getByRole('button', { name: 'Refresh report status' }).click();
+  await expect(page.getByText('Issue confirmed — 1 token replaced.', { exact: true })).toBeVisible();
+  await expect(page.getByText(/2 tokens in Vault/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submit issue report', exact: true })).toHaveCount(0);
+  expect(state.pageErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath(`generator-issue-${method}.png`), fullPage: true });
+});
+
+test('generator issue endpoints reject signed-out owner and moderator requests', async ({ request, baseURL }) => {
+  if (!baseURL || !['localhost', '127.0.0.1'].includes(new URL(baseURL).hostname)) throw new Error('Local checks only');
+  for (const path of [`/api/image-generations/${generationId}/issues`, '/api/moderator/generator-issues', `/api/moderator/generator-issues/${generationId}`]) {
+    expect((await request.get(path)).status()).toBe(401);
+  }
+  for (const path of [`/api/image-generations/${generationId}/issues`, `/api/moderator/generator-issues/${generationId}`]) {
+    expect((await request.post(path, { data: { decision: 'approved' } })).status()).toBe(401);
+  }
+});

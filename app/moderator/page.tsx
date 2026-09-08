@@ -10,6 +10,7 @@ export default function ModeratorQueuePage() {
         <Link href="/moderator/control-center" className="text-sm underline">
           Open Operator Control Center
         </Link>
+        <Link href="/moderator/generator-issues" className="ml-4 text-sm underline">Review generator issues</Link>
       </div>
       <ModeratorQueueDashboard />
     </div>
