@@ -44,7 +44,7 @@ The current Preview shares ACCL hosting already. Its database runs paid Micro co
 
 Current per-commission controls examine already recorded spend; they are not a hard prospective or daily cap. The image SDK has two retries and the queue permits three attempts. AI-review calls require their own shared-budget accounting. Process-local request throttling does not bound distributed spend.
 
-The existing live test approval remains at most $0.05 total existing free credit, conditional on exact model access, cost bounds and isolation. It does not authorize recurring spend, purchases, automatic recharge, new provider keys or model substitution. No real calls were made under it during the September 9 inspection.
+The original live test approval was at most $0.05 total existing free credit. In a later September 9 handoff amendment, the owner authorized existing remaining free credit for necessary generation testing. Conservatively bound the continuation to $4.86 or the verified remaining free balance, whichever is lower, in aggregate. Verify free-eligible model access, complete cost bounds including retries/failover, and isolation before dispatch. This is not a daily allowance or a target to spend. It does not authorize purchases, paid/BYOK balances, automatic recharge, new provider keys or expanded remote-change permissions. The original limited AI-review authorization retains its conditions and counts against the aggregate ceiling. No real calls were made during the September 9 inspection. See the originating task's `ACCL-next-session-handoff.md` for the full amendment and execution boundaries.
 
 ## Preservation classification
 
