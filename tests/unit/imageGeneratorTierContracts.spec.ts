@@ -94,7 +94,7 @@ test('accepted creations preserve immutable Pro evolution lineage', async () => 
   expect(sql).toContain("p_prompt, 5::smallint");
   expect(worker).toContain('request.parent_saved_creation_id');
   expect(worker).toContain(".from('image_saved_creations')");
-  expect(vault).toContain('Spend 1 token and further');
+  expect(vault).toContain('Generate evolution · 1 Generation Token');
 });
 
 test('one central motion policy protects audience and reduced-motion boundaries', async () => {

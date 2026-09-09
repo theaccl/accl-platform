@@ -1,31 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Castle, Crown, ImagePlus, LockKeyhole, Shield, Sparkles, X } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ImagePlus, LockKeyhole, Sparkles, X } from "lucide-react";
 
-const SUGGESTIONS = [
-  {
-    label: "Royal knight crest",
-    prompt: "A regal chess knight crest with a crown, deep violet light, and a dark tournament shield",
-    icon: Crown,
-  },
-  {
-    label: "Storm arena",
-    prompt: "A lone chess king in a storm-lit arena with controlled electric energy and dramatic shadows",
-    icon: Sparkles,
-  },
-  {
-    label: "Gold rook emblem",
-    prompt: "A minimal gold rook emblem on obsidian, prestigious, sharp, and readable at profile-icon size",
-    icon: Castle,
-  },
-  {
-    label: "Crimson shield",
-    prompt: "A crimson and black chess shield with a powerful queen silhouette and subtle ember highlights",
-    icon: Shield,
-  },
-] as const;
+import { GENERATOR_STYLES, MAX_PROMPT_WORDS, promptWordCount, type GeneratorStyle } from "@/lib/imageGenerator/promptOptions";
 
 const MAX_COMPOSER_HEIGHT = 220;
 
@@ -42,6 +21,10 @@ type PromptInput3Props = {
   onReferenceSelect?: (file: File) => void;
   onReferenceRemove?: () => void;
   candidateCount?: number;
+  style: GeneratorStyle;
+  onStyleChange: (style: GeneratorStyle) => void;
+  unlimited?: boolean;
+  lockInputs?: boolean;
 };
 
 export default function PromptInput3({
@@ -57,6 +40,10 @@ export default function PromptInput3({
   onReferenceSelect,
   onReferenceRemove,
   candidateCount = 4,
+  style,
+  onStyleChange,
+  unlimited = false,
+  lockInputs = false,
 }: PromptInput3Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,14 +63,8 @@ export default function PromptInput3({
     return () => cancelAnimationFrame(frame);
   }, [value]);
 
-  const canCreate = value.trim().length > 0 && !busy && !disabled;
-
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      if (canCreate) onSubmit();
-    }
-  };
+  const words = promptWordCount(value);
+  const canCreate = words <= MAX_PROMPT_WORDS && !busy && !disabled;
 
   return (
     <div className="w-full">
@@ -93,7 +74,7 @@ export default function PromptInput3({
           type="file"
           accept="image/png,image/jpeg,image/webp"
           className="sr-only"
-          disabled={disabled || busy}
+          disabled={disabled || busy || lockInputs}
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) onReferenceSelect?.(file);
@@ -110,12 +91,12 @@ export default function PromptInput3({
                 <p className="truncate text-sm font-semibold text-white">{referenceName ?? "Reference image"}</p>
                 <p className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--accl-text-muted)]"><LockKeyhole className="h-3 w-3 text-[var(--accl-accent-gold)]" aria-hidden /> Private · used to guide this generation only</p>
               </div>
-              <button type="button" onClick={onReferenceRemove} disabled={disabled || busy} aria-label="Remove reference image" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 text-white/50 transition hover:border-red-400/40 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-40"><X className="h-4 w-4" aria-hidden /></button>
+              <button type="button" onClick={onReferenceRemove} disabled={disabled || busy || lockInputs} aria-label="Remove reference image" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 text-white/50 transition hover:border-red-400/40 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-40"><X className="h-4 w-4" aria-hidden /></button>
             </div>
           ) : (
             <button
               type="button"
-              disabled={disabled || busy}
+              disabled={disabled || busy || lockInputs}
               onClick={() => fileInputRef.current?.click()}
               className="flex w-full items-center gap-3 rounded-xl border border-dashed border-[var(--accl-border-strong)] bg-black/10 px-4 py-3 text-left transition hover:border-[var(--accl-accent-gold)] hover:bg-[rgba(212,160,23,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40"
             >
@@ -134,18 +115,19 @@ export default function PromptInput3({
           rows={3}
           value={value}
           maxLength={maxLength}
-          disabled={disabled || busy}
+          disabled={disabled || busy || lockInputs}
           onChange={(event) => onValueChange(event.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Describe your chess identity, colors, atmosphere, symbols, and style…"
+          aria-describedby="generator-prompt-help"
+          aria-invalid={words > MAX_PROMPT_WORDS}
+          placeholder="Optional: describe your chess identity or let ACCL choose…"
           className="block max-h-[220px] min-h-[132px] w-full resize-none bg-transparent px-5 py-5 text-base leading-relaxed text-[var(--accl-text-primary)] outline-none placeholder:text-[var(--accl-text-faint)] disabled:cursor-not-allowed disabled:opacity-60"
         />
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--accl-border-subtle)] px-4 py-3">
           <span className="font-mono text-[11px] tabular-nums text-[var(--accl-text-faint)]">
-            {value.length.toLocaleString()} / {maxLength.toLocaleString()}
+            {words} / {MAX_PROMPT_WORDS} words
           </span>
           <span className="hidden text-xs text-[var(--accl-text-faint)] sm:inline">
-            Enter to create · Shift + Enter for a new line
+            Optional prompt · Free
           </span>
           <button
             type="button"
@@ -154,31 +136,25 @@ export default function PromptInput3({
             className="ml-auto inline-flex min-h-10 items-center justify-center gap-2 rounded-[var(--rb-r-md)] bg-[var(--accl-accent-gold)] px-5 text-sm font-bold text-black transition-[transform,filter,opacity] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--accl-bg-card)] disabled:pointer-events-none disabled:opacity-40"
           >
             <Sparkles className="h-4 w-4" aria-hidden />
-            {busy ? "Creating…" : `Create ${candidateCount} candidates`}
+            {busy ? "Generating…" : unlimited ? "Generate · Unlimited" : "Generate · 1 Generation Token"}
           </button>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2" aria-label="Prompt starters">
-        {SUGGESTIONS.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.label}
-              type="button"
-              disabled={disabled || busy}
-              onClick={() => {
-                onValueChange(item.prompt);
-                textareaRef.current?.focus({ preventScroll: true });
-              }}
-              className="inline-flex min-h-9 items-center gap-2 rounded-[var(--rb-r-md)] border border-[var(--accl-border-muted)] bg-[var(--accl-bg-elevated)] px-3 text-xs font-medium text-[var(--accl-text-secondary)] transition-[transform,background-color,border-color,color] duration-150 hover:border-[var(--accl-accent-gold)] hover:bg-[var(--accl-bg-card-end)] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40"
-            >
-              <Icon className="h-3.5 w-3.5 text-[var(--accl-accent-gold)]" aria-hidden />
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
+      <p id="generator-prompt-help" className={`mt-2 text-xs ${words > MAX_PROMPT_WORDS ? 'text-red-300' : 'text-white/50'}`} role={words > MAX_PROMPT_WORDS ? 'alert' : undefined}>
+        {words > MAX_PROMPT_WORDS ? 'Shorten your prompt to 50 words before generating.' : `${candidateCount} private candidate${candidateCount === 1 ? '' : 's'}. Only Generate starts a commission.`}
+      </p>
+      <fieldset className="mt-5" disabled={disabled || busy || lockInputs}>
+        <legend className="mb-2 text-xs font-semibold text-white/70">Style effects · No extra token cost</legend>
+        <div className="flex flex-wrap gap-2">
+          {(Object.entries(GENERATOR_STYLES) as [GeneratorStyle, { label: string; prompt: string }][]).map(([key, option]) => (
+            <label key={key} className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs ${style === key ? 'border-amber-200/60 bg-amber-200/10 text-amber-100' : 'border-white/15 text-white/65'}`}>
+              <input type="radio" name="generator-style" value={key} checked={style === key} onChange={() => onStyleChange(key)} className="accent-amber-200" />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { generateImage } from 'ai';
+import { fixtureScope, FixtureImageGenerationProvider } from './fixtureProvider';
 
 import {
   ACCL_IMAGE_STYLE_VERSION,
@@ -60,7 +61,7 @@ export interface ImageGenerationProvider {
     candidateCount: number;
     requestId: string;
     ownerId: string;
-    membershipTier?: 'free' | 'plus' | 'pro' | 'internal_unlimited';
+    membershipTier?: 'free' | 'standard' | 'plus' | 'pro' | 'internal_unlimited';
     operation?: 'opening' | 'refinement';
     attemptNumber?: number;
     refinementId?: string;
@@ -148,7 +149,7 @@ export class VercelGatewayImageGenerationProvider implements ImageGenerationProv
     candidateCount: number;
     requestId: string;
     ownerId: string;
-    membershipTier?: 'free' | 'plus' | 'pro' | 'internal_unlimited';
+    membershipTier?: 'free' | 'standard' | 'plus' | 'pro' | 'internal_unlimited';
     operation?: 'opening' | 'refinement';
     attemptNumber?: number;
     refinementId?: string;
@@ -266,6 +267,8 @@ export function imageGenerationProviderCredentialsAvailable(
 }
 
 export function configuredImageGenerationProvider(): ImageGenerationProvider | null {
+  const scope = fixtureScope();
+  if (scope) return new FixtureImageGenerationProvider(scope);
   if (!imageGenerationProviderCredentialsAvailable()) return null;
   return new VercelGatewayImageGenerationProvider(
     process.env.ACCL_IMAGE_GENERATION_MODEL?.trim() || DEFAULT_IMAGE_GENERATION_MODEL

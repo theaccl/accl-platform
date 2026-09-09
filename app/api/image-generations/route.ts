@@ -1,7 +1,10 @@
+import { composePlayerPrompt } from '@/lib/imageGenerator/promptOptions';
+import { GENERATOR_TIER_CONTRACTS, isGeneratorMembershipTier } from '@/lib/imageGenerator/membership';
 import { createGenerationSchema, parseJsonBody } from '@/lib/imageGenerator/api';
 import {
   DEFAULT_IMAGE_GENERATION_MODEL,
   IMAGE_GENERATION_PROVIDER,
+  configuredImageGenerationProvider,
 } from '@/lib/imageGenerator/provider';
 import { moderateImagePrompt } from '@/lib/imageGenerator/safety';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
@@ -19,7 +22,8 @@ export async function POST(request: Request): Promise<Response> {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
     const parsed = createGenerationSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return jsonResponse({ error: 'Invalid generation request' }, 400);
-    const promptSafety = moderateImagePrompt(parsed.data.prompt);
+    const playerPrompt = composePlayerPrompt(parsed.data.prompt, parsed.data.style, false);
+    const promptSafety = moderateImagePrompt(playerPrompt);
     if (!promptSafety.allowed) {
       return jsonResponse(
         { error: 'This prompt cannot be used for ACCL profile imagery', code: promptSafety.code },
@@ -36,15 +40,16 @@ export async function POST(request: Request): Promise<Response> {
       p_user_id: user.id,
     });
     if (tierResult.error) return jsonResponse({ error: 'Could not verify generator access' }, 500);
-    const tier = typeof tierResult.data === 'string' ? tierResult.data : 'free';
-    const candidateCount = tier === 'free' ? 3 : tier === 'plus' ? 4 : 5;
+    if (!isGeneratorMembershipTier(tierResult.data)) return jsonResponse({ error: 'Unrecognized membership tier' }, 503);
+    const candidateCount = GENERATOR_TIER_CONTRACTS[tierResult.data].initialCandidates;
     const referenceIds = parsed.data.reference_ids ??
       (parsed.data.reference_id ? [parsed.data.reference_id] : []);
-    const provider = IMAGE_GENERATION_PROVIDER;
-    const model = process.env.ACCL_IMAGE_GENERATION_MODEL?.trim() || DEFAULT_IMAGE_GENERATION_MODEL;
+    const configuredProvider = configuredImageGenerationProvider();
+    const provider = configuredProvider?.name ?? IMAGE_GENERATION_PROVIDER;
+    const model = configuredProvider?.model ?? (process.env.ACCL_IMAGE_GENERATION_MODEL?.trim() || DEFAULT_IMAGE_GENERATION_MODEL);
     const result = await supabase.rpc('create_image_generation_request_with_references', {
       p_owner_id: user.id,
-      p_prompt: parsed.data.prompt,
+      p_prompt: playerPrompt,
       p_candidate_count: candidateCount,
       p_idempotency_key: idempotencyKey,
       p_reference_ids: referenceIds,

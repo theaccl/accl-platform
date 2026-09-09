@@ -14,6 +14,7 @@ import { moderateImagePrompt, validateGeneratedCandidateSafety } from '@/lib/ima
 import { imageGenerationRetryDelaySeconds, isTransientImageGenerationError } from '@/lib/imageGenerator/worker';
 
 type ClaimedRefinement = {
+  provider: string;
   id: string;
   request_id: string;
   owner_id: string;
@@ -45,12 +46,13 @@ export async function processOneImageRefinement(
   supabase: SupabaseClient,
   provider: ImageGenerationProvider
 ): Promise<ImageRefinementProcessResult> {
-  const claim = await supabase.rpc('claim_next_image_generation_refinement');
+  const claim = await supabase.rpc('claim_next_image_generation_refinement', { p_provider: provider.name });
   if (claim.error) return { claimed: false, error: claim.error.message };
   const refinement = parseClaimedRefinement(claim.data);
   if (!refinement) return { claimed: false };
 
   try {
+    if (refinement.provider !== provider.name) throw new Error('generation_provider_lane_mismatch');
     const guidanceSafety = moderateImagePrompt(refinement.guidance);
     if (!guidanceSafety.allowed) throw new Error(`prompt_safety_rejected:${guidanceSafety.code}`);
     await enforceImageGenerationCostGuard(supabase, {

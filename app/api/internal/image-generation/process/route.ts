@@ -18,6 +18,13 @@ async function processRequest(request: Request, batch: number): Promise<Response
   }
   if (!verifyImageGenerationWorkerRequest(request)) return jsonResponse({ error: 'Unauthorized' }, 401);
   const supabase = createServiceRoleClient();
+  const fixtureProvider = configuredImageGenerationProvider();
+  if (fixtureProvider?.name.startsWith('fixture:')) {
+    // A fixture run must not mint for or clean up unrelated staging accounts.
+    const results = await processImageGenerationBatch(supabase, fixtureProvider, batch);
+    const refinementResults = await processImageRefinementBatch(supabase, fixtureProvider, batch);
+    return jsonResponse({ fixture_scope: fixtureProvider.name, results, refinement_results: refinementResults });
+  }
   const [weeklyMints, anniversaryMints] = await Promise.all([
     supabase.rpc('mint_due_generation_token_allowances', { p_limit: 50 }),
     supabase.rpc('mint_due_pro_anniversary_generation_tokens', { p_limit: 50 }),

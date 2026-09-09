@@ -1,0 +1,81 @@
+// Isolated PostgreSQL regression: no credentials, provider, or hosted DB.
+import assert from 'node:assert/strict';
+const { createGeneratorTestDb } = await import('./helpers/generatorLocalDb.mjs');
+const db = await createGeneratorTestDb();
+try {
+ const owner='00000000-0000-4000-8000-000000000001';
+ const grant=(date='2026-09-09')=>db.query('select grant_generator_launch_allowances($1,$2::timestamptz) as result',[owner,date]);
+ const summary=async()=> (await db.query("select source,balance from generator_wallet_sources where user_id=$1 and wallet='generation' order by source",[owner])).rows;
+ await db.query('insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())',[owner,'fixture@example.invalid']);
+ await grant(); await grant();
+ assert.deepEqual(await summary(),[{source:'signup',balance:2}]);
+ await db.query("insert into membership_entitlements(user_id,entitlement) values($1,'membership_standard')",[owner]);
+ await grant(); await grant();
+ assert.deepEqual(await summary(),[{source:'recurring',balance:2},{source:'signup',balance:2}]);
+ await grant('2026-10-01'); await grant('2026-11-01');
+ assert.equal((await summary()).find(x=>x.source==='recurring').balance,4,'Standard cap is four');
+ await db.query("select credit_generator_wallet($1,'generation','purchased',9,'fixture-purchase-1')",[owner]);
+ await db.query("select credit_generator_wallet($1,'generation','purchased',9,'fixture-purchase-1')",[owner]);
+ await assert.rejects(()=>db.query("select credit_generator_wallet($1,'generation','reward',9,'fixture-purchase-1')",[owner]),/reused/);
+ await grant('2026-12-01');
+ assert.equal((await summary()).find(x=>x.source==='purchased').balance,9);
+ const request=(await db.query("select create_image_generation_request_with_references($1,'A chess identity',1::smallint,'fixture-commission-1') as result",[owner])).rows[0].result;
+ assert.equal(request.candidate_count,1);
+ const replay=(await db.query("select create_image_generation_request_with_references($1,'A chess identity',5::smallint,'fixture-commission-1') as result",[owner])).rows[0].result;
+ assert.equal(replay.id,request.id);
+ assert.equal((await summary()).find(x=>x.source==='recurring').balance,3,'Reserve uses recurring first');
+ await db.query("select transition_generation_token_redemption($1,'spend')",[request.id]);
+ await db.query("select transition_generation_token_redemption($1,'refund')",[request.id]);
+ await db.query("select transition_generation_token_redemption($1,'refund')",[request.id]);
+ assert.equal((await summary()).find(x=>x.source==='replacement').balance,1,'Restitution survives a future allowance cap');
+ await db.query("select credit_generator_wallet($1,'guidance','purchased',3,'fixture-guidance-1')",[owner]);
+ await db.query("select credit_generator_wallet($1,'compare','purchased',5,'fixture-compare-1')",[owner]);
+ const other=(await db.query("select wallet,balance from generator_wallet_sources where user_id=$1 and wallet<>'generation' order by wallet",[owner])).rows;
+ assert.deepEqual(other,[{wallet:'compare',balance:5},{wallet:'guidance',balance:3}]);
+ await db.query("insert into membership_entitlements(user_id,entitlement) values($1,'membership_pro')",[owner]);
+ const pro=(await db.query("select create_image_generation_request_with_references($1,'Pro identity',3::smallint,'fixture-pro-commission') as result",[owner])).rows[0].result;
+ assert.equal(pro.keep_limit,2);
+ assert.equal(pro.candidate_count,3);
+ const candidates=[];
+ for(let n=1;n<=3;n++) {
+  const c=(await db.query("insert into image_generation_candidates(request_id,owner_id,ordinal,storage_path,mime_type,byte_size,moderation_status) values($1,$2,$3,$4,'image/png',100,'approved') returning id",[pro.id,owner,n,`${owner}/${pro.id}/${n}.png`])).rows[0];
+  candidates.push(c.id);
+ }
+ await db.query("update image_generation_requests set status='review',review_expires_at=now()+interval '1 hour' where id=$1",[pro.id]);
+ await assert.rejects(()=>db.query('select approve_image_generation_candidates($1,$2,$3)',[owner,pro.id,candidates]),/invalid retained/);
+ await db.query('select approve_image_generation_candidates($1,$2,$3)',[owner,pro.id,candidates.slice(0,2)]);
+ await db.query('select approve_image_generation_candidates($1,$2,$3)',[owner,pro.id,candidates.slice(0,2).reverse()]);
+ assert.equal((await db.query('select count(*)::integer n from image_saved_creations where generation_request_id=$1',[pro.id])).rows[0].n,2);
+ await assert.rejects(()=>db.query('select approve_image_generation_candidates($1,$2,$3)',[owner,pro.id,[candidates[2]]]),/final/);
+ assert.equal((await db.query('select status from image_generation_candidates where id=$1',[candidates[2]])).rows[0].status,'rejected');
+ const sourceBalance=(await db.query("select sum(balance)::integer n from generator_wallet_sources where user_id=$1 and wallet='generation'",[owner])).rows[0].n;
+ assert.equal((await db.query('select balance from generation_token_accounts where user_id=$1',[owner])).rows[0].balance,sourceBalance);
+ const member='00000000-0000-4000-8000-000000000002';
+ const tournament='00000000-0000-4000-8000-000000000009';
+ await db.query('insert into auth.users(id) values($1)',[member]);
+ await assert.rejects(()=>db.query('insert into tournament_entries(user_id,tournament_id) values($1,$2)',[member,tournament]),/battlefield_membership_required/);
+ async function sync(plan,event,date,status='active') {
+  return db.query("select sync_membership_subscription_entitlement($1,$2,'customer.subscription.updated',$3,$4,'sub_fixture','cus_fixture',$5,false,'2099-01-01','2026-09-01') r",[plan,event,date,member,status]);
+ }
+ await sync('standard','evt_fixture_standard','2026-09-09');
+ assert.equal((await db.query('select effective_image_generator_tier($1) t',[member])).rows[0].t,'standard');
+ assert.equal((await sync('standard','evt_fixture_standard','2026-09-09')).rows[0].r,false);
+ await db.query('insert into tournament_entries(user_id,tournament_id) values($1,$2)',[member,tournament]);
+ await sync('plus','evt_fixture_plus','2026-09-10');
+ assert.equal((await db.query('select effective_image_generator_tier($1) t',[member])).rows[0].t,'plus');
+ await sync('standard','evt_fixture_stale','2026-09-08');
+ assert.equal((await db.query('select effective_image_generator_tier($1) t',[member])).rows[0].t,'plus');
+ await sync('pro','evt_fixture_pro','2026-09-11');
+ assert.equal((await db.query('select effective_image_generator_tier($1) t',[member])).rows[0].t,'pro');
+ await sync('pro','evt_fixture_cancel','2026-09-12','canceled');
+ assert.equal((await db.query('select has_battlefield_membership($1) b',[member])).rows[0].b,false);
+ await db.query('update tournament_entries set user_id=user_id where user_id=$1',[member]);
+ await assert.rejects(()=>db.query('insert into tournament_entries(user_id,tournament_id) values($1,gen_random_uuid())',[member]),/battlefield_membership_required/);
+ await assert.rejects(()=>db.query("select sync_membership_subscription_entitlement('pro','evt_rebind','customer.subscription.updated',now(),$1,'sub_fixture','cus_fixture','active',false,'2099-01-01','2026-09-01')",[owner]),/owner cannot change/);
+ await db.exec('set role authenticated');
+ await assert.rejects(()=>grant(),/permission denied/);
+ await assert.rejects(()=>db.query('select * from generator_wallet_sources'),/permission denied/);
+ await assert.rejects(()=>db.query("select credit_generator_wallet($1,'generation','purchased',99,'forged-purchase')",[owner]),/permission denied/);
+ await db.exec('reset role');
+ console.log('PASS: launch migrations, Standard/Pro candidates, signup/retry, period idempotency, cap, purchased protection, source-key conflict, reserve/refund/replay, distinct wallets, atomic keep-two, saved creations, final-selection replay, rejected candidates, ordered billing Standard/Plus/Pro changes, Battlefield entry/denial/recovery and client denial.');
+} finally { await db.close(); }

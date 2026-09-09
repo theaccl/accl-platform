@@ -34,7 +34,7 @@ export function resolveCosmeticMotion(input: {
   if (input.reducedMotion) return still('reduced_motion');
   if (!isGeneratorMembershipTier(input.tier)) return still('tier_still_only');
   if (input.context === 'community') return still('surface_restricted');
-  if (input.tier === 'free') return still('tier_still_only');
+  if (input.tier === 'free' || input.tier === 'standard') return still('tier_still_only');
 
   if (input.tier === 'plus') {
     if (input.context !== 'owner_profile') return still('owner_only');

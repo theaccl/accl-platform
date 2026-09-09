@@ -12,8 +12,10 @@ export async function GET(request: Request): Promise<Response> {
   const user = await resolveAuthenticatedUser(request);
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
   const supabase = createServiceRoleClient();
+  const allowance = await supabase.rpc('grant_generator_launch_allowances', { p_user_id: user.id });
+  if (allowance.error) return jsonResponse({ error: 'Could not verify Generator allowances' }, 503);
   const normalizedEmail = user.email?.trim().toLowerCase() ?? '';
-  const [result, tokenAccount, tokenLedger, internalGrant] = await Promise.all([
+  const [result, tokenAccount, tokenLedger, internalGrant, walletSources] = await Promise.all([
     supabase
       .from('membership_entitlements')
       .select('entitlement,status,valid_until,metadata')
@@ -37,7 +39,17 @@ export async function GET(request: Request): Promise<Response> {
       .eq('email_normalized', normalizedEmail)
       .eq('status', 'active')
       .maybeSingle(),
+    supabase.from('generator_wallet_sources').select('wallet,source,balance').eq('user_id', user.id),
   ]);
+  if (walletSources.error) return jsonResponse({ error: 'Could not load Generator wallets' }, 503);
+  const walletSummary = (wallet: string) => {
+    const sources = (walletSources.data ?? []).filter((row) => row.wallet === wallet);
+    return {
+      balance: sources.reduce((sum, row) => sum + row.balance, 0),
+      purchased_balance: sources.filter((row) => row.source === 'purchased').reduce((sum, row) => sum + row.balance, 0),
+      recurring_balance: sources.filter((row) => row.source === 'recurring').reduce((sum, row) => sum + row.balance, 0),
+    };
+  };
   if (result.error) return jsonResponse({ error: 'Could not load entitlements' }, 500);
   const now = Date.now();
   const active = (result.data ?? []).filter(
@@ -65,7 +77,8 @@ export async function GET(request: Request): Promise<Response> {
     lifetime_earned: 0,
     lifetime_spent: 0,
   };
-  const hasPaidGeneratorTier = tier === 'plus' || tier === 'pro';
+  if (walletSummary('generation').balance !== tokenSummary.balance) return jsonResponse({ error: 'Generator wallet requires reconciliation' }, 503);
+  const hasPaidGeneratorTier = tier === 'standard' || tier === 'plus' || tier === 'pro';
   const canCommission = internalUnlimited || tokenSummary.balance > 0;
   const generatorContract = GENERATOR_TIER_CONTRACTS[tier];
   return jsonResponse({
@@ -75,6 +88,8 @@ export async function GET(request: Request): Promise<Response> {
     internal_unlimited: internalUnlimited,
     membership_tier: tier,
     generator_contract: generatorContract,
+    guidance_tokens: { ...walletSummary('guidance'), actions_available: false },
+    compare_tokens: { ...walletSummary('compare'), actions_available: false },
     generation_tokens: internalUnlimited ? {
       balance: null,
       reserved: tokenSummary.reserved,
@@ -83,6 +98,7 @@ export async function GET(request: Request): Promise<Response> {
       unlimited: true,
     } : {
       ...tokenSummary,
+      ...walletSummary('generation'),
       unlimited: false,
     },
     generation_token_ledger: tokenLedger.data ?? [],

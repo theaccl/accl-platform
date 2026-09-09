@@ -12,13 +12,15 @@ async function privateReview(page: Page, baseURL: string | undefined, options: {
   reducedMotion?: boolean;
   approved?: boolean;
   placementFailure?: boolean;
+  launch?: boolean;
 } = {}) {
   if (!baseURL || !['localhost', '127.0.0.1'].includes(new URL(baseURL).hostname)) {
     throw new Error('Synthetic acceptance tests must run against localhost');
   }
   const accountTier = options.accountTier ?? 'plus';
   const commissionTier = options.commissionTier ?? 'plus';
-  const count = GENERATOR_TIER_CONTRACTS[commissionTier].initialCandidates;
+  const count = options.launch ? GENERATOR_TIER_CONTRACTS[commissionTier].initialCandidates : commissionTier === 'plus' ? 4 : commissionTier === 'pro' ? 5 : 3;
+  let acceptedIds = [candidateIds[0]];
   const user = { id: ownerId, aud: 'authenticated', role: 'authenticated', email: 'synthetic-owner@example.invalid', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01T00:00:00Z' };
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -41,8 +43,8 @@ async function privateReview(page: Page, baseURL: string | undefined, options: {
     if (url.pathname === '/synthetic-candidate.png') return route.fulfill({ contentType: 'image/png', body: fixture });
     if (url.pathname === '/api/image-generations/entitlements') return json({ image_generator: true, can_commission: true, membership_tier: accountTier, generator_contract: GENERATOR_TIER_CONTRACTS[accountTier], generation_tokens: { balance: 1, unlimited: false } });
     if (url.pathname === `/api/image-generations/${generationId}`) return json({
-      generation: { id: generationId, status: state.accepted ? 'approved' : 'review', membership_tier: commissionTier },
-      candidates: candidateIds.slice(0, count).map((id, index) => ({ id, ordinal: index + 1, status: state.accepted ? index === 0 ? 'approved' : 'rejected' : 'review' })), refinements: [],
+      generation: { id: generationId, status: state.accepted ? 'approved' : 'review', membership_tier: commissionTier, keep_limit: options.launch ? GENERATOR_TIER_CONTRACTS[commissionTier].keepLimit : 1 },
+      candidates: candidateIds.slice(0, count).map((id, index) => ({ id, ordinal: index + 1, status: state.accepted ? acceptedIds.includes(id) ? 'approved' : 'rejected' : 'review' })), refinements: [],
     });
     if (url.pathname.endsWith('/access')) return json({ url: `${baseURL}/synthetic-candidate.png` });
     if (url.pathname.endsWith('/presentation')) {
@@ -50,7 +52,7 @@ async function privateReview(page: Page, baseURL: string | undefined, options: {
       const ids = state.firstReveals++ === 0 ? candidateIds.slice(0, count) : [];
       return json({ first_presentation_candidate_ids: ids });
     }
-    if (url.pathname.endsWith('/approve')) { state.accepted = true; return json({ approved: true }); }
+    if (url.pathname.endsWith('/approve')) { acceptedIds = request.postDataJSON().candidate_ids; state.accepted = true; return json({ approved: true }); }
     if (url.pathname === '/api/profile/imagery' || url.pathname === '/api/profile/imagery/set') {
       state.placements.push(request.postDataJSON());
       return options.placementFailure && state.placements.length === 1
@@ -63,6 +65,21 @@ async function privateReview(page: Page, baseURL: string | undefined, options: {
   await expect(page.locator('[data-presentation-phase]')).toHaveCount(state.accepted ? 1 : count);
   return state;
 }
+
+test('launch Pro keeps two only after explicit confirmation, then offers either retained image for placement', async ({ page, baseURL }) => {
+  const state = await privateReview(page, baseURL, { commissionTier: 'pro', launch: true, reducedMotion: true });
+  await page.getByRole('button', { name: 'Keep candidate', exact: true }).nth(0).click();
+  expect(state.accepted).toBe(false);
+  await page.getByRole('button', { name: 'Keep candidate', exact: true }).nth(0).click();
+  await expect(page.getByRole('button', { name: 'Keep candidate', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Accept 2 selections', exact: true }).click();
+  await expect(page.locator('[data-presentation-phase="accepted_still"]')).toHaveCount(2);
+  await expect(page.getByRole('radio', { name: 'Candidate 2', exact: true })).toBeVisible();
+  await page.getByRole('radio', { name: 'Candidate 2', exact: true }).check();
+  expect(state.placements).toHaveLength(0);
+  await page.getByRole('button', { name: 'Place matching icon + background', exact: true }).click();
+  expect(state.placements[0]).toMatchObject({ candidate_id: candidateIds[1] });
+});
 
 test('synthetic accept-and-place stops every candidate motion and recovers the approved winner', async ({ page, baseURL }) => {
   const state = await privateReview(page, baseURL, { placementFailure: true });
@@ -152,7 +169,7 @@ for (const method of ['manual', 'ai']) test(`generator issue ${method} submissio
   }) }));
   await page.getByRole('button', { name: 'Refresh report status' }).click();
   await expect(page.getByText('Issue confirmed — 1 token replaced.', { exact: true })).toBeVisible();
-  await expect(page.getByText(/2 tokens in Vault/)).toBeVisible();
+  await expect(page.locator('[data-wallet="generation"] [data-wallet-total]')).toHaveText('2');
   await expect(page.getByRole('button', { name: 'Submit issue report', exact: true })).toHaveCount(0);
   expect(state.pageErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath(`generator-issue-${method}.png`), fullPage: true });

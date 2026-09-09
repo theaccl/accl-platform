@@ -542,6 +542,7 @@ export default function TournamentDetailPage() {
               }}
             >
               <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>Published economics</p>
+              <p className="mt-2 text-sm text-amber-200">Battlefield entry requires Standard membership or above.</p>
               {(tournament.entry_fee_cents ?? 0) > 0 ? (
                 <p style={{ margin: '10px 0 0 0', fontSize: 16, color: '#fbbf24', fontWeight: 700 }}>
                   Enter for ${((tournament.entry_fee_cents ?? 0) / 100).toFixed(2)}

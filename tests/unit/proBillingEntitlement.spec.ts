@@ -65,7 +65,7 @@ test('webhook route processes subscription access before acknowledging Stripe', 
   expect(parser).toContain("case 'customer.subscription.created'");
   expect(parser).toContain("case 'customer.subscription.updated'");
   expect(parser).toContain("case 'customer.subscription.deleted'");
-  expect(parser).toContain('item.price.id === proPriceId');
+  expect(parser).toContain('membershipPlanForPrices(subscription.items.data.map((item) => item.price.id))');
   expect(parser).toContain('subscription.start_date');
   expect(parser).toContain("detail: 'subscription_start_missing'");
   expect(parser).toContain('stripe.webhooks.constructEvent');
@@ -90,7 +90,7 @@ test('Pro anniversary timing is provider-authoritative and due grants are idempo
   expect(sql).toMatch(/grant execute on function public\.mint_due_pro_anniversary_generation_tokens[\s\S]*to service_role/i);
   expect(processor).toContain("rpc('mint_due_pro_anniversary_generation_tokens'");
   expect(processor.indexOf("rpc('mint_due_pro_anniversary_generation_tokens'")).toBeLessThan(
-    processor.indexOf('configuredImageGenerationProvider()')
+    processor.lastIndexOf('configuredImageGenerationProvider()')
   );
   expect(webhook).toContain('p_subscription_started_at: parsed.subscriptionStartedAt');
 });

@@ -76,13 +76,14 @@ export async function processOneImageGeneration(
   supabase: SupabaseClient,
   provider: ImageGenerationProvider
 ): Promise<ImageGenerationProcessResult> {
-  const claim = await supabase.rpc('claim_next_image_generation_request');
+  const claim = await supabase.rpc('claim_next_image_generation_request', { p_provider: provider.name });
   if (claim.error) return { claimed: false, error: claim.error.message };
   const request = parseClaimedRequest(claim.data);
   if (!request) return { claimed: false };
 
   const consumedReferences: Array<{ id: string; storagePath: string }> = [];
   try {
+    if (request.provider !== provider.name) throw new Error('generation_provider_lane_mismatch');
     const promptSafety = moderateImagePrompt(request.prompt);
     if (!promptSafety.allowed) throw new Error(`prompt_safety_rejected:${promptSafety.code}`);
     await enforceImageGenerationCostGuard(supabase, {

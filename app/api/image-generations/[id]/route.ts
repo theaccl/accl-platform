@@ -17,7 +17,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const supabase = createServiceRoleClient();
   const generationResult = await supabase
     .from('image_generation_requests')
-    .select('id,owner_id,status,provider,model,candidate_count,membership_tier,reference_id,reference_id_2,attempt_count,review_expires_at,created_at,updated_at,failure_code')
+    .select('id,owner_id,status,provider,model,candidate_count,membership_tier,keep_limit,policy_version,reference_id,reference_id_2,attempt_count,review_expires_at,created_at,updated_at,failure_code')
     .eq('id', id)
     .eq('owner_id', user.id)
     .maybeSingle();

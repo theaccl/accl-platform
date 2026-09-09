@@ -4,13 +4,13 @@ Policy identifier: `generator-launch-2026-09-09`.
 
 Owner decisions recorded September 9, 2026. This replaces conflicting membership allowances and acceptance counts in the August 31 doctrine. These are conservative launch benefits, not permanent maximum generosity. Future increases require an explicit policy revision when affordable; subscriber growth does not automatically activate larger benefits.
 
-**Implementation status:** authoritative product policy, not yet implemented across the application/database. Preview commit `39544a5` still uses the previous contracts. Do not describe the table below as deployed behavior or mark existing single-winner tests as proof of it.
+**Implementation status:** implemented and verified locally on September 9. Preview commit `39544a5` still uses the previous contracts; the new application and four launch migrations await remote approval. See [local implementation evidence and remaining launch gates](GENERATOR_LAUNCH_IMPLEMENTATION_2026_09_09.md). Local tests do not establish hosted Auth/Storage behavior or simultaneous database sessions.
 
 ## Launch contracts
 
 | Tier | Generation Token allowance | Candidate selections | May keep | Subscription-token balance cap |
 |---|---|---:|---:|---:|
-| Free | One signup commission plus one additional retry commission, both started by the player | Free candidate count was not revised by this decision | Free keep count was not revised by this decision | No recurring allowance |
+| Free | One signup commission plus one additional retry commission, both started by the player | 3 (preserved contract) | 1 (preserved contract) | No recurring allowance |
 | Standard | 2 per month | 1 | 1 | 4 |
 | Plus | 2 per week | 2 | 2 | 4 |
 | Pro | 4 per week | 3 | 2 | 8 |

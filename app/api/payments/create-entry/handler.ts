@@ -86,6 +86,9 @@ export async function createEntryPost(
   const userId = user.id;
 
   try {
+    const membership = await supabase.rpc('has_battlefield_membership', { p_user_id: userId });
+    if (membership.error) return json({ error: 'Could not verify Battlefield membership.', code: 'membership_unavailable' }, 503);
+    if (membership.data !== true) return json({ error: 'Standard membership or above is required to enter Battlefield.', code: 'battlefield_membership_required' }, 403);
     const decision = await deps.resolveEligibilityDecisionForUser(supabase, userId);
     deps.enforceTournamentRegistration(decision);
 

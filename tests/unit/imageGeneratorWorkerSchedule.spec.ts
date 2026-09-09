@@ -61,7 +61,8 @@ test('candidate rows are registered before upload closes the untracked-object cr
 
 test('maintenance and stale-token refunds run before provider availability is checked', async () => {
   const route = await source('app/api/internal/image-generation/process/route.ts');
-  const providerCheck = route.indexOf('configuredImageGenerationProvider()');
+  const providerCheck = route.lastIndexOf('configuredImageGenerationProvider()');
+  expect(route.indexOf("fixtureProvider?.name.startsWith('fixture:')")).toBeLessThan(route.indexOf("rpc('mint_due_generation_token_allowances'"));
   expect(route.indexOf("rpc('recover_stale_image_generation_requests'")).toBeLessThan(providerCheck);
   expect(route.indexOf("p_action: 'refund'")).toBeLessThan(providerCheck);
   expect(route.indexOf("rpc('expire_due_image_generation_reviews'")).toBeLessThan(providerCheck);

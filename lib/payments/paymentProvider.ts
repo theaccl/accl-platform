@@ -3,6 +3,7 @@
  * Concrete provider (Stripe) is wired via env; stubs used when keys are absent (dev).
  */
 import type Stripe from 'stripe';
+import { membershipPlanForPrices, type PaidMembershipPlan } from './membershipPlans';
 
 export type CreatePaymentIntentInput = {
   amountCents: number;
@@ -32,6 +33,7 @@ export type FinancialWebhookResult =
   | { kind: 'charge_refunded'; eventId: string; paymentIntentId: string | null }
   | {
       kind: 'pro_subscription_changed';
+      plan?: PaidMembershipPlan;
       eventId: string;
       eventType: string;
       providerCreatedAt: string;
@@ -286,12 +288,9 @@ async function loadStripeProvider(): Promise<PaymentProvider> {
         case 'customer.subscription.updated':
         case 'customer.subscription.deleted': {
           const subscription = event.data.object as Stripe.Subscription;
-          const proPriceId = process.env.STRIPE_PRO_PRICE_ID?.trim();
-          const isPro = Boolean(
-            proPriceId && subscription.items.data.some((item) => item.price.id === proPriceId)
-          );
-          if (!isPro) {
-            return { kind: 'ignored', eventId: event.id, detail: 'non_pro_subscription' };
+          const plan = membershipPlanForPrices(subscription.items.data.map((item) => item.price.id));
+          if (!plan) {
+            return { kind: 'ignored', eventId: event.id, detail: 'unrecognized_membership_subscription' };
           }
           const userId = subscription.metadata?.accl_user_id?.trim();
           if (!userId) {
@@ -305,6 +304,7 @@ async function loadStripeProvider(): Promise<PaymentProvider> {
           const currentPeriodEnd = periodEnds.length > 0 ? Math.max(...periodEnds) : null;
           return {
             kind: 'pro_subscription_changed',
+            plan,
             eventId: event.id,
             eventType: event.type,
             providerCreatedAt: new Date(event.created * 1000).toISOString(),

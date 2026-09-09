@@ -1,9 +1,12 @@
-export type GeneratorMembershipTier = 'free' | 'plus' | 'pro' | 'internal_unlimited';
+export type GeneratorMembershipTier = 'free' | 'standard' | 'plus' | 'pro' | 'internal_unlimited';
 
 export type GeneratorTierContract = {
   tier: GeneratorMembershipTier;
   label: string;
   weeklyTokens: number;
+  monthlyTokens: number;
+  rolloverCap: number;
+  keepLimit: number;
   initialCandidates: number;
   touchUpGuides: number;
   imagesPerTouchUp: number;
@@ -20,6 +23,9 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     tier: 'free',
     label: 'Free',
     weeklyTokens: 0,
+    monthlyTokens: 0,
+    rolloverCap: 0,
+    keepLimit: 1,
     initialCandidates: 3,
     touchUpGuides: 0,
     imagesPerTouchUp: 0,
@@ -30,11 +36,21 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     unlimitedTokens: false,
     unlimitedUploads: false,
   },
+  standard: {
+    tier: 'standard', label: 'Standard', weeklyTokens: 0, monthlyTokens: 2,
+    rolloverCap: 4, initialCandidates: 1, keepLimit: 1,
+    touchUpGuides: 0, imagesPerTouchUp: 0, maxReferences: 1,
+    placement: 'icon_or_background', ownerMotion: false, visitorMotion: false,
+    unlimitedTokens: false, unlimitedUploads: false,
+  },
   plus: {
     tier: 'plus',
     label: 'Plus',
     weeklyTokens: 2,
-    initialCandidates: 4,
+    monthlyTokens: 0,
+    rolloverCap: 4,
+    keepLimit: 2,
+    initialCandidates: 2,
     touchUpGuides: 1,
     imagesPerTouchUp: 2,
     maxReferences: 1,
@@ -48,7 +64,10 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     tier: 'pro',
     label: 'Pro',
     weeklyTokens: 4,
-    initialCandidates: 5,
+    monthlyTokens: 0,
+    rolloverCap: 8,
+    keepLimit: 2,
+    initialCandidates: 3,
     touchUpGuides: 4,
     imagesPerTouchUp: 2,
     maxReferences: 2,
@@ -62,6 +81,9 @@ export const GENERATOR_TIER_CONTRACTS: Record<GeneratorMembershipTier, Generator
     tier: 'internal_unlimited',
     label: 'Internal Unlimited',
     weeklyTokens: 0,
+    monthlyTokens: 0,
+    rolloverCap: 0,
+    keepLimit: 2,
     initialCandidates: 5,
     touchUpGuides: 4,
     imagesPerTouchUp: 2,
@@ -107,7 +129,8 @@ export function resolveGeneratorMembershipTier(
       (item) =>
         item.entitlement === 'membership_pro' ||
         item.entitlement === 'generation_pro' ||
-        metadataPlan(item.metadata) === 'pro'
+        metadataPlan(item.metadata) === 'pro' ||
+        (item.entitlement === 'image_generator' && !['standard', 'plus'].includes(metadataPlan(item.metadata) ?? 'pro'))
     )
   ) return 'pro';
 
@@ -120,7 +143,10 @@ export function resolveGeneratorMembershipTier(
     )
   ) return 'plus';
 
-  // The existing Slice 1 billing bridge only grants image_generator to Pro.
+  if (entitlements.some((item) => item.entitlement === 'membership_standard' ||
+    item.entitlement === 'generation_standard' || metadataPlan(item.metadata) === 'standard')) return 'standard';
+
+  // Historical unlabelled image_generator grants remain Pro.
   if (entitlements.some((item) => item.entitlement === 'image_generator')) return 'pro';
   return 'free';
 }

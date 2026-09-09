@@ -1,3 +1,5 @@
+import { moderateImagePrompt } from '@/lib/imageGenerator/safety';
+import { composePlayerPrompt } from '@/lib/imageGenerator/promptOptions';
 import { createGenerationSchema, parseJsonBody } from '@/lib/imageGenerator/api';
 import { configuredImageGenerationProvider } from '@/lib/imageGenerator/provider';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
@@ -22,12 +24,14 @@ export async function POST(
     }
     const parsed = createGenerationSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return jsonResponse({ error: 'Invalid saved-creation evolution' }, 400);
+    const playerPrompt = composePlayerPrompt(parsed.data.prompt, parsed.data.style, true);
+    if (!moderateImagePrompt(playerPrompt).allowed) return jsonResponse({ error: 'This prompt cannot be used for ACCL imagery' }, 422);
     const provider = configuredImageGenerationProvider();
     const { id } = await context.params;
     const result = await createServiceRoleClient().rpc('create_saved_creation_evolution', {
       p_owner_id: user.id,
       p_saved_creation_id: id,
-      p_prompt: parsed.data.prompt,
+      p_prompt: playerPrompt,
       p_idempotency_key: idempotencyKey,
       p_reference_ids: parsed.data.reference_ids ?? [],
       p_provider: provider?.name ?? 'vercel_ai_gateway',

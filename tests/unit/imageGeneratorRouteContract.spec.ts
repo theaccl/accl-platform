@@ -12,7 +12,7 @@ test('create route requires authentication, idempotency, and server-derived tier
   expect(code).toContain("request.headers.get('idempotency-key')");
   expect(code).toContain("rpc('create_image_generation_request_with_references'");
   expect(code).toContain("rpc('effective_image_generator_tier'");
-  expect(code).toContain("tier === 'free' ? 3 : tier === 'plus' ? 4 : 5");
+  expect(code).toContain('GENERATOR_TIER_CONTRACTS[tierResult.data].initialCandidates');
   expect(code).toContain('insufficient_generation_tokens');
 });
 

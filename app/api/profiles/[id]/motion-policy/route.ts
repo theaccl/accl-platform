@@ -30,7 +30,7 @@ export async function GET(
     return jsonResponse({ error: 'Could not resolve motion policy' }, 404);
   }
   const decision = resolveCosmeticMotion({
-    tier: tierResult.data as 'free' | 'plus' | 'pro' | 'internal_unlimited',
+    tier: tierResult.data as 'free' | 'standard' | 'plus' | 'pro' | 'internal_unlimited',
     surface,
     context: effectiveContext,
     reducedMotion: url.searchParams.get('reduced_motion') === 'true',

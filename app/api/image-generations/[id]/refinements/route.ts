@@ -1,3 +1,5 @@
+import { moderateImagePrompt } from '@/lib/imageGenerator/safety';
+import { composePlayerPrompt } from '@/lib/imageGenerator/promptOptions';
 import { createRefinementSchema, parseJsonBody } from '@/lib/imageGenerator/api';
 import { resolveAuthenticatedUser } from '@/lib/requestAuth';
 import { jsonResponse } from '@/lib/server/httpJson';
@@ -21,12 +23,14 @@ export async function POST(
     }
     const parsed = createRefinementSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return jsonResponse({ error: 'Invalid guided refinement' }, 400);
+    const playerPrompt = composePlayerPrompt(parsed.data.guidance, 'automatic', true);
+    if (!moderateImagePrompt(playerPrompt).allowed) return jsonResponse({ error: 'This prompt cannot be used for ACCL imagery' }, 422);
     const { id } = await context.params;
     const result = await createServiceRoleClient().rpc('create_image_generation_refinement', {
       p_owner_id: user.id,
       p_request_id: id,
       p_source_candidate_id: parsed.data.source_candidate_id,
-      p_guidance: parsed.data.guidance,
+      p_guidance: playerPrompt,
       p_idempotency_key: idempotencyKey,
     });
     if (result.error) {

@@ -18,10 +18,10 @@ export async function POST(
     const parsed = approveCandidateSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return jsonResponse({ error: 'Invalid candidate approval' }, 400);
     const { id } = await context.params;
-    const result = await createServiceRoleClient().rpc('approve_image_generation_candidate', {
+    const result = await createServiceRoleClient().rpc('approve_image_generation_candidates', {
       p_owner_id: user.id,
       p_request_id: id,
-      p_candidate_id: parsed.data.candidate_id,
+      p_candidate_ids: parsed.data.candidate_ids,
     });
     if (result.error) {
       if (result.error.message.includes('not found')) return jsonResponse({ error: 'Generation not found' }, 404);
@@ -35,7 +35,7 @@ export async function POST(
     ) {
       return jsonResponse({ error: 'Review window expired' }, 409);
     }
-    return jsonResponse({ candidate: result.data });
+    return jsonResponse({ candidates: result.data?.candidates, candidate: result.data?.candidates?.[0] });
   } finally {
     guard.release();
   }

@@ -93,7 +93,8 @@ export async function executeProSubscriptionChanged(
   supabase: SupabaseClient,
   parsed: Extract<FinancialWebhookResult, { kind: 'pro_subscription_changed' }>
 ): Promise<void> {
-  const { error } = await supabase.rpc('sync_pro_subscription_entitlement', {
+  const { error } = await supabase.rpc('sync_membership_subscription_entitlement', {
+    p_plan: parsed.plan ?? 'pro',
     p_provider_event_id: parsed.eventId,
     p_event_type: parsed.eventType,
     p_provider_created_at: parsed.providerCreatedAt,

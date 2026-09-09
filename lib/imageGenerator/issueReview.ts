@@ -35,7 +35,7 @@ export async function reviewIssueWithAi(db: SupabaseClient, report: IssueReport)
   if (!claim.data?.id) return report;
   try {
     const [generation, candidates, refinements] = await Promise.all([
-      db.from('image_generation_requests').select('prompt,status,candidate_count,reference_id,reference_id_2,parent_saved_creation_id')
+      db.from('image_generation_requests').select('prompt,status,provider,candidate_count,reference_id,reference_id_2,parent_saved_creation_id')
         .eq('id', report.request_id).eq('owner_id', report.owner_id).single(),
       db.from('image_generation_candidates').select('id,ordinal,status,storage_path,mime_type,byte_size')
         .eq('request_id', report.request_id).eq('owner_id', report.owner_id).order('ordinal'),
@@ -45,7 +45,7 @@ export async function reviewIssueWithAi(db: SupabaseClient, report: IssueReport)
     const g = generation.data;
     // References, evolution context, missing originals, and active work require
     // human inspection until complete evidence for those cases is supported.
-    if (generation.error || candidates.error || refinements.error || !g || g.reference_id || g.reference_id_2
+    if (generation.error || candidates.error || refinements.error || !g || g.provider?.startsWith('fixture:') || g.reference_id || g.reference_id_2
       || g.parent_saved_creation_id || ['queued', 'running'].includes(g.status)
       || refinements.data?.some((item) => ['queued', 'running'].includes(item.status))
       || !candidates.data || candidates.data.length < g.candidate_count || candidates.data.length > 13) {

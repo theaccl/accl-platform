@@ -2,8 +2,9 @@
 
 import Image from 'next/image';
 import { GitBranch, Images, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { promptWithinLimit, promptWordCount } from '@/lib/imageGenerator/promptOptions';
 import type { GeneratorMembershipTier } from '@/lib/imageGenerator/membership';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -29,6 +30,8 @@ export function SavedCreationsCard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guidance, setGuidance] = useState('');
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const pending = useRef<{ signature: string; key: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -66,7 +69,10 @@ export function SavedCreationsCard() {
 
   const furtherCreation = async () => {
     const cleanGuidance = guidance.trim();
-    if (!selectedId || !cleanGuidance || busy) return;
+    if (!selectedId || !promptWithinLimit(cleanGuidance) || busy || submitting.current) return;
+    submitting.current = true;
+    const signature = JSON.stringify([selectedId, cleanGuidance]);
+    if (pending.current?.signature !== signature) pending.current = { signature, key: idempotencyKey() };
     setBusy(true);
     setMessage(null);
     try {
@@ -78,7 +84,7 @@ export function SavedCreationsCard() {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey(),
+          'Idempotency-Key': pending.current.key,
         },
         body: JSON.stringify({ prompt: cleanGuidance, reference_ids: [] }),
       });
@@ -90,6 +96,7 @@ export function SavedCreationsCard() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not further this creation.');
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -123,9 +130,10 @@ export function SavedCreationsCard() {
       {selectedId && canFurther ? (
         <div className="mt-4 rounded-xl border border-violet-300/20 bg-black/20 p-4">
           <label htmlFor="saved-creation-guidance" className="text-sm font-semibold text-white">How should this identity evolve?</label>
-          <textarea id="saved-creation-guidance" value={guidance} onChange={(event) => setGuidance(event.target.value)} maxLength={2000} rows={3} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-300/50" placeholder="Preserve the identity, then describe the new direction…" />
+          <textarea id="saved-creation-guidance" aria-describedby="saved-prompt-help" aria-invalid={!promptWithinLimit(guidance)} value={guidance} onChange={(event) => setGuidance(event.target.value)} maxLength={2000} rows={3} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-300/50" placeholder="Preserve the identity, then describe the new direction…" />
+          <p id="saved-prompt-help" className="mt-2 text-xs text-white/60">Free optional edit prompt · {promptWordCount(guidance)} / 50 words</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => void furtherCreation()} disabled={busy || guidance.trim().length === 0} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-300 px-4 text-sm font-bold text-violet-950 disabled:opacity-45"><Sparkles className="h-4 w-4" aria-hidden />{busy ? 'Opening branch…' : 'Spend 1 token and further'}</button>
+            <button type="button" onClick={() => void furtherCreation()} disabled={busy || !promptWithinLimit(guidance)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-300 px-4 text-sm font-bold text-violet-950 disabled:opacity-45"><Sparkles className="h-4 w-4" aria-hidden />{busy ? 'Opening branch…' : tier === 'internal_unlimited' ? 'Generate evolution · Unlimited' : 'Generate evolution · 1 Generation Token'}</button>
             <button type="button" onClick={() => { setSelectedId(null); setGuidance(''); }} disabled={busy} className="min-h-10 rounded-lg px-3 text-sm text-white/55 hover:text-white disabled:opacity-45">Cancel</button>
           </div>
         </div>

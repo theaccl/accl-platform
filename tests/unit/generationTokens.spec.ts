@@ -63,14 +63,18 @@ test.describe('ACCL Generation Token and tier contract', () => {
     expect(GENERATOR_TIER_CONTRACTS.free.initialCandidates).toBe(3);
     expect(GENERATOR_TIER_CONTRACTS.plus).toMatchObject({
       weeklyTokens: 2,
-      initialCandidates: 4,
+      initialCandidates: 2,
+      keepLimit: 2,
+      rolloverCap: 4,
       touchUpGuides: 1,
       imagesPerTouchUp: 2,
       maxReferences: 1,
     });
     expect(GENERATOR_TIER_CONTRACTS.pro).toMatchObject({
       weeklyTokens: 4,
-      initialCandidates: 5,
+      initialCandidates: 3,
+      keepLimit: 2,
+      rolloverCap: 8,
       touchUpGuides: 4,
       imagesPerTouchUp: 2,
       maxReferences: 2,

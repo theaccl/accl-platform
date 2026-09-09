@@ -5,11 +5,14 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { Check, Clock3, Crown, ImageIcon, ImagePlus, LockKeyhole, ShieldCheck, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CandidateReviewGrid, type ReviewCandidate } from "@/components/image-generator/CandidateReviewGrid";
 import { GenerationTokenCoin } from "@/components/image-generator/GenerationTokenCoin";
+import { GeneratorWallets, type GeneratorWalletBalance } from "@/components/image-generator/GeneratorWallets";
 import { GeneratorIssueReport } from "@/components/image-generator/GeneratorIssueReport";
+import { promptWithinLimit, promptWordCount, type GeneratorStyle } from "@/lib/imageGenerator/promptOptions";
+import { clearPendingCommission, readPendingCommission, savePendingCommission } from "@/lib/imageGenerator/pendingCommission";
 import PromptInput3 from "@/components/prompt-input-3";
 import { REFERENCE_IMAGE_MAX_BYTES } from "@/lib/imageGenerator/domain";
 import { GENERATOR_TIER_CONTRACTS, isGeneratorMembershipTier, type GeneratorMembershipTier, type GeneratorTierContract } from "@/lib/imageGenerator/membership";
@@ -29,7 +32,7 @@ type GenerationResponse = {
 };
 
 type GenerationStatusResponse = {
-  generation?: { id: string; status: string; membership_tier?: GeneratorMembershipTier };
+  generation?: { id: string; status: string; membership_tier?: GeneratorMembershipTier; keep_limit?: number; candidate_count?: number };
   candidates?: Array<Pick<ReviewCandidate, "id" | "ordinal" | "status">>;
   refinements?: Array<{ id: string; source_candidate_id: string; ordinal: number; status: string }>;
   error?: string;
@@ -89,9 +92,19 @@ export function ImageGeneratorCreateScreen() {
   const [approvedId, setApprovedId] = useState<string | null>(null);
   const [placing, setPlacing] = useState<'profile_image' | 'profile_background' | 'matching_set' | null>(null);
   const [placementComplete, setPlacementComplete] = useState(false);
-  const [membershipTier, setMembershipTier] = useState<GeneratorMembershipTier>("free");
   const [tierContract, setTierContract] = useState<GeneratorTierContract | null>(null);
-  const [tokenBalance, setTokenBalance] = useState<number | null>(0);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [purchasedGenerationBalance, setPurchasedGenerationBalance] = useState<number | null>(null);
+  const [guidanceWallet, setGuidanceWallet] = useState<GeneratorWalletBalance | undefined>();
+  const [compareWallet, setCompareWallet] = useState<GeneratorWalletBalance | undefined>();
+  const [keepLimit, setKeepLimit] = useState(1);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [style, setStyle] = useState<GeneratorStyle>('automatic');
+  const submissionLock = useRef(false);
+  const refinementLock = useRef(false);
+  const refinementAttempt = useRef<{ signature: string; key: string } | null>(null);
+  const pendingSubmission = useRef<{ key: string; prompt: string; style: GeneratorStyle; files: File[]; references: string[]; submitted: boolean; userId: string | null } | null>(null);
+  const [submissionUncertain, setSubmissionUncertain] = useState(false);
   const [unlimitedTokens, setUnlimitedTokens] = useState(false);
   const [canCommission, setCanCommission] = useState(false);
   const [refinements, setRefinements] = useState<Array<{ id: string; source_candidate_id: string; ordinal: number; status: string }>>([]);
@@ -160,6 +173,24 @@ export function ImageGeneratorCreateScreen() {
       return;
     }
     try {
+      const userId = sessionResult.data.session!.user.id;
+      if (pendingSubmission.current?.userId && pendingSubmission.current.userId !== userId) {
+        pendingSubmission.current = null;
+        setSubmissionUncertain(false);
+        setPrompt("");
+        setReferenceFile(null);
+        setSecondaryReferenceFile(null);
+      }
+      if (!pendingSubmission.current && !new URLSearchParams(window.location.search).has('generation')) {
+        const saved = readPendingCommission(window.sessionStorage, userId);
+        if (saved) {
+          pendingSubmission.current = { ...saved, userId, files: [], submitted: true };
+          setPrompt(saved.prompt);
+          setStyle(saved.style);
+          setSubmissionUncertain(true);
+          setMessage('A previous submission needs confirmation. Press Generate to safely recover the same commission.');
+        }
+      }
       const response = await fetch("/api/image-generations/entitlements", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -174,11 +205,15 @@ export function ImageGeneratorCreateScreen() {
         can_commission?: boolean;
         membership_tier?: GeneratorMembershipTier;
         generator_contract?: GeneratorTierContract;
-        generation_tokens?: { balance?: number | null; unlimited?: boolean };
+        generation_tokens?: { balance?: number | null; purchased_balance?: number | null; unlimited?: boolean };
+        guidance_tokens?: GeneratorWalletBalance;
+        compare_tokens?: GeneratorWalletBalance;
       };
-      setMembershipTier(entitlements.membership_tier ?? "free");
       setTierContract(entitlements.generator_contract ?? null);
-      setTokenBalance(entitlements.generation_tokens?.balance ?? 0);
+      setTokenBalance(entitlements.generation_tokens?.balance ?? null);
+      setPurchasedGenerationBalance(entitlements.generation_tokens?.purchased_balance ?? null);
+      setGuidanceWallet(entitlements.guidance_tokens);
+      setCompareWallet(entitlements.compare_tokens);
       setUnlimitedTokens(entitlements.generation_tokens?.unlimited === true);
       setCanCommission(entitlements.can_commission === true);
       setAccess(entitlements.image_generator ? "pro" : "free");
@@ -212,6 +247,7 @@ export function ImageGeneratorCreateScreen() {
       setRefinements([]);
       setSelectedRefinementCandidateId(null);
       setApprovedId(null);
+    setSelectedCandidateIds([]);
       setPlacementComplete(false);
       rememberGenerationInUrl(null);
       setMessage(nextMessage);
@@ -263,6 +299,7 @@ export function ImageGeneratorCreateScreen() {
         retryAttempt = 0;
         const status = payload.generation?.status ?? "queued";
         setGenerationStatus(status);
+        setKeepLimit(payload.generation?.keep_limit === 2 ? 2 : 1);
         setCommissionTier(isGeneratorMembershipTier(payload.generation?.membership_tier)
           ? payload.generation.membership_tier : null);
         setGenerationLoadState("active");
@@ -373,7 +410,15 @@ export function ImageGeneratorCreateScreen() {
 
   const createCandidates = async () => {
     const cleanPrompt = prompt.trim();
-    if (!cleanPrompt || access !== "pro" || !canCommission || busy) return;
+    const eligible = (access === 'pro' && canCommission) || (submissionUncertain && (access === 'pro' || access === 'free'));
+    if (!promptWithinLimit(cleanPrompt) || !eligible || busy || submissionLock.current) return;
+    submissionLock.current = true;
+    const files = [referenceFile, secondaryReferenceFile].filter((item): item is File => Boolean(item));
+    const previous = pendingSubmission.current;
+    if (!previous || (!previous.submitted && (previous.prompt !== cleanPrompt || previous.style !== style || previous.files.length !== files.length || previous.files.some((file, index) => file !== files[index])))) {
+      pendingSubmission.current = { key: newIdempotencyKey(), prompt: cleanPrompt, style, files, references: [], submitted: false, userId: null };
+    }
+    const submission = pendingSubmission.current!;
     setBusy(true);
     setMessage(null);
     setGenerationId(null);
@@ -384,6 +429,7 @@ export function ImageGeneratorCreateScreen() {
     setCandidates([]);
     setFirstPresentationCandidateIds([]);
     setApprovedId(null);
+    setSelectedCandidateIds([]);
     setRefinements([]);
     setSelectedRefinementCandidateId(null);
     setRefinementGuidance("");
@@ -397,8 +443,11 @@ export function ImageGeneratorCreateScreen() {
         return;
       }
 
-      const referenceIds: string[] = [];
-      for (const file of [referenceFile, secondaryReferenceFile].filter((item): item is File => Boolean(item))) {
+      const referenceIds = submission.references;
+      const userId = sessionResult.data.session!.user.id;
+      if (submission.userId && submission.userId !== userId) throw new Error('session_changed');
+      submission.userId = userId;
+      for (const file of submission.files.slice(referenceIds.length)) {
         const formData = new FormData();
         formData.set("reference", file);
         const uploadResponse = await fetch("/api/image-generations/references", {
@@ -414,17 +463,29 @@ export function ImageGeneratorCreateScreen() {
         referenceIds.push(uploadPayload.reference.id);
       }
 
+      // Persist the exact attempt before dispatch, so a reload cannot turn an
+      // unacknowledged charge into a fresh commission. Recovery stays explicit.
+      savePendingCommission(window.sessionStorage, userId, {
+        key: submission.key, prompt: submission.prompt, style: submission.style, references: referenceIds,
+      });
+      submission.submitted = true;
+      setSubmissionUncertain(true);
       const response = await fetch("/api/image-generations", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          "Idempotency-Key": newIdempotencyKey(),
+          "Idempotency-Key": submission.key,
         },
-        body: JSON.stringify({ prompt: cleanPrompt, reference_ids: referenceIds }),
+        body: JSON.stringify({ prompt: submission.prompt, style: submission.style, reference_ids: referenceIds }),
       });
       const payload = (await response.json()) as GenerationResponse;
       if (!response.ok) {
+        if (response.status >= 400 && response.status < 500) {
+          clearPendingCommission(window.sessionStorage, userId);
+          pendingSubmission.current = null;
+          setSubmissionUncertain(false);
+        }
         if (response.status === 403) setAccess("free");
         setMessage(payload.error ?? "ACCL could not start this generation. Please try again.");
         return;
@@ -432,24 +493,26 @@ export function ImageGeneratorCreateScreen() {
 
       const id = payload.generation?.id;
       if (!id) throw new Error("missing_generation_id");
+      rememberGenerationInUrl(id);
+      clearPendingCommission(window.sessionStorage, userId);
+      pendingSubmission.current = null;
+      setSubmissionUncertain(false);
       setGenerationId(id);
       rememberGenerationInUrl(id);
       setGenerationStatus(payload.generation?.status ?? "queued");
       setGenerationLoadState("active");
       const candidateCount = tierContract?.initialCandidates ?? 3;
       setMessage(`Your reference and description are secured. The atelier is preparing ${candidateCount} private candidates.`);
-      if (!unlimitedTokens) {
-        setTokenBalance((current) => Math.max(0, (current ?? 0) - 1));
-        setCanCommission((tokenBalance ?? 0) > 1);
-      }
+      await loadAccess();
     } catch {
       setMessage("ACCL could not reach the generator. Please try again in a moment.");
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   };
 
-  const acceptCandidate = async (candidateId: string) => {
+  const acceptCandidate = async (candidateId: string, candidateIds: string[] = [candidateId]) => {
     if (!generationId || approvingId || approvedId) return;
     setApprovingId(candidateId);
     try {
@@ -463,13 +526,13 @@ export function ImageGeneratorCreateScreen() {
       const response = await fetch(`/api/image-generations/${generationId}/approve`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate_id: candidateId }),
+        body: JSON.stringify({ candidate_ids: candidateIds }),
       });
       if (!response.ok) throw new Error("candidate_approval_failed");
       setApprovedId(candidateId);
       setFirstPresentationCandidateIds([]);
-      setCandidates((current) => current.map((candidate) => ({ ...candidate, status: candidate.id === candidateId ? "approved" : "rejected" })));
-      setMessage("Candidate accepted. Next, you can prepare it for a profile icon or background.");
+      setCandidates((current) => current.map((candidate) => ({ ...candidate, status: candidateIds.includes(candidate.id) ? "approved" : "rejected" })));
+      setMessage("Selections accepted. Choose an accepted image for profile placement.");
     } catch {
       setMessage("ACCL could not accept that candidate. Please try again.");
     } finally {
@@ -479,7 +542,10 @@ export function ImageGeneratorCreateScreen() {
 
   const startRefinement = async () => {
     const guidance = refinementGuidance.trim();
-    if (!generationId || !selectedRefinementCandidateId || !guidance || refinementBusy) return;
+    if (!generationId || !selectedRefinementCandidateId || !promptWithinLimit(guidance) || refinementBusy || refinementLock.current) return;
+    refinementLock.current = true;
+    const signature = JSON.stringify([generationId, selectedRefinementCandidateId, guidance]);
+    if (refinementAttempt.current?.signature !== signature) refinementAttempt.current = { signature, key: newIdempotencyKey() };
     setRefinementBusy(true);
     try {
       const sessionResult = await supabase.auth.getSession();
@@ -494,7 +560,7 @@ export function ImageGeneratorCreateScreen() {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          "Idempotency-Key": newIdempotencyKey(),
+          "Idempotency-Key": refinementAttempt.current.key,
         },
         body: JSON.stringify({
           source_candidate_id: selectedRefinementCandidateId,
@@ -515,6 +581,7 @@ export function ImageGeneratorCreateScreen() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "ACCL could not start that guided refinement.");
     } finally {
+      refinementLock.current = false;
       setRefinementBusy(false);
     }
   };
@@ -561,7 +628,7 @@ export function ImageGeneratorCreateScreen() {
     }
   };
 
-  const formDisabled = access !== "pro" || !canCommission || generationId !== null;
+  const formDisabled = !((access === 'pro' && canCommission) || (submissionUncertain && (access === 'pro' || access === 'free'))) || generationId !== null;
   const candidateCount = tierContract?.initialCandidates ?? 3;
   const maxReferences = tierContract?.maxReferences ?? 1;
   const generationInProgress = generationId != null
@@ -579,14 +646,22 @@ export function ImageGeneratorCreateScreen() {
     <div className="relative isolate overflow-hidden rounded-[var(--accl-radius-2xl)] border border-[var(--accl-border-muted)] bg-[radial-gradient(circle_at_18%_0%,rgba(212,160,23,0.12),transparent_34%),linear-gradient(160deg,var(--accl-bg-elevated),var(--accl-bg-base)_66%)] shadow-[var(--accl-shadow-panel)]">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:linear-gradient(to_bottom,black,transparent_80%)]" />
       <div className="px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <section aria-labelledby="image-generator-title">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <section className="min-w-0" aria-labelledby="image-generator-title">
             <div className="mb-7 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(212,160,23,0.36)] bg-[rgba(212,160,23,0.1)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--accl-accent-gold)]"><Crown className="h-3.5 w-3.5" aria-hidden /> ACCL Generator</span>
               <span className="text-xs text-[var(--accl-text-muted)]">Sovereign Atelier · private candidate studio</span>
             </div>
             <h1 id="image-generator-title" className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">Create your chess identity</h1>
             <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--accl-text-muted)] sm:text-lg">Add a reference image, describe how you want ACCL to reinterpret it, or use both. Your private candidates will appear here for approval.</p>
+            <div className="mt-5">
+              <GeneratorWallets
+                status={access === 'pro' || access === 'free' ? 'ready' : access}
+                generation={{ balance: tokenBalance, purchased_balance: purchasedGenerationBalance, unlimited: unlimitedTokens }}
+                guidance={guidanceWallet}
+                compare={compareWallet}
+              />
+            </div>
             <div className="mt-8">
               <PromptInput3
                 value={prompt}
@@ -600,6 +675,10 @@ export function ImageGeneratorCreateScreen() {
                 onReferenceSelect={selectReference}
                 onReferenceRemove={() => { setReferenceFile(null); setReferenceError(null); }}
                 candidateCount={candidateCount}
+                style={style}
+                onStyleChange={setStyle}
+                unlimited={unlimitedTokens}
+                lockInputs={submissionUncertain}
               />
               {maxReferences > 1 ? (
                 <div className="mt-3 rounded-xl border border-dashed border-white/15 bg-black/10 p-3">
@@ -612,19 +691,20 @@ export function ImageGeneratorCreateScreen() {
                         <p className="truncate text-sm font-semibold text-white">{secondaryReferenceFile?.name}</p>
                         <p className="mt-1 text-[11px] text-[var(--accl-text-muted)]">Second private Pro reference</p>
                       </div>
-                      <button type="button" onClick={() => setSecondaryReferenceFile(null)} disabled={formDisabled || busy} aria-label="Remove second reference image" className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-white/55 hover:border-red-400/40 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-40"><X className="h-4 w-4" aria-hidden /></button>
+                      <button type="button" onClick={() => setSecondaryReferenceFile(null)} disabled={formDisabled || busy || submissionUncertain} aria-label="Remove second reference image" className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-white/55 hover:border-red-400/40 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-40"><X className="h-4 w-4" aria-hidden /></button>
                     </div>
                   ) : (
                     <label className="flex cursor-pointer items-center gap-3 text-sm text-white/70">
                       <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-500/10 text-violet-200"><ImagePlus className="h-4 w-4" aria-hidden /></span>
                       <span><strong className="block text-white">Add second Pro reference</strong><span className="text-[11px] text-[var(--accl-text-muted)]">Optional · private · up to 4 MB</span></span>
-                      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={formDisabled || busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) selectReference(file, 'secondary'); event.target.value = ''; }} />
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={formDisabled || busy || submissionUncertain} onChange={(event) => { const file = event.target.files?.[0]; if (file) selectReference(file, 'secondary'); event.target.value = ''; }} />
                     </label>
                   )}
                 </div>
               ) : null}
             </div>
             <div className="mt-5 min-h-14" aria-live="polite">
+              {submissionUncertain && !busy ? <p className="mb-2 text-sm text-amber-200">The previous submission is unconfirmed. Press Generate to retry that same request without a second charge.</p> : null}
               {access === "loading" && <p className="text-sm text-[var(--accl-text-muted)]">Checking generator access…</p>}
               {access === "signed_out" && <p className="text-sm text-[var(--accl-text-secondary)]"><Link href="/login?next=/image-generator" className="font-semibold text-[var(--accl-accent-gold)] underline underline-offset-4">Sign in</Link>{" "}to use the Image Generator.</p>}
               {access === "free" && <div className="flex flex-wrap items-center gap-3 rounded-[var(--accl-radius-lg)] border border-[rgba(239,68,68,0.3)] bg-[rgba(127,29,29,0.14)] px-4 py-3 text-sm text-red-100"><LockKeyhole className="h-4 w-4 shrink-0" aria-hidden /><span>Earn or receive an ACCL Generation Token to open a commission.</span><Link href="/vault" className="ml-auto font-semibold underline underline-offset-4">View Vault</Link></div>}
@@ -639,7 +719,7 @@ export function ImageGeneratorCreateScreen() {
               <GenerationTokenCoin size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="font-display text-lg font-semibold uppercase tracking-[0.08em] text-white">Your commission</p>
-                <p className="mt-1 text-xs text-[var(--accl-text-muted)]">{membershipTier === "free" ? "Free" : membershipTier === "plus" ? "Plus" : membershipTier === "internal_unlimited" ? "Internal Unlimited" : "Pro"} contract · {unlimitedTokens ? "∞ tokens" : `${tokenBalance} token${tokenBalance === 1 ? "" : "s"}`} in Vault</p>
+                <p className="mt-1 text-xs text-[var(--accl-text-muted)]">{access === 'pro' || access === 'free' ? `${tierContract?.label ?? 'Free'} contract` : 'Your membership benefits'}</p>
               </div>
             </div>
             <ul className="mt-5 space-y-5">
@@ -659,18 +739,25 @@ export function ImageGeneratorCreateScreen() {
             </motion.div>
           ) : candidates.length > 0 ? (
             <motion.div key="candidate-review" initial={prefersReducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: prefersReducedMotion ? 0 : 0.32 }}>
-              <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} onAccept={(id) => void acceptCandidate(id)} canRefine={canRefine} refinementLabel={commissionTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} firstPresentationCandidateIds={firstPresentationCandidateIds} richMotionEnabled={presentationMotionEnabled} />
+              <CandidateReviewGrid candidates={candidates} approvingId={approvingId} approvedId={approvedId} keepLimit={keepLimit} selectedCandidateIds={selectedCandidateIds} onAccept={(id) => { if (keepLimit === 1) { void acceptCandidate(id); return; } setSelectedCandidateIds((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < keepLimit ? [...current, id] : current); }} canRefine={canRefine} refinementLabel={commissionTier === "plus" ? "Guide touch-up" : "Guide regeneration"} selectedRefinementCandidateId={selectedRefinementCandidateId} onRefine={setSelectedRefinementCandidateId} firstPresentationCandidateIds={firstPresentationCandidateIds} richMotionEnabled={presentationMotionEnabled} />
             </motion.div>
           ) : null}
         </AnimatePresence>
+        {keepLimit > 1 && !approvedId && candidates.some((candidate) => candidate.status === 'review') ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button type="button" disabled={selectedCandidateIds.length === 0 || approvingId !== null || hasRefinementProcessing} onClick={() => void acceptCandidate(selectedCandidateIds[0], selectedCandidateIds)} className="min-h-11 rounded-xl bg-amber-300 px-5 text-sm font-bold text-black disabled:opacity-40">Accept {selectedCandidateIds.length} selection{selectedCandidateIds.length === 1 ? '' : 's'}</button>
+            <span className="text-xs text-white/60">Keep up to {keepLimit}. Acceptance is final.</span>
+          </div>
+        ) : null}
         {selectedRefinementCandidateId && canRefine ? (
           <section className="mt-5 rounded-2xl border border-violet-400/25 bg-violet-950/15 p-5" aria-labelledby="guided-refinement-title">
             <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-violet-200">Included in this commission</p>
             <h2 id="guided-refinement-title" className="mt-2 font-display text-2xl font-bold text-white">Guide this identity direction</h2>
             <p className="mt-1 text-sm text-white/55">Describe one focused change. ACCL will add two private candidates to this same review pool without spending another token.</p>
-            <textarea value={refinementGuidance} onChange={(event) => setRefinementGuidance(event.target.value)} maxLength={1000} rows={3} placeholder="For example: keep the face and armor, deepen the electric-blue edge light, and simplify the background." className="mt-4 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-300/50 focus:ring-2 focus:ring-violet-400/20" />
+            <textarea aria-label="Optional edit prompt" aria-describedby="refinement-prompt-help" aria-invalid={!promptWithinLimit(refinementGuidance)} value={refinementGuidance} onChange={(event) => setRefinementGuidance(event.target.value)} maxLength={2000} rows={3} placeholder="For example: keep the face and armor, deepen the electric-blue edge light, and simplify the background." className="mt-4 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-300/50 focus:ring-2 focus:ring-violet-400/20" />
+            <p id="refinement-prompt-help" className="mt-2 text-xs text-white/60">Free optional edit prompt · {promptWordCount(refinementGuidance)} / 50 words</p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => void startRefinement()} disabled={refinementBusy || refinementGuidance.trim().length === 0} className="min-h-11 rounded-xl bg-violet-300 px-5 text-sm font-bold text-violet-950 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{refinementBusy ? "Securing guidance…" : "Create two guided candidates"}</button>
+              <button type="button" onClick={() => void startRefinement()} disabled={refinementBusy || !promptWithinLimit(refinementGuidance)} className="min-h-11 rounded-xl bg-violet-300 px-5 text-sm font-bold text-violet-950 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:opacity-45">{refinementBusy ? "Securing guidance…" : "Generate two guided candidates · Included"}</button>
               <button type="button" onClick={() => { setSelectedRefinementCandidateId(null); setRefinementGuidance(""); }} disabled={refinementBusy} className="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/65 hover:text-white disabled:opacity-45">Cancel</button>
               <span className="text-xs text-white/40">{Math.max(0, refinementAllowance - refinements.length)} guided request{refinementAllowance - refinements.length === 1 ? "" : "s"} remaining</span>
             </div>
@@ -680,6 +767,12 @@ export function ImageGeneratorCreateScreen() {
         {approvedId ? (
           <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-950/10 p-5" aria-labelledby="placement-title">
             <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-emerald-300">Accepted identity</p>
+            {candidates.filter((candidate) => candidate.status === 'approved').length > 1 ? (
+              <fieldset className="mt-3 flex flex-wrap gap-3" disabled={placing !== null}>
+                <legend className="mb-2 text-sm text-white/70">Use an accepted image for placement</legend>
+                {candidates.filter((candidate) => candidate.status === 'approved').map((candidate) => <label key={candidate.id} className="flex min-h-11 items-center gap-2 text-sm text-white"><input type="radio" name="placement-candidate" checked={approvedId === candidate.id} onChange={() => { setApprovedId(candidate.id); setPlacementComplete(false); }} />Candidate {candidate.ordinal}</label>)}
+              </fieldset>
+            ) : null}
             <h2 id="placement-title" className="mt-2 font-display text-2xl font-bold text-white">Place your finished imagery</h2>
             <p className="mt-1 text-sm text-white/55">ACCL publishes optimized still derivatives. Your private candidate original remains protected.</p>
             <div className="mt-4 flex flex-wrap gap-3">

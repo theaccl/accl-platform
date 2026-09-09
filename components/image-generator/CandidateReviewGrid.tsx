@@ -23,6 +23,8 @@ type CandidateReviewGridProps = {
   approvingId: string | null;
   approvedId: string | null;
   onAccept: (candidateId: string) => void;
+  keepLimit?: number;
+  selectedCandidateIds?: readonly string[];
   canRefine?: boolean;
   refinementLabel?: string;
   selectedRefinementCandidateId?: string | null;
@@ -44,6 +46,8 @@ export function CandidateReviewGrid({
   approvingId,
   approvedId,
   onAccept,
+  keepLimit = 1,
+  selectedCandidateIds = NO_FIRST_PRESENTATION_IDS,
   canRefine = false,
   refinementLabel = "Guide refinement",
   selectedRefinementCandidateId = null,
@@ -84,13 +88,14 @@ export function CandidateReviewGrid({
         <div>
           <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.17em] text-[var(--accl-accent-gold)]"><LockKeyhole className="h-4 w-4" aria-hidden /> Private review</p>
           <h2 id="private-candidates-title" className="mt-2 font-display text-3xl font-bold text-white"><BlurHighlight highlightedBits={["winning image"]} highlightColor="rgba(212,160,23,0.24)" blurAmount={prefersReducedMotion ? 0 : 8} inactiveOpacity={prefersReducedMotion ? 1 : 0.3} blurDuration={prefersReducedMotion ? 0.01 : 0.72} highlightDuration={prefersReducedMotion ? 0.01 : 0.9} viewportOptions={{ once: true, amount: 0.35 }}>Choose your winning image</BlurHighlight></h2>
-          <p className="mt-1 text-sm text-[var(--accl-text-muted)]">Accept one candidate. The remaining options will be rejected automatically.</p>
+          <p className="mt-1 text-sm text-[var(--accl-text-muted)]">{keepLimit > 1 ? `Choose up to ${keepLimit} candidates, then confirm your selections. Unselected options will be rejected.` : "Accept one candidate. The remaining options will be rejected automatically."}</p>
         </div>
         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-white/45">{candidates.length} private candidates · 24-hour window</span>
       </div>
 
       <div className="relative mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {candidates.map((candidate) => {
+          const selected = selectedCandidateIds.includes(candidate.id);
           const accepted = approvedId === candidate.id || candidate.status === "approved";
           const inactive = approvedId != null && !accepted;
           const phase = candidatePresentationPhase({
@@ -119,7 +124,7 @@ export function CandidateReviewGrid({
                 {rejected ? <div className="absolute inset-0 grid place-items-center bg-black/55"><span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2 text-xs font-black uppercase tracking-wider text-white/70"><X className="h-4 w-4" aria-hidden /> Rejected</span></div> : null}
               </div>
               <div className="p-3">
-                <button type="button" disabled={approvingId != null || approvedId != null} onClick={() => onAccept(candidate.id)} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.1)] text-xs font-bold uppercase tracking-[0.08em] text-[var(--accl-accent-gold)] transition hover:bg-[var(--accl-accent-gold)] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40"><Sparkles className="h-4 w-4" aria-hidden />{approvingId === candidate.id ? "Accepting…" : accepted ? "Accepted" : rejected ? "Rejected" : "Accept candidate"}</button>
+                <button type="button" aria-pressed={keepLimit > 1 ? selected : undefined} disabled={approvingId != null || approvedId != null || candidate.status !== "review" || (keepLimit > 1 && !selected && selectedCandidateIds.length >= keepLimit)} onClick={() => onAccept(candidate.id)} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.1)] text-xs font-bold uppercase tracking-[0.08em] text-[var(--accl-accent-gold)] transition hover:bg-[var(--accl-accent-gold)] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40"><Sparkles className="h-4 w-4" aria-hidden />{approvingId === candidate.id ? "Accepting…" : accepted ? "Accepted" : rejected ? "Rejected" : keepLimit > 1 ? selected ? "Selected to keep" : "Keep candidate" : "Accept candidate"}</button>
                 {canRefine && onRefine ? (
                   <button type="button" disabled={approvingId != null || approvedId != null} onClick={() => onRefine(candidate.id)} className={`mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border text-xs font-bold uppercase tracking-[0.08em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accl-focus-ring)] disabled:pointer-events-none disabled:opacity-40 ${selectedRefinementCandidateId === candidate.id ? "border-violet-300/60 bg-violet-400/20 text-violet-100" : "border-violet-400/25 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20"}`}><WandSparkles className="h-4 w-4" aria-hidden />{selectedRefinementCandidateId === candidate.id ? "Direction selected" : refinementLabel}</button>
                 ) : null}

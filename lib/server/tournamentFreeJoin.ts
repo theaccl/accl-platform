@@ -183,11 +183,19 @@ export async function executeFreePendingTournamentJoin(params: {
     return { ok: true, alreadyJoined: true, eligibility: decision };
   }
 
+  const membership = await supabase.rpc('has_battlefield_membership', { p_user_id: userId });
+  if (membership.error || membership.data !== true) return {
+    ok: false, status: membership.error ? 503 : 403,
+    payload: { code: 'battlefield_membership_required', error: membership.error ? 'Could not verify Battlefield membership. Try again.' : 'Standard membership or above is required to enter Battlefield.' },
+  };
+
   const { error: insErr } = await supabase.from('tournament_entries').insert({
     tournament_id: tournamentId,
     user_id: userId,
   });
   if (insErr) {
+    if (insErr.message.includes('battlefield_membership_required')) return { ok: false, status: 403,
+      payload: { code: 'battlefield_membership_required', error: 'Standard membership or above is required to enter Battlefield.' } };
     if (insErr.code === '23505') {
       return { ok: true, alreadyJoined: true, eligibility: decision };
     }
