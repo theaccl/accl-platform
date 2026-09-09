@@ -23,6 +23,8 @@ The earlier discussion of expiring Standard/Plus credits or postponing rollover 
 
 Keep limits concern retained creations. Pro explicitly includes still profile imagery and a background image. Existing privacy and motion rules remain separate and must not be expanded merely because more images can be kept. The initial candidate counts do not silently remove or authorize additional paid touch-ups. Reconcile legacy guided refinements, Pro anniversary benefits and reward accounting explicitly during implementation.
 
+Related platform requirement: [Battlefield requires Standard membership or above](../doctrine/BATTLEFIELD_MEMBERSHIP_ACCESS.md). Free cannot enter Battlefield. This access requirement is independent of the Generator token balance.
+
 ## Issue reports
 
 Tokens are used when generation processing starts. A player may report an issue and select manual or AI review. A legitimate issue replaces the spent token once. AI can approve supported legitimate cases automatically; uncertainty goes to manual review. Submission alone does not return tokens. Preserve the original spend, reviewer evidence and a unique replacement event. A token already returned by automatic recovery cannot be replaced again. Internal Unlimited never receives a replacement for a token it did not spend.
