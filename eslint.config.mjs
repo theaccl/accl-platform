@@ -8,6 +8,7 @@ const compat = new FlatCompat({
 const eslintConfig = defineConfig([
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   globalIgnores([
+    "outputs/**",
     ".next/**",
     "out/**",
     "build/**",
