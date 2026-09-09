@@ -93,7 +93,60 @@ function overrideStateForAction(action: ModeratorOverrideAction): EnforcementSta
 
 function isOverrideExpired(expiresAt: string | null, nowIso: string): boolean {
   if (!expiresAt) return false;
-  return expiresAt <= nowIso;
+  return Date.parse(expiresAt) <= Date.parse(nowIso);
+}
+
+export class EnforcementEvidenceInvalidError extends Error {
+  constructor() {
+    super('ANTI_CHEAT_EVIDENCE_INVALID');
+    this.name = 'EnforcementEvidenceInvalidError';
+  }
+}
+
+const BASELINE_STATES = ['NO_RESTRICTION', 'MONITOR_ONLY', 'LIMITED_ANALYSIS', 'TRAINER_LOCKED', 'REVIEW_LOCKED'];
+const SOURCE_TIERS = ['CLEAR', 'WATCH', 'WARNING', 'SOFT_LOCK_RECOMMENDED', 'ESCALATE_REVIEW'];
+const SOURCE_ACTIONS = ['NO_ACTION', 'MONITOR', 'FLAG_ACCOUNT', 'RESTRICT_ANALYSIS_ACCESS', 'SEND_TO_MODERATOR_QUEUE'];
+
+export function assertValidEnforcementBaseline(state: unknown, tier: unknown, action: unknown): void {
+  const baselineRank = BASELINE_STATES.indexOf(String(state));
+  // The effective no-row default has no source bundle.
+  if (tier === null && action === null && state === 'NO_RESTRICTION') return;
+  const sourceRank = SOURCE_TIERS.indexOf(String(tier));
+  if (
+    baselineRank < 0 || sourceRank < 0 ||
+    action !== SOURCE_ACTIONS[sourceRank] || baselineRank < sourceRank
+  ) {
+    throw new EnforcementEvidenceInvalidError();
+  }
+  // A stronger baseline may be retained by the monotonic trigger or seeded by
+  // moderator KEEP_LOCKED_PENDING_REVIEW with CLEAR / NO_ACTION source fields.
+}
+
+function validateStoredEnforcement(row: PersistedEnforcementState, userId: string): void {
+  if (!row || row.user_id !== userId || row.source_suspicion_tier == null || row.source_recommended_action == null) {
+    throw new EnforcementEvidenceInvalidError();
+  }
+  assertValidEnforcementBaseline(row.enforcement_state, row.source_suspicion_tier, row.source_recommended_action);
+  const action = row.override_action;
+  const state = row.override_state;
+  const expiry = row.override_expires_at;
+  if (expiry != null && (typeof expiry !== 'string' || !Number.isFinite(Date.parse(expiry)))) {
+    throw new EnforcementEvidenceInvalidError();
+  }
+  if (action == null && state == null) {
+    if (expiry != null || row.override_set_by != null || row.override_reason != null) throw new EnforcementEvidenceInvalidError();
+    return;
+  }
+  if (
+    typeof action !== 'string' ||
+    !['CLEAR_RESTRICTION', 'TEMPORARY_UNLOCK', 'KEEP_LOCKED_PENDING_REVIEW'].includes(action) ||
+    state !== overrideStateForAction(action) ||
+    typeof row.override_set_by !== 'string' || !row.override_set_by.trim() ||
+    typeof row.override_reason !== 'string' || !row.override_reason.trim() ||
+    (action === 'TEMPORARY_UNLOCK' && !expiry)
+  ) {
+    throw new EnforcementEvidenceInvalidError();
+  }
 }
 
 export class SupabaseAntiCheatEnforcementStore implements AntiCheatEnforcementStore {
@@ -128,7 +181,9 @@ export class SupabaseAntiCheatEnforcementStore implements AntiCheatEnforcementSt
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return (data as PersistedEnforcementState | null) ?? null;
+    if (data == null) return null;
+    validateStoredEnforcement(data as PersistedEnforcementState, userId);
+    return data as PersistedEnforcementState;
   }
 
   async getEffectiveState(userId: string): Promise<EffectiveEnforcementState> {

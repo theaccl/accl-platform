@@ -6,11 +6,11 @@ import {
   runProtectedAnalysisRequest,
 } from '@/lib/analysis/protectedAnalysisServer';
 import { ProtectedReviewRuntimeDisabledError } from '@/lib/analysis/protectedReviewRuntime.server';
+import { parseProtectedAnalysisBody } from '@/lib/analysis/protectedAnalysisHttp';
 import {
   ChessTruthError,
+  IntegrityControlUnavailableError,
   SupabaseModeratorQueueStore,
-  type IntelligenceMode,
-  type OverlapInput,
 } from '@/lib/analysis';
 import {
   EngineRuntimeConfigurationError,
@@ -29,7 +29,6 @@ type ProtectedAnalysisBody = {
   fen?: unknown;
   mode?: unknown;
   gameId?: unknown;
-  overlap?: OverlapInput;
 };
 
 function jsonError(
@@ -79,14 +78,9 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return jsonError('Invalid JSON body', 400);
   }
-  const fen = String(body.fen ?? '').trim();
-  if (!fen) return jsonError('fen is required', 400);
-  const mode = String(body.mode ?? 'coach').trim() as IntelligenceMode;
-  if (!['coach', 'analyst', 'explainer'].includes(mode)) {
-    return jsonError('mode must be one of: coach | analyst | explainer', 400);
-  }
-  const gameId =
-    body.gameId != null && String(body.gameId).trim() !== '' ? String(body.gameId).trim() : null;
+  const parsed = parseProtectedAnalysisBody(body);
+  if (!parsed.ok) return jsonError(parsed.error, parsed.status);
+  const { fen, mode, gameId } = parsed.value;
 
   let serviceClient;
   try {
@@ -105,13 +99,19 @@ export async function POST(request: Request): Promise<Response> {
       fen,
       mode,
       gameId,
-      overlap: body.overlap,
       moderatorQueueSink,
       signal: request.signal,
     });
   } catch (e) {
     if (e instanceof ProtectedAnalysisPrecheckError) {
       return jsonError(e.message, e.status);
+    }
+    if (e instanceof IntegrityControlUnavailableError) {
+      return jsonError('INTEGRITY_CONTROL_UNAVAILABLE', 503, {
+        code: 'INTEGRITY_CONTROL_UNAVAILABLE',
+        retryable: true,
+        retryAfterSeconds: 1,
+      });
     }
     if (e instanceof EngineRuntimeRemoteError) {
       const failure = e.envelope.error;

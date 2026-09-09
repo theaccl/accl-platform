@@ -10,6 +10,7 @@ export {
   createPositionFingerprint,
   createMoveSequenceFingerprint,
   ChessTruthError,
+  IntegrityControlUnavailableError,
 } from './intelligence';
 export type {
   OverlapVerdict,
@@ -27,6 +28,7 @@ export type {
   RecommendedAction,
   ActionRecommendation,
   SuspicionResult,
+  IntegrityControlFailureCode,
 } from './intelligence';
 export type { IntelligenceMode } from './modes';
 export {

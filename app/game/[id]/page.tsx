@@ -2253,10 +2253,6 @@ export default function GamePage() {
             fen: START_FEN,
             mode,
             gameId: game?.id ?? null,
-            overlap: {
-              activeGameFen: game?.fen,
-              requestMoves: moveLogs.map((m) => m.san),
-            },
           }),
           signal: controller.signal,
         });
