@@ -2,7 +2,7 @@
 
 **Status:** Historical baseline with a September 9 first-launch override
 
-**Current authority:** [Generator first-launch policy, September 9, 2026](GENERATOR_LAUNCH_POLICY_2026_09_09.md). The owner replaced conflicting tier/allowance and acceptance rules: Standard receives/keeps 1 candidate, Plus receives/keeps 2, Pro receives/keeps 3, Free receives a player-started signup commission plus one retry, and subscription rollover is capped at twice the token allowance even at launch. The application/database still require implementation of that revision. Preserve the text below as history; do not use its conflicting opening counts, single-winner or uncapped-rollover provisions as current launch requirements. Non-conflicting privacy, motion, ledger and issue-review rules remain in effect.
+**Current authority:** [Generator first-launch policy, September 9, 2026](GENERATOR_LAUNCH_POLICY_2026_09_09.md). The owner replaced conflicting tier/allowance and acceptance rules: Standard receives/keeps 1 candidate, Plus receives/keeps 2, Pro receives 3 and keeps 2 with a still profile image and a background image, Free receives a player-started signup commission plus one retry, and subscription rollover is capped at twice the token allowance even at launch. The application/database still require implementation of that revision. Preserve the text below as history; do not use its conflicting opening counts, single-winner or uncapped-rollover provisions as current launch requirements. Non-conflicting privacy, motion, ledger and issue-review rules remain in effect.
 
 **Locked:** August 31, 2026
 

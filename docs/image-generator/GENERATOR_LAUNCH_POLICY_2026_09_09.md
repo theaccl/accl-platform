@@ -13,15 +13,15 @@ Owner decisions recorded September 9, 2026. This replaces conflicting membership
 | Free | One signup commission plus one additional retry commission, both started by the player | Free candidate count was not revised by this decision | Free keep count was not revised by this decision | No recurring allowance |
 | Standard | 2 per month | 1 | 1 | 4 |
 | Plus | 2 per week | 2 | 2 | 4 |
-| Pro | 4 per week | 3 | 3 | 8 |
+| Pro | 4 per week | 3 | 2 | 8 |
 
-The owner's last candidate-count correction replaces the earlier 3/4/5 counts with 1/2/3. Keep limits remain 1/2/3, so players may retain every returned candidate. The intervening suggestion to reduce counts by one is superseded by the explicit final 1/2/3 instruction. Free signup/retry benefits were not changed by this three-tier correction.
+The owner's candidate-count correction replaces the earlier 3/4/5 counts with 1/2/3. The subsequent keep-limit correction sets Standard to keep 1, Plus to keep 2 and Pro to keep 2. Pro includes a still profile image and a background image. The intervening suggestion to reduce candidate counts by one is superseded by the explicit final 1/2/3 instruction. Free signup/retry benefits were not changed by these three-tier corrections.
 
 The final owner correction explicitly retains rollover at launch. The cap is twice the tier's token allowance: an allowance of 5 would have a cap of 10. The actual stated allowances above produce caps of 4, 4 and 8. Candidate count and number of kept images are separate quantities and do not determine the token cap.
 
 The earlier discussion of expiring Standard/Plus credits or postponing rollover is superseded. Capped accrual should stop a new subscription mint from exceeding its cap, not silently erase previously held tokens. Earned rewards, signup benefits and legitimate issue replacements require separate source accounting; a capped subscription mint must not swallow a valid replacement.
 
-Keep limits concern retained creations. Existing placement, privacy and motion rules remain separate and must not be expanded merely because more images can be kept. The initial candidate counts do not silently remove or authorize additional paid touch-ups. Reconcile legacy guided refinements, Pro anniversary benefits and reward accounting explicitly during implementation.
+Keep limits concern retained creations. Pro explicitly includes still profile imagery and a background image. Existing privacy and motion rules remain separate and must not be expanded merely because more images can be kept. The initial candidate counts do not silently remove or authorize additional paid touch-ups. Reconcile legacy guided refinements, Pro anniversary benefits and reward accounting explicitly during implementation.
 
 ## Issue reports
 
