@@ -58,13 +58,15 @@ function engineCandidates(fen: string, result: EngineResult): BotCandidateLine[]
   for (const line of result.lines) {
     const staticEvidence = assessStaticBotMove(fen, line.move);
     if (!staticEvidence) continue;
+    const continuationEvidence = engineContinuationEvidence(fen, line.pv ?? [line.move]);
     byMove.set(line.move, {
       ...staticEvidence,
       scoreCp: line.scoreCp,
       engineScoreCp: line.scoreCp,
       engineRank: line.rank,
       enginePv: line.pv ?? [line.move],
-      planEvidence: enginePlanEvidence(fen, line.pv ?? [line.move]),
+      planEvidence: continuationEvidence.plan,
+      trapEvidence: continuationEvidence.trap,
       source: 'engine',
     });
   }
@@ -114,7 +116,10 @@ function applyUci(board: Chess, uci: string) {
   }
 }
 
-function enginePlanEvidence(fen: string, pv: readonly string[]): NonNullable<BotCandidateLine['planEvidence']> {
+function engineContinuationEvidence(fen: string, pv: readonly string[]): {
+  plan: NonNullable<BotCandidateLine['planEvidence']>;
+  trap: NonNullable<BotCandidateLine['trapEvidence']>;
+} {
   const board = new Chess(fen);
   const mover = board.turn();
   const materialBefore = materialForMover(board, mover);
@@ -146,15 +151,49 @@ function enginePlanEvidence(fen: string, pv: readonly string[]): NonNullable<Bot
       : null,
   ].filter((reason): reason is string => Boolean(reason));
 
+  const tacticalGain = materialDeltaAfterPvCp !== null && materialDeltaAfterPvCp >= 100;
+  const forcingContinuation = Boolean(
+    continuationFeatures?.mate ||
+    continuationFeatures?.promotion ||
+    continuationFeatures?.check ||
+    continuationFeatures?.capture,
+  );
+  const sustainedKingPressure = Boolean(
+    rootFeatures?.kingPressure && continuationFeatures?.kingPressure,
+  );
+  const materialPreserved = Boolean(
+    rootEvidence &&
+    (rootEvidence.staticRiskCp ?? Number.POSITIVE_INFINITY) === 0 &&
+    !rootFeatures?.movedPieceEnPrise,
+  );
+  const trapReasons = [
+    tacticalGain ? 'tactical-gain-after-best-reply' : null,
+    forcingContinuation ? 'forcing-continuation' : null,
+    sustainedKingPressure ? 'king-pressure-sustained' : null,
+    materialPreserved ? 'material-preserved' : null,
+  ].filter((reason): reason is string => Boolean(reason));
+
   return {
-    opponentReply: observedPlies >= 2 ? pv[1] ?? null : null,
-    continuation: observedPlies >= 3 ? pv[2] ?? null : null,
-    observedPlies,
-    materialDeltaAfterPvCp,
-    concreteCompensation:
-      materialDeltaAfterPvCp !== null && materialDeltaAfterPvCp >= 100,
-    sustainedInitiative: initiativeReasons.length > 0,
-    initiativeReasons,
+    plan: {
+      opponentReply: observedPlies >= 2 ? pv[1] ?? null : null,
+      continuation: observedPlies >= 3 ? pv[2] ?? null : null,
+      observedPlies,
+      materialDeltaAfterPvCp,
+      concreteCompensation: tacticalGain,
+      sustainedInitiative: initiativeReasons.length > 0,
+      initiativeReasons,
+    },
+    trap: {
+      opponentReply: observedPlies >= 2 ? pv[1] ?? null : null,
+      continuation: observedPlies >= 3 ? pv[2] ?? null : null,
+      observedPlies,
+      materialDeltaAfterPvCp,
+      tacticalGain,
+      forcingContinuation,
+      sustainedKingPressure,
+      materialPreserved,
+      reasons: trapReasons,
+    },
   };
 }
 

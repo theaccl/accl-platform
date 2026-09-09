@@ -25,6 +25,38 @@ export type BotCandidateLine = {
     sustainedInitiative: boolean;
     initiativeReasons: string[];
   };
+  /** Best-reply continuation evidence used only to order safe Trap candidates. */
+  trapEvidence?: {
+    opponentReply: string | null;
+    continuation: string | null;
+    observedPlies: number;
+    materialDeltaAfterPvCp: number | null;
+    tacticalGain: boolean;
+    forcingContinuation: boolean;
+    sustainedKingPressure: boolean;
+    materialPreserved: boolean;
+    reasons: string[];
+  };
+  /** Deterministic, position-derived evidence used only by the Endgame ordering pass. */
+  endgameEvidence?: {
+    isEndgame: boolean;
+    kingActivityDelta: number;
+    passedPawnAdvance: boolean;
+    promotionPrevention: boolean;
+    favorableSimplification: boolean;
+    materialPreserved: boolean;
+    reasons: string[];
+  };
+  /** Opponent-reply evidence used only to order safe Defensive candidates. */
+  defensiveEvidence?: {
+    observedReplies: number;
+    checkingReplies: number;
+    winningCaptureReplies: number;
+    soundExchange: boolean;
+    safeDevelopment: boolean;
+    materialPreserved: boolean;
+    reasons: string[];
+  };
   staticRiskCp?: number;
   allowsForcedMate?: boolean;
   features?: {

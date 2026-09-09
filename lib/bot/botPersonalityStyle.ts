@@ -39,6 +39,30 @@ const AGGRESSIVE_ALT_WINDOW_CP: Record<BotDifficultyLevel, number> = {
   5: 18,
   6: 12,
 };
+const ENDGAME_ALT_WINDOW_CP: Record<BotDifficultyLevel, number> = {
+  1: 60,
+  2: 45,
+  3: 30,
+  4: 24,
+  5: 18,
+  6: 12,
+};
+const DEFENSIVE_ALT_WINDOW_CP: Record<BotDifficultyLevel, number> = {
+  1: 60,
+  2: 45,
+  3: 30,
+  4: 24,
+  5: 18,
+  6: 12,
+};
+const TRAP_ALT_WINDOW_CP: Record<BotDifficultyLevel, number> = {
+  1: 60,
+  2: 45,
+  3: 30,
+  4: 24,
+  5: 18,
+  6: 12,
+};
 
 export function normalizeBotPersonalityStyle(raw: unknown): BotPersonalityStyle {
   const s = String(raw ?? '')
@@ -87,6 +111,11 @@ export function buildSafeBotShortlist(
 
   const engineLines = valid.filter((line) => line.source === 'engine' || line.engineRank != null);
   if (engineLines.length > 0) {
+    const top = [...engineLines].sort(engineOrder)[0];
+    // The legacy engine boundary represents mate scores as null. Numeric
+    // alternatives cannot establish equivalence to that rank-one line, even
+    // when mate is several plies away and the static mate-in-one flag is false.
+    if (top?.engineRank === 1 && engineScore(top) === null) return [top];
     const assessed = annotateEngineLossFromBest(engineLines);
     const safe = assessed
       .filter((line) => {
@@ -163,14 +192,129 @@ function aggressiveSelectionPool(
   return preferred ? [preferred, top, ...alternatives.slice(1)] : [top];
 }
 
-function defensiveScore(line: BotCandidateLine): number {
-  const f = line.features;
-  return -Math.min(500, line.staticRiskCp ?? 500) + (f?.development ? 18 : 0) - (f?.movedPieceEnPrise ? 45 : 0);
+function trapPlanStrength(line: BotCandidateLine): number {
+  const evidence = line.trapEvidence;
+  if (
+    !evidence ||
+    evidence.observedPlies < 3 ||
+    !evidence.opponentReply ||
+    !evidence.continuation ||
+    !evidence.materialPreserved
+  ) return 0;
+  if (!evidence.tacticalGain && !(evidence.forcingContinuation && evidence.sustainedKingPressure)) {
+    return 0;
+  }
+  return (
+    (evidence.tacticalGain ? 4 : 0) +
+    (evidence.forcingContinuation ? 2 : 0) +
+    (evidence.sustainedKingPressure ? 1 : 0)
+  );
 }
 
-function trapScore(line: BotCandidateLine): number {
-  const f = line.features;
-  return (f?.kingPressure ? 30 : 0) + (f?.check ? 18 : 0) + Math.max(0, 28 - (f?.opponentReplyCount ?? 28));
+function trapSelectionPool(
+  lines: BotCandidateLine[],
+  difficulty: BotDifficultyLevel,
+): BotCandidateLine[] {
+  const engineOrdered = [...lines].sort(engineOrder);
+  const top = engineOrdered[0];
+  if (!top) return [];
+  // Preserve deterministic fallback order and safe alternatives so lower
+  // strengths can still apply their configured intentional inaccuracy.
+  if (top.source !== 'engine' && top.engineRank == null) return engineOrdered;
+
+  const topStrength = trapPlanStrength(top);
+  const alternatives = engineOrdered
+    .slice(1)
+    .filter((line) =>
+      (line.lossFromBestCp ?? Number.POSITIVE_INFINITY) <= TRAP_ALT_WINDOW_CP[difficulty] &&
+      trapPlanStrength(line) > topStrength
+    )
+    .sort((a, b) => {
+      const preference = trapPlanStrength(b) - trapPlanStrength(a);
+      return preference !== 0 ? preference : engineOrder(a, b);
+    });
+
+  const preferred = alternatives[0];
+  return preferred ? [preferred, top, ...alternatives.slice(1)] : [top];
+}
+
+function defensivePlanStrength(line: BotCandidateLine): number {
+  const evidence = line.defensiveEvidence;
+  if (!evidence || evidence.observedReplies < 1) return 0;
+  return (
+    Math.max(0, 6 - evidence.checkingReplies) * 3 +
+    Math.max(0, 6 - evidence.winningCaptureReplies) * 2 +
+    (evidence.soundExchange ? 7 : 0) +
+    (evidence.safeDevelopment ? 5 : 0) +
+    (evidence.materialPreserved ? 1 : 0)
+  );
+}
+
+function defensiveSelectionPool(
+  lines: BotCandidateLine[],
+  difficulty: BotDifficultyLevel,
+): BotCandidateLine[] {
+  const engineOrdered = [...lines].sort(engineOrder);
+  const top = engineOrdered[0];
+  if (!top) return [];
+  const topStrength = defensivePlanStrength(top);
+  const alternatives = engineOrdered
+    .slice(1)
+    .filter((line) =>
+      (line.lossFromBestCp ?? Number.POSITIVE_INFINITY) <= DEFENSIVE_ALT_WINDOW_CP[difficulty] &&
+      defensivePlanStrength(line) > topStrength
+    )
+    .sort((a, b) => {
+      const preference = defensivePlanStrength(b) - defensivePlanStrength(a);
+      return preference !== 0 ? preference : engineOrder(a, b);
+    });
+  const preferred = alternatives[0];
+  return preferred ? [preferred, top, ...alternatives.slice(1)] : engineOrdered;
+}
+
+function endgamePlanStrength(line: BotCandidateLine): number {
+  const evidence = line.endgameEvidence;
+  if (!evidence?.isEndgame) return 0;
+  return (
+    (line.features?.promotion ? 12 : 0) +
+    (evidence.promotionPrevention ? 9 : 0) +
+    (evidence.passedPawnAdvance ? 7 : 0) +
+    (evidence.favorableSimplification ? 5 : 0) +
+    Math.max(0, evidence.kingActivityDelta) * 3 +
+    (evidence.materialPreserved ? 1 : 0)
+  );
+}
+
+function endgameSelectionPool(
+  lines: BotCandidateLine[],
+  difficulty: BotDifficultyLevel,
+): BotCandidateLine[] {
+  const engineOrdered = [...lines].sort(engineOrder);
+  const top = engineOrdered[0];
+  if (!top) return [];
+
+  // No endgame-specific evidence means Endgame is deliberately identical to
+  // the neutral Balanced baseline rather than stylistically distorted.
+  if (!engineOrdered.some((line) => line.endgameEvidence?.isEndgame)) return engineOrdered;
+
+  const topStrength = endgamePlanStrength(top);
+  const alternatives = engineOrdered
+    .slice(1)
+    .filter((line) =>
+      line.endgameEvidence?.isEndgame &&
+      // Endgame evidence may reorder only engine-proven near-equals. A static
+      // fallback has no numeric equivalence proof, so degraded play remains on
+      // the same neutral order as Balanced.
+      (line.lossFromBestCp ?? Number.POSITIVE_INFINITY) <= ENDGAME_ALT_WINDOW_CP[difficulty] &&
+      endgamePlanStrength(line) > topStrength
+    )
+    .sort((a, b) => {
+      const preference = endgamePlanStrength(b) - endgamePlanStrength(a);
+      return preference !== 0 ? preference : engineOrder(a, b);
+    });
+
+  const preferred = alternatives[0];
+  return preferred ? [preferred, top, ...alternatives.slice(1)] : engineOrdered;
 }
 
 function styleOrder(
@@ -178,13 +322,11 @@ function styleOrder(
   lines: BotCandidateLine[],
   difficulty: BotDifficultyLevel,
 ): BotCandidateLine[] {
-  if (style === 'balanced' || style === 'endgame') return [...lines].sort(engineOrder);
+  if (style === 'balanced') return [...lines].sort(engineOrder);
+  if (style === 'endgame') return endgameSelectionPool(lines, difficulty);
   if (style === 'aggressive') return aggressiveSelectionPool(lines, difficulty);
-  const score = style === 'defensive' ? defensiveScore : trapScore;
-  return [...lines].sort((a, b) => {
-    const preference = score(b) - score(a);
-    return preference !== 0 ? preference : engineOrder(a, b);
-  });
+  if (style === 'defensive') return defensiveSelectionPool(lines, difficulty);
+  return trapSelectionPool(lines, difficulty);
 }
 
 /** Apply intentional inaccuracy inside the hard-safe shortlist only. */
@@ -193,8 +335,18 @@ export function maybeBlunderPick(
   blunderProbability: number,
   random: () => number = Math.random,
 ): BotCandidateLine | null {
-  if (safeLines.length < 2 || random() >= blunderProbability) return null;
-  const pool = safeLines.slice(1);
+  if (safeLines.length < 2) return null;
+  const preferredScore = engineScore(safeLines[0]);
+  const staticFallback = safeLines[0].source !== 'engine' && safeLines[0].engineRank == null;
+  // Personality ordering can place the engine's better line after its chosen
+  // near-equal alternative. Only a proven score loss is an engine inaccuracy;
+  // retain the existing heuristic fallback pool when no engine score exists.
+  const pool = safeLines.slice(1).filter((line) => {
+    if (preferredScore === null) return staticFallback;
+    const score = engineScore(line);
+    return score !== null && score < preferredScore;
+  });
+  if (pool.length === 0 || random() >= blunderProbability) return null;
   return pool[Math.floor(random() * pool.length)] ?? null;
 }
 
@@ -225,7 +377,13 @@ export function selectBotMoveForStyle(
 
   const ordered = style === 'chaos' ? safe : styleOrder(style, safe, difficulty);
 
-  const inaccuracy = maybeBlunderPick(ordered, blunderProbability, random);
+  // Trap evidence chooses the preferred head; intentional strength variation
+  // may still use worse moves from the shared safe shortlist. Preserve the
+  // existing eligibility requirements of the other personalities.
+  const inaccuracyPool = style === 'trap'
+    ? [ordered[0], ...safe.filter((line) => line.move !== ordered[0].move)]
+    : ordered;
+  const inaccuracy = maybeBlunderPick(inaccuracyPool, blunderProbability, random);
   const picked = inaccuracy ?? (style === 'chaos' ? ordered[Math.floor(random() * ordered.length)] : ordered[0]);
   if (!picked) return null;
 
@@ -236,6 +394,10 @@ export function selectBotMoveForStyle(
         ? `aggressive-master-top-line-l${difficulty}`
         : `aggressive-pv-plan-l${difficulty}`
       : `${style}-l${difficulty}`;
-  const reason = inaccuracy ? `humanized-inaccuracy-l${difficulty}` : aggressiveReason;
+  const styleReason =
+    style === 'trap' && picked.source === 'engine' && (picked.engineRank ?? 999) > 1
+      ? `trap-pv-plan-l${difficulty}`
+      : aggressiveReason;
+  const reason = inaccuracy ? `humanized-inaccuracy-l${difficulty}` : styleReason;
   return { move: picked.move, rationale: `${evidence}:${reason}` };
 }
