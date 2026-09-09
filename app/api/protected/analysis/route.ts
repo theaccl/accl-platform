@@ -5,9 +5,22 @@ import {
   ProtectedAnalysisPrecheckError,
   runProtectedAnalysisRequest,
 } from '@/lib/analysis/protectedAnalysisServer';
-import { SupabaseModeratorQueueStore, type IntelligenceMode, type OverlapInput } from '@/lib/analysis';
+import { ProtectedReviewRuntimeDisabledError } from '@/lib/analysis/protectedReviewRuntime.server';
+import { parseProtectedAnalysisBody } from '@/lib/analysis/protectedAnalysisHttp';
+import {
+  ChessTruthError,
+  IntegrityControlUnavailableError,
+  SupabaseModeratorQueueStore,
+} from '@/lib/analysis';
+import {
+  EngineRuntimeConfigurationError,
+  EngineRuntimeRemoteError,
+  runtimeHttpStatus,
+} from '@/lib/chess/runtime';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
+export const preferredRegion = 'iad1';
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 const stableFetch: typeof fetch = (...args) => nativeFetch(...args);
@@ -16,13 +29,20 @@ type ProtectedAnalysisBody = {
   fen?: unknown;
   mode?: unknown;
   gameId?: unknown;
-  overlap?: OverlapInput;
 };
 
-function jsonError(message: string, status: number): Response {
-  return new Response(JSON.stringify({ error: message }), {
+function jsonError(
+  message: string,
+  status: number,
+  options?: { code?: string; retryable?: boolean; retryAfterSeconds?: number }
+): Response {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (options?.retryAfterSeconds) {
+    headers['Retry-After'] = String(options.retryAfterSeconds);
+  }
+  return new Response(JSON.stringify({ error: message, ...options }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
   });
 }
 
@@ -58,14 +78,9 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return jsonError('Invalid JSON body', 400);
   }
-  const fen = String(body.fen ?? '').trim();
-  if (!fen) return jsonError('fen is required', 400);
-  const mode = String(body.mode ?? 'coach').trim() as IntelligenceMode;
-  if (!['coach', 'analyst', 'explainer'].includes(mode)) {
-    return jsonError('mode must be one of: coach | analyst | explainer', 400);
-  }
-  const gameId =
-    body.gameId != null && String(body.gameId).trim() !== '' ? String(body.gameId).trim() : null;
+  const parsed = parseProtectedAnalysisBody(body);
+  if (!parsed.ok) return jsonError(parsed.error, parsed.status);
+  const { fen, mode, gameId } = parsed.value;
 
   let serviceClient;
   try {
@@ -84,15 +99,46 @@ export async function POST(request: Request): Promise<Response> {
       fen,
       mode,
       gameId,
-      overlap: body.overlap,
       moderatorQueueSink,
+      signal: request.signal,
     });
   } catch (e) {
     if (e instanceof ProtectedAnalysisPrecheckError) {
       return jsonError(e.message, e.status);
     }
-    const msg = e instanceof Error ? e.message : 'Protected analysis failed';
-    return jsonError(msg, 500);
+    if (e instanceof IntegrityControlUnavailableError) {
+      return jsonError('INTEGRITY_CONTROL_UNAVAILABLE', 503, {
+        code: 'INTEGRITY_CONTROL_UNAVAILABLE',
+        retryable: true,
+        retryAfterSeconds: 1,
+      });
+    }
+    if (e instanceof EngineRuntimeRemoteError) {
+      const failure = e.envelope.error;
+      return jsonError(failure.code, runtimeHttpStatus(failure.code), {
+        code: failure.code,
+        retryable: failure.retryable,
+        retryAfterSeconds: failure.retryable ? 1 : undefined,
+      });
+    }
+    if (
+      e instanceof ProtectedReviewRuntimeDisabledError ||
+      e instanceof EngineRuntimeConfigurationError
+    ) {
+      return jsonError('ENGINE_POOL_UNAVAILABLE', 503, {
+        code: 'ENGINE_POOL_UNAVAILABLE',
+        retryable: true,
+        retryAfterSeconds: 1,
+      });
+    }
+    if (e instanceof ChessTruthError) {
+      return jsonError(e.code, e.code === 'INVALID_FEN' ? 400 : 503, {
+        code: e.code,
+        retryable: e.code !== 'INVALID_FEN',
+        retryAfterSeconds: e.code === 'INVALID_FEN' ? undefined : 1,
+      });
+    }
+    return jsonError('Protected analysis failed', 500);
   }
 
   return new Response(
