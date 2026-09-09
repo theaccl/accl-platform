@@ -6,12 +6,18 @@ test.describe('API stabilization (static source checks)', () => {
   test('submit-move does not expose db_error in conflict JSON', () => {
     const p = join(process.cwd(), 'app', 'api', 'game', 'submit-move', 'route.ts');
     const src = readFileSync(p, 'utf8');
+    const botCommit = readFileSync(
+      join(process.cwd(), 'lib', 'server', 'submitMoveBotGameCommit.ts'),
+      'utf8',
+    );
+    const submitMovePath = `${src}\n${botCommit}`;
     expect(src).not.toContain('db_error');
     expect(src).toContain('game_unavailable');
     expect(src).toContain('apply_move_and_maybe_finish_system');
-    expect(src).toContain('botTerminal');
+    expect(submitMovePath).toContain('botTerminal');
+    expect(botCommit).toContain("rpc('apply_queued_bot_move_system'");
     expect(src).toContain('bot_move_applied');
-    expect(src).not.toContain('finish_game_system');
+    expect(submitMovePath).not.toContain('finish_game_system');
     expect(src).toContain("error: 'invalid_move'");
     expect(src).toContain("result: 'out_of_turn'");
   });

@@ -117,7 +117,10 @@ test.describe('clock integrity repair', () => {
   });
 
   test('keeps game-only polls from cancelling an in-flight history refresh', () => {
-    const page = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
+    const page = readFileSync(
+      join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'),
+      'utf8'
+    ).replace(/\r\n/g, '\n');
     const historyPriorityIndex = page.indexOf(
       "!includeMoveLogs &&\n        snapshotWait.key.endsWith('|with-logs')"
     );
