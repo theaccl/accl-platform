@@ -1,5 +1,4 @@
-import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseUserFromCookies } from '@/lib/auth/getSupabaseUserFromCookies';
 
 import { isModeratorUser } from '@/lib/moderatorAuth';
 
@@ -46,26 +45,14 @@ export function extractSupabaseAccessTokenFromCookieValue(rawValue: string): str
 }
 
 export async function requireModeratorPageAccess(): Promise<GuardResult> {
-  const cookieStore = await cookies();
-  const authCookie = cookieStore.getAll().find((entry) => /^sb-.*-auth-token$/.test(entry.name));
-  if (!authCookie?.value) return { ok: false, reason: 'UNAUTHENTICATED' };
-  const token = extractSupabaseAccessTokenFromCookieValue(authCookie.value);
-  if (!token) return { ok: false, reason: 'UNAUTHENTICATED' };
-
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !anon) return { ok: false, reason: 'MISCONFIGURED' };
 
-  const client = createClient(url, anon, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-  const { data, error } = await client.auth.getUser(token);
-  const user = data.user;
-  if (error || !user?.id) return { ok: false, reason: 'UNAUTHENTICATED' };
+  // Use the same SSR session reader as the rest of ACCL, including base64 and
+  // chunked cookies. getUser validates the token with Auth before role checks.
+  const user = await getSupabaseUserFromCookies();
+  if (!user?.id) return { ok: false, reason: 'UNAUTHENTICATED' };
 
   const allowed = isModeratorUser({
     userId: user.id,
