@@ -13,6 +13,7 @@ type HarnessOptions = {
   accl?: boolean;
   compareCoverage?: 'complete' | 'incomplete';
   compareAdjustment?: boolean;
+  compareLoadDelayMs?: number;
 };
 
 function readOptions(): HarnessOptions {
@@ -132,8 +133,9 @@ function harnessPeriodLoader(
   history: RatingHistoryPoint[],
   period: ComparePeriod,
   coverage: 'complete' | 'incomplete' = 'complete',
+  delayMs = 0,
 ) {
-  return Promise.resolve({
+  const result = {
     status: coverage,
     points: history,
     coverage: {
@@ -142,7 +144,10 @@ function harnessPeriodLoader(
       priorToStartResolved: coverage === 'complete',
     },
     ...(coverage === 'incomplete' ? { message: 'Fixture coverage is incomplete.' } : {}),
-  });
+  };
+  return delayMs > 0
+    ? new Promise<typeof result>((resolve) => window.setTimeout(() => resolve(result), delayMs))
+    : Promise.resolve(result);
 }
 
 export function ComparisonHarness() {
@@ -189,6 +194,7 @@ export function ComparisonHarness() {
                 : historyByTrack[accl ? 'accl' : 'free_day'] ?? [],
               period,
               initial.compareCoverage,
+              initial.compareLoadDelayMs,
             )
           }
         />

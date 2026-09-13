@@ -50,6 +50,9 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
   const ct = page.getByTestId('compare-panel-ct1');
   await ct.getByText('Choose from games').click();
   const dailyGame = ct.locator('li').filter({ hasText: 'free_day' });
+  await expect(dailyGame.getByRole('button')).toHaveAccessibleName(
+    /Use 2026-08-01 12:00 UTC · free_day · win · 1500 → 1508 \(\+8\) for CT1/,
+  );
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
   await dailyGame.getByRole('button', { name: /2026-08-01 12:00 UTC/ }).click();
@@ -149,7 +152,7 @@ test('comparison adjustments retain ratings and UTC time without claiming a draw
   await page.getByTestId('rating-lane-tab-month').click();
   await page.getByTestId('compare-mode-toggle').click();
   const ct = page.getByTestId('compare-panel-ct1');
-  await ct.getByRole('button', { name: 'Previous period', exact: true }).click();
+  await ct.getByRole('button', { name: 'Previous period for CT1', exact: true }).click();
   await expect(ct.getByTestId('compare-summary-ct1')).toHaveText('0 games · 1 rating events · +12');
   await expect(ct).toContainText('1510 → 1522');
   await expect(ct).toContainText('Aug 29, 2026, 8:00:00 PM UTC · Rating adjustment');
@@ -181,6 +184,177 @@ test('Previous panel moves immediately after removing the last visible compariso
   await page.getByRole('button', { name: 'Previous panel', exact: true }).click();
   await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeLessThan(before - 100);
   await expect(page.getByTestId('compare-panel-ct1')).toBeInViewport({ ratio: 0.5 });
+});
+
+test('Expand opens Independent with Main first and every retained CT on its own scale', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1200, height: 900 } });
+  await page.getByTestId('rating-lane-tab-week').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('compare-panel-ct1').locator('input[type="date"]').fill('2026-08-12');
+  await page.getByTestId('compare-panel-ct2').locator('input[type="date"]').fill('2026-08-13');
+  await page.getByTestId('compare-panel-ct3').locator('input[type="date"]').fill('2026-08-14');
+
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute('data-compare-layout', 'independent');
+  await expect(drawer).toHaveAttribute('data-panel-count', '4');
+  await expect(drawer.getByRole('tab', { name: 'Independent' })).toHaveAttribute('aria-selected', 'true');
+  await expect(drawer.getByRole('tab', { name: /Merge/ })).toBeDisabled();
+
+  const grid = drawer.getByTestId('expanded-independent-panel-grid');
+  await expect(grid.locator(':scope > article')).toHaveCount(4);
+  await expect(grid.locator(':scope > article').first()).toHaveAttribute('data-testid', 'expanded-compare-panel-main');
+  await expect(drawer.getByTestId('expanded-compare-panel-ct1').locator('input[type="date"]')).toHaveValue('2026-08-12');
+  await expect(drawer.getByTestId('expanded-compare-panel-ct2').locator('input[type="date"]')).toHaveValue('2026-08-13');
+  await expect(drawer.getByTestId('expanded-compare-panel-ct3').locator('input[type="date"]')).toHaveValue('2026-08-14');
+  await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(3);
+  await expect(drawer.getByTestId('rating-lane-tabs')).toHaveCount(1);
+  for (const slot of ['ct1', 'ct2', 'ct3']) {
+    const slotName = slot.toUpperCase();
+    const panel = drawer.getByTestId(`expanded-compare-panel-${slot}`);
+    await expect(panel.getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'week');
+    await expect(panel).toHaveAccessibleName(new RegExp(`^${slotName} · rank`));
+    await expect(panel.getByRole('button', { name: `Previous period for ${slotName}` })).toBeVisible();
+    await expect(panel.getByRole('textbox', { name: `UTC date for ${slotName}` })).toBeVisible();
+    await expect(panel.getByRole('button', { name: `Next period for ${slotName}` })).toBeVisible();
+    await expect(panel.locator(`summary[aria-label="Choose from games for ${slotName}"]`)).toBeVisible();
+  }
+  if (process.env.R042_STACK3_CAPTURE_DIR) {
+    mkdirSync(process.env.R042_STACK3_CAPTURE_DIR, { recursive: true });
+    await drawer.screenshot({ path: join(process.env.R042_STACK3_CAPTURE_DIR, 'expanded-independent-1200.png') });
+  }
+});
+
+test('Expanded CT controls retain anchors, real links, and state after close', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  const ct1 = drawer.getByTestId('expanded-compare-panel-ct1');
+  await ct1.getByText('Choose from games').click();
+  const dailyGame = ct1.locator('li').filter({ hasText: 'free_day' });
+  await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
+  await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
+  await dailyGame.getByRole('button', { name: /2026-08-01 12:00 UTC/ }).click();
+  await expect(ct1.locator('input[type="date"]')).toHaveValue('2026-08-01');
+  await expect(ct1.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events');
+
+  await drawer.getByTestId('expanded-independent-close').click();
+  await expect(drawer).toHaveCount(0);
+  await expect(page.getByTestId('compare-panel-ct1').locator('input[type="date"]')).toHaveValue('2026-08-01');
+});
+
+test('Expanded Independent keeps Main as the only lane selector and hides CTs on Overall', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await expect(drawer.getByRole('tablist', { name: 'Expanded rating history window' })).toHaveCount(1);
+  await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"] [role="tablist"]')).toHaveCount(0);
+  await drawer.getByTestId('rating-lane-tab-overall').click();
+  await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(0);
+  await expect(drawer.getByTestId('expanded-compare-overall-explanation')).toBeVisible();
+  await drawer.getByTestId('rating-lane-tab-month').click();
+  await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(2);
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`Expanded Independent fits and scrolls safely at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await mountComparisonPanel(page, { single: true, accl: true, viewport });
+    await page.getByTestId('compare-mode-toggle').click();
+    await page.getByTestId('compare-add-ticker').click();
+    await page.getByTestId('compare-add-ticker').click();
+    const expand = page.getByTestId('rating-ticker-expand-mobile');
+    await expand.click();
+
+    const drawer = page.getByTestId('expanded-independent-compare-drawer');
+    const body = drawer.getByTestId('expanded-independent-body-scroll');
+    await expect(drawer).toHaveAttribute('data-panel-count', '4');
+    await expect(body).toHaveCSS('overflow-y', 'auto');
+    const fit = await drawer.evaluate((element) => {
+      const panels = [...element.querySelectorAll<HTMLElement>('[data-testid^="expanded-compare-panel-"]')];
+      return {
+        pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        panelsFit: panels.every((panel) => panel.getBoundingClientRect().right <= element.getBoundingClientRect().right + 1),
+      };
+    });
+    expect(fit).toEqual({ pageFits: true, panelsFit: true });
+    if (process.env.R042_STACK3_CAPTURE_DIR) {
+      mkdirSync(process.env.R042_STACK3_CAPTURE_DIR, { recursive: true });
+      await drawer.screenshot({ path: join(process.env.R042_STACK3_CAPTURE_DIR, `expanded-independent-${viewport.width}x${viewport.height}.png`) });
+    }
+
+    await drawer.press('Tab');
+    await expect(drawer.getByRole('tab', { name: 'Independent' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+    await expect(expand).toBeFocused();
+  });
+}
+
+test('Expand without active CTs preserves the existing R040 landscape drawer', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  await expect(page.getByTestId('expanded-rating-ticker-drawer')).toBeVisible();
+  await expect(page.getByTestId('expanded-independent-compare-drawer')).toHaveCount(0);
+});
+
+test('an open comparison with every CT removed still expands as Independent Main', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByRole('button', { name: 'Remove CT1' }).click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute('data-panel-count', '1');
+  await expect(drawer.getByTestId('expanded-compare-panel-main')).toBeVisible();
+});
+
+test('expanding an already-open comparison across UTC midnight preserves it until a later reopen', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('rating-lane-tab-day').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.clock.fastForward(8 * 60 * 60 * 1000);
+
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const independent = page.getByTestId('expanded-independent-compare-drawer');
+  await expect(independent).toHaveAttribute('data-panel-count', '3');
+  await expect(
+    independent.getByTestId('expanded-compare-panel-main').getByTestId('rating-ticker-chart'),
+  ).toHaveAttribute('data-time-caption', /Wed 9 · UTC$/);
+  await independent.getByTestId('expanded-independent-close').click();
+
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  await expect(page.getByTestId('expanded-rating-ticker-drawer')).toBeVisible();
+  await expect(page.getByTestId('expanded-independent-compare-drawer')).toHaveCount(0);
+});
+
+test('a pending replacement period never renders the prior period history under its caption', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    compareLoadDelayMs: 1_000,
+    viewport: { width: 900, height: 760 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.clock.fastForward(1_000);
+
+  const ct = page.getByTestId('compare-panel-ct1');
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+  await ct.getByRole('button', { name: 'Previous period for CT1' }).click();
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 1000 }]) {

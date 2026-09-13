@@ -68,6 +68,7 @@ export type MountComparisonOptions = {
   accl?: boolean;
   compareCoverage?: 'complete' | 'incomplete';
   compareAdjustment?: boolean;
+  compareLoadDelayMs?: number;
   viewport?: { width: number; height: number };
 };
 
@@ -127,6 +128,7 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
     accl: Boolean(opts.accl),
     compareCoverage: opts.compareCoverage ?? 'complete',
     compareAdjustment: Boolean(opts.compareAdjustment),
+    compareLoadDelayMs: opts.compareLoadDelayMs ?? 0,
   };
   await page.addScriptTag({
     content: `window.__HARNESS_OPTIONS = ${JSON.stringify(harnessOptions)};`,
