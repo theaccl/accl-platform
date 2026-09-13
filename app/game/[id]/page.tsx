@@ -2235,6 +2235,7 @@ export default function GamePage() {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
     const mode: IntelligenceMode = wantEngineAnalysis ? 'analyst' : 'explainer';
     setEngineAnalysisBusy(true);
 
@@ -2252,19 +2253,20 @@ export default function GamePage() {
             fen: START_FEN,
             mode,
             gameId: game?.id ?? null,
-            overlap: {
-              activeGameFen: game?.fen,
-              requestMoves: moveLogs.map((m) => m.san),
-            },
           }),
+          signal: controller.signal,
         });
         const payload = (await res.json()) as {
           error?: string;
+          code?: string;
+          retryable?: boolean;
           truth?: { rows?: AnalyzedMove[] };
           refusal?: { reason?: string };
         };
         if (!res.ok) {
-          const err = new Error(payload.error ?? payload.refusal?.reason ?? 'analysis_request_failed');
+          const err = new Error(
+            payload.code ?? payload.error ?? payload.refusal?.reason ?? 'analysis_request_failed'
+          );
           throw err;
         }
         return payload.truth?.rows ?? [];
@@ -2285,8 +2287,12 @@ export default function GamePage() {
         if (cancelled) return;
         setEngineAnalysisRows(null);
         const msg = err instanceof Error ? err.message : '';
-        if (msg.includes('INVALID_FEN')) setMessage('Analysis unavailable: invalid board state.');
-        else if (msg.includes('ENGINE_TIMEOUT')) setMessage('Analysis timed out. Try again shortly.');
+        if (msg.includes('INVALID_FEN') || msg.includes('INVALID_POSITION')) {
+          setMessage('Analysis unavailable: invalid board state.');
+        } else if (msg.includes('TIMEOUT')) setMessage('Analysis timed out. Try again shortly.');
+        else if (msg.includes('ENGINE_OVERLOADED') || msg.includes('ENGINE_ACTOR_LIMIT')) {
+          setMessage('Analysis is busy. Try again shortly.');
+        }
         else if (msg.includes('INTEGRITY_BLOCKED')) setMessage('Analysis blocked by integrity controls.');
         else if (msg.toLowerCase().includes('unauthorized')) setMessage('Sign in to run protected analysis.');
         else setMessage('Analysis unavailable right now.');
@@ -2297,6 +2303,7 @@ export default function GamePage() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     isPublicViewer,
