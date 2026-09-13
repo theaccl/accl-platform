@@ -3,10 +3,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/RatingFamilyComparisonPanel';
 import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
+import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { LANDSCAPE_TICKER_CROSSING_HISTORY } from './landscapeTickerCrossingFixture';
 import type { ComparePeriod } from '@/lib/profile/compareMode';
 import type { CompareTickerPeriodLoad } from '@/lib/profile/loadCompareTickerPeriod';
+import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
 
 type HarnessOptions = {
   empty?: boolean;
@@ -156,6 +158,7 @@ function harnessPeriodLoader(
 export function ComparisonHarness() {
   const initial = readOptions();
   const [alternateTrack, setAlternateTrack] = useState(false);
+  const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
   const empty = Boolean(initial.empty);
   const crossing = Boolean(initial.crossing);
   const single = Boolean(initial.single);
@@ -221,10 +224,24 @@ export function ComparisonHarness() {
             canLinkFinishedGames
             historyByTrack={historyByTrack}
             comparePeriodLoader={comparePeriodLoader}
+            lane={lane}
+            onLaneChange={setLane}
           />
         </>
       ) : (
-        <RatingFamilyComparisonPanel historyByTrack={historyByTrack} canLinkFinishedGames />
+        <>
+          <RatingLaneTabs
+            lane={lane}
+            onLaneChange={setLane}
+            testIdPrefix="rating"
+            ariaLabel="Main rating history window"
+          />
+          <RatingFamilyComparisonPanel
+            historyByTrack={historyByTrack}
+            canLinkFinishedGames
+            lane={lane}
+          />
+        </>
       )}
     </div>
   );

@@ -38,7 +38,7 @@ test('ACCL ticker adds real major-family series and keeps Expand reachable', asy
 test('ticker ratings render plain digits without thousands separators', async ({ page }) => {
   await mountComparisonPanel(page, { viewport: { width: 800, height: 600 } });
   await page.getByTestId('major-family-legend-rapid').click();
-  await page.getByTestId('comparison-lane-tab-overall').click();
+  await page.getByTestId('rating-lane-tab-overall').click();
   await page.getByTestId('multi-line-point-free_rapid').hover();
   await expect(page.getByTestId('multi-line-hover-tooltip')).toContainText('1499');
   await expect(page.getByTestId('multi-line-hover-tooltip')).not.toContainText('1,499');

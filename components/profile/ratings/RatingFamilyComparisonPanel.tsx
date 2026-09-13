@@ -15,16 +15,11 @@ import {
   majorFamilySeriesHasAnyPoints,
 } from '@/lib/profileRatingFamilyComparison';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
-import {
-  DEFAULT_RATING_LANE,
-  lastRatingAfterBefore,
-  type RatingLane,
-} from '@/lib/ratingHistoryMetrics';
+import { lastRatingAfterBefore, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
 import { RATING_TICKER_DISPLAY_TIME_ZONE } from '@/lib/profile/ratingTickerTimeZone';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
 import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
-import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
 import {
   COMPARISON_SELECT_EMPTY,
@@ -37,10 +32,10 @@ const COMPARISON_EMPTY =
 type Props = {
   historyByTrack: Record<string, RatingHistoryPoint[]>;
   canLinkFinishedGames: boolean;
+  lane: RatingLane;
 };
 
-export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGames }: Props) {
-  const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
+export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGames, lane }: Props) {
   const [dominanceOrder, setDominanceOrder] = useState<MajorFamilyTrackId[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nowMs] = useState(() => Date.now());
@@ -138,7 +133,7 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
 
       <p className="m-0 text-xs text-gray-500">
         Tournament, Bullet, Blitz, Rapid, and Daily mode histories — one line per family, real ledger
-        events only.
+        events only. Uses Main&apos;s {lane} view.
       </p>
 
       {/* Persistent legend with hide / show toggles */}
@@ -178,13 +173,6 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         })}
       </ul>
 
-      <RatingLaneTabs
-        lane={lane}
-        onLaneChange={setLane}
-        testIdPrefix="comparison"
-        ariaLabel="Comparison history window"
-      />
-
       {!anyBasePoints ? (
         <p className="m-0 text-sm text-gray-400" data-testid="comparison-empty-all">
           {COMPARISON_EMPTY}
@@ -223,7 +211,8 @@ export function RatingFamilyComparisonPanel({ historyByTrack, canLinkFinishedGam
         currentRating={null}
         points={[]}
         lane={lane}
-        onLaneChange={setLane}
+        onLaneChange={() => undefined}
+        showLaneControls={false}
         canLinkFinishedGames={canLinkFinishedGames}
         historyByTrack={historyByTrack}
       />

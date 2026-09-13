@@ -55,6 +55,8 @@ type Props = {
   canLinkFinishedGames: boolean;
   historyByTrack?: Record<string, RatingHistoryPoint[]>;
   comparePeriodLoader?: ComparePeriodLoader;
+  lane: RatingLane;
+  onLaneChange: (lane: RatingLane) => void;
 };
 
 type ComparePeriodLoadEntry = {
@@ -75,13 +77,14 @@ export function RatingTrackDetailPanel({
   canLinkFinishedGames,
   historyByTrack = {},
   comparePeriodLoader,
+  lane,
+  onLaneChange,
 }: Props) {
   const def = timeControlByRatingTrackId(ratingTrackId);
   const isExact = Boolean(def?.badgeTrackKey);
   const showBadgeUnavailable = isExact && !isSelf;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<'landscape' | 'independent'>('landscape');
-  const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareNowMs, setCompareNowMs] = useState(() => Date.now());
   const [compareSession, setCompareSession] = useState(() =>
@@ -98,9 +101,9 @@ export function RatingTrackDetailPanel({
     setNowMs(currentMs);
   }, []);
   const changeLane = useCallback((nextLane: RatingLane) => {
-    setLane(nextLane);
+    onLaneChange(nextLane);
     setCompareSession((previous) => setMainLane(previous, nextLane));
-  }, []);
+  }, [onLaneChange]);
   const isAcclTicker = ratingTrackId === 'accl';
 
   const majorBaseSeries = useMemo(

@@ -6,6 +6,7 @@ import { visibleTimeControlsForMode } from '@/lib/acclTimeControls';
 import { acclOverallRankLabelForLane } from '@/lib/profile/acclOverallRank';
 import { loadProfileRatingDashboardData } from '@/lib/loadProfileRatingDashboard';
 import { loadCompareTickerPeriod } from '@/lib/profile/loadCompareTickerPeriod';
+import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import {
   broadModeUnlockPolicyForMode,
   loadOwnSuccessfulPerformance,
@@ -51,6 +52,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
   const cards = useMemo(() => topLevelRatingCardsFromP1(p1), [p1]);
   const [selectedTop, setSelectedTop] = useState<ProfileTopLevelTrackId>('accl');
   const [selectedDetail, setSelectedDetail] = useState<string>('accl');
+  const [ratingLane, setRatingLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
   const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof loadProfileRatingDashboardData>>>({
     historyByTrack: {},
     historySourceByTrack: {},
@@ -231,12 +233,15 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
         canLinkFinishedGames={isSelf}
         historyByTrack={dashboard.historyByTrack}
         comparePeriodLoader={comparePeriodLoader}
+        lane={ratingLane}
+        onLaneChange={setRatingLane}
       />
 
       {isSelf ? (
         <RatingFamilyComparisonPanel
           historyByTrack={dashboard.historyByTrack}
           canLinkFinishedGames
+          lane={ratingLane}
         />
       ) : null}
 

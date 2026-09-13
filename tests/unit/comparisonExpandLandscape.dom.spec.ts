@@ -35,7 +35,6 @@ function captureDir(testInfo: TestInfo): string {
 async function mountCompareMajorRatings(page: Page, viewport: { width: number; height: number }) {
   await page.clock.install({ time: new Date('2026-08-30T12:00:00Z') });
   await mountComparisonPanel(page, { crossing: true, viewport });
-  await page.getByTestId('comparison-lane-tab-overall').click();
   await page.getByTestId('rating-family-comparison-panel').waitFor();
 }
 
@@ -59,7 +58,7 @@ async function assertCleanLandscapeFromComparison(page: Page) {
     await expect(page.getByTestId(id)).toHaveAttribute('data-selected', 'false');
   }
   for (const id of TIME_CONTROL_IDS) {
-    await expect(page.getByTestId(id)).toBeVisible();
+    await expect(drawer.getByTestId(id)).toHaveCount(0);
   }
   await expect(page.getByTestId('expanded-ticker-close')).toBeVisible();
   await expect(drawer).toHaveAttribute('data-selected-count', '0');

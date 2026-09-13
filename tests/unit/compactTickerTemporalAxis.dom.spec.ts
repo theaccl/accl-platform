@@ -87,18 +87,18 @@ test.describe('compact ticker UTC temporal axes', () => {
     await mountComparisonPanel(page, { viewport: { width: 800, height: 900 } });
     await page.getByTestId('major-family-legend-daily').click();
 
-    await assertLane(page, 'comparison', 'multi-line-rating-chart', 'compact-comparison', 'day');
+    await assertLane(page, 'rating', 'multi-line-rating-chart', 'compact-comparison', 'day');
     await expect(page.getByTestId('multi-line-point-free_day')).toHaveCount(0);
     await expect(page.getByTestId('multi-line-series-free_day')).toHaveAttribute('d', / L /);
 
-    await assertLane(page, 'comparison', 'multi-line-rating-chart', 'compact-comparison', 'week');
-    await assertLane(page, 'comparison', 'multi-line-rating-chart', 'compact-comparison', 'month');
+    await assertLane(page, 'rating', 'multi-line-rating-chart', 'compact-comparison', 'week');
+    await assertLane(page, 'rating', 'multi-line-rating-chart', 'compact-comparison', 'month');
     await expect(page.locator('[data-time-boundary="iso-week"]')).toHaveCount(3);
     await capture(page, 'comparison-month-800.png');
-    await assertLane(page, 'comparison', 'multi-line-rating-chart', 'compact-comparison', 'year');
+    await assertLane(page, 'rating', 'multi-line-rating-chart', 'compact-comparison', 'year');
     await expect(page.getByTestId('compact-comparison-x-tick-primary')).toHaveCount(11);
 
-    await page.getByTestId('comparison-lane-tab-overall').click();
+    await page.getByTestId('rating-lane-tab-overall').click();
     await expect(page.getByTestId('multi-line-rating-chart')).toHaveAttribute(
       'data-lane',
       'overall',

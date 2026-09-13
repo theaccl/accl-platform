@@ -79,7 +79,7 @@ async function prepareCrossingChart(page: Page): Promise<void> {
     crossing: true,
     viewport: { width: 360, height: 800 },
   });
-  await page.getByTestId('comparison-lane-tab-overall').click();
+  await page.getByTestId('rating-lane-tab-overall').click();
   await page.getByTestId('rating-family-comparison-panel').waitFor();
 }
 
@@ -217,7 +217,7 @@ test.describe('compact comparison dominance (real component)', () => {
       crossing: true,
       viewport: { width: 800, height: 360 },
     });
-    await page.getByTestId('comparison-lane-tab-overall').click();
+    await page.getByTestId('rating-lane-tab-overall').click();
     await selectRapidThenBlitz(page);
     await page.screenshot({ path: shot('c06-rapid-selected-before-blitz-800x360.png'), fullPage: true });
 
