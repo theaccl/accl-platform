@@ -89,6 +89,7 @@ import { TesterBugReportTrigger } from '@/components/TesterBugReportDialog';
 import { inGameContinuityHubLink } from '@/lib/gameContinuityPresentation';
 import { tournamentContinuityHubLink } from '@/lib/tournamentSessionContinuity';
 import { useOpenPublicIdentityCard } from '@/components/identity/PublicIdentityCardContext';
+import { nearestReplayNotationScrollTop } from '@/lib/replayNotationScroll';
 
 type MoveLogLoadReason =
   | 'realtime_insert'
@@ -805,6 +806,7 @@ export default function GamePage() {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [pgnExportCount, setPgnExportCount] = useState(0);
   const chessRef = useRef<Chess | null>(null);
+  const replayMoveListRef = useRef<HTMLDivElement | null>(null);
   const [liveChessVersion, setLiveChessVersion] = useState(0);
   const [displayNameById, setDisplayNameById] = useState<Record<string, string>>({});
   const displayNameFetchFailuresRef = useRef(0);
@@ -1014,6 +1016,25 @@ export default function GamePage() {
 
   useEffect(() => {
     if (replayStep !== null) setSelectedSquare(null);
+  }, [replayStep]);
+
+  useEffect(() => {
+    if (replayStep === null) return;
+    const scroller = replayMoveListRef.current;
+    const activeMove = scroller?.querySelector<HTMLElement>(
+      `[data-replay-step="${replayStep}"]`,
+    );
+    if (!scroller || !activeMove) return;
+    const viewport = scroller.getBoundingClientRect();
+    const item = activeMove.getBoundingClientRect();
+    const nextScrollTop = nearestReplayNotationScrollTop({
+      scrollTop: scroller.scrollTop,
+      viewportTop: viewport.top,
+      viewportBottom: viewport.bottom,
+      itemTop: item.top,
+      itemBottom: item.bottom,
+    });
+    if (nextScrollTop !== scroller.scrollTop) scroller.scrollTop = nextScrollTop;
   }, [replayStep]);
 
   useLayoutEffect(() => {
@@ -3950,6 +3971,8 @@ export default function GamePage() {
               Notation — click a move to jump
             </div>
             <div
+              ref={replayMoveListRef}
+              data-testid="game-replay-move-list-scroll"
               className="accl-scroll-no-anchor"
               style={{
                 maxHeight: 180,
@@ -3968,6 +3991,7 @@ export default function GamePage() {
                   <button
                     key={idx}
                     type="button"
+                    data-replay-step={idx + 1}
                     title="Jump to position after this move"
                     onClick={() => setReplayStep(idx + 1)}
                     style={{
