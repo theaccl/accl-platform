@@ -1,4 +1,14 @@
 import type { FinishedGameAnalysisIntakePayload } from '@/lib/finishedGameAnalysisIntake';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { resolve } from 'node:path';
+import {
+  EngineFailure,
+  evaluatePositionWithStockfish,
+  moverPovCentipawn,
+  parsePosition,
+  PINNED_STOCKFISH_IDENTITY,
+  type EngineTransport,
+} from '@/lib/chess';
 
 export type EngineServiceInput = {
   gameId: string;
@@ -24,12 +34,6 @@ export type EngineServiceResult = {
   };
 };
 
-type StockfishEngine = {
-  sendCommand: (cmd: string) => void;
-  listener?: (line: string) => void;
-  terminate?: () => void;
-};
-
 function moveTagHints(san: string): string[] {
   const tags: string[] = [];
   if (san.includes('x')) tags.push('capture');
@@ -51,23 +55,77 @@ function detectBlunderSignals(moves: Array<{ san: string | null }>) {
   return out;
 }
 
-type UciLine = { rank: number; move: string; scoreCp: number | null };
-
-function parseInfo(line: string): UciLine | null {
-  const rankMatch = /\bmultipv\s+(\d+)\b/i.exec(line);
-  const pvMatch = /\bpv\s+([a-h][1-8][a-h][1-8][qrbn]?)/i.exec(line);
-  if (!rankMatch || !pvMatch) return null;
-  const cpMatch = /\bscore cp\s+(-?\d+)\b/i.exec(line);
-  return {
-    rank: Number(rankMatch[1]),
-    move: pvMatch[1].toLowerCase(),
-    scoreCp: cpMatch ? Number(cpMatch[1]) : null,
-  };
-}
+type UciLine = { rank: number; move: string; scoreCp: number | null; pv?: string[] };
 
 const TRAINER_MAX_CONCURRENT = 3;
 let trainerConcurrent = 0;
 const trainerWaiters: Array<() => void> = [];
+
+/** @internal Exported for deterministic process-lifecycle contract tests. */
+export function createStockfishProcessTransport(
+  child: ChildProcessWithoutNullStreams,
+): EngineTransport {
+  let closed = false;
+
+  return {
+    send(command: string) {
+      if (closed || !child.stdin.writable) throw new Error('stockfish_process_not_writable');
+      child.stdin.write(`${command}\n`);
+    },
+    subscribe(handlers) {
+      let stdoutBuffer = '';
+      const onStdout = (chunk: Buffer | string) => {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) handlers.onLine(line);
+      };
+      let failureReported = false;
+      const reportFailure = (error: unknown) => {
+        if (closed || failureReported) return;
+        failureReported = true;
+        handlers.onError?.(error);
+      };
+      const onError = (error: unknown) => reportFailure(error);
+      const onExit = () => reportFailure(new Error('stockfish_process_exited_before_completion'));
+      // Emscripten may emit non-fatal runtime diagnostics on stderr while the
+      // UCI channel remains healthy. Drain them without converting them into a
+      // chess-engine failure; actual spawn errors still use `onError` below.
+      const onStderr = () => {};
+      child.stdout.on('data', onStdout);
+      child.stderr.on('data', onStderr);
+      child.on('error', onError);
+      child.on('exit', onExit);
+      child.on('close', onExit);
+      return () => {
+        child.stdout.off('data', onStdout);
+        child.stderr.off('data', onStderr);
+        child.off('error', onError);
+        child.off('exit', onExit);
+        child.off('close', onExit);
+      };
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      try {
+        child.stdin.end('quit\n');
+      } catch {
+        // Process may already have exited.
+      }
+      if (!child.killed) child.kill();
+    },
+  };
+}
+
+function nodeStockfishProcessTransport(): EngineTransport {
+  const asmPath = resolve(process.cwd(), 'node_modules', 'stockfish', 'bin', 'stockfish-18-asm.js');
+  const child = spawn(process.execPath, [asmPath], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  return createStockfishProcessTransport(child);
+}
 
 async function acquireTrainerSlot(): Promise<void> {
   if (trainerConcurrent < TRAINER_MAX_CONCURRENT) {
@@ -95,6 +153,7 @@ export type TrainerUciOptions = {
 /**
  * Single-position UCI eval for trainer / post-game surfaces. Uses asm Stockfish; bounded depth & time.
  * Concurrency-limited across the process to avoid CPU spikes.
+ * Returned `scoreCp` is mover-POV for legacy bot/Trainer ranking.
  */
 export async function evaluateTrainerPositionUci(
   fen: string,
@@ -115,63 +174,37 @@ async function runUciEvaluationInner(
   const depth = Math.min(18, Math.max(6, options?.depth ?? 12));
   const multiPv = Math.min(3, Math.max(1, options?.multiPv ?? 3));
   const timeoutMs = Math.min(20_000, Math.max(3_000, options?.timeoutMs ?? 10_000));
+  const position = parsePosition(fen);
 
   const originalFetch = globalThis.fetch;
-  /** Resolved at runtime from node_modules; excluded from the server bundle (Next/Vercel build). */
-  const stockfishInit = (
-    await import(/* webpackIgnore: true */ 'stockfish')
-  ).default as (enginePath?: string) => Promise<StockfishEngine>;
-  // WASM builds crash in the current Next route runtime; use asm engine for stable Node execution.
-  const engine = await stockfishInit('asm');
+  // A fresh child process avoids stockfish@18's self-replacing CommonJS ASM
+  // initializer and keeps its process-level listeners out of the Next server.
+  const transport = nodeStockfishProcessTransport();
 
-  return await new Promise((resolve, reject) => {
-    const linesByRank = new Map<number, UciLine>();
-    let bestMove: string | null = null;
-    const timeout = setTimeout(() => {
-      try {
-        engine.sendCommand('quit');
-      } catch {}
-      if (globalThis.fetch !== originalFetch) globalThis.fetch = originalFetch;
-      reject(new Error('engine_eval_timeout'));
-    }, timeoutMs);
-
-    engine.listener = (raw) => {
-      const line = String(raw ?? '').trim();
-      if (!line) return;
-      if (line.startsWith('info ')) {
-        const parsed = parseInfo(line);
-        if (parsed && parsed.rank >= 1 && parsed.rank <= multiPv) linesByRank.set(parsed.rank, parsed);
-        return;
-      }
-      if (line.startsWith('bestmove ')) {
-        const m = /^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/i.exec(line);
-        bestMove = m ? m[1].toLowerCase() : null;
-        clearTimeout(timeout);
-        try {
-          engine.sendCommand('quit');
-          engine.terminate?.();
-        } catch {}
-        if (globalThis.fetch !== originalFetch) globalThis.fetch = originalFetch;
-        resolve({
-          bestMove,
-          lines: [...linesByRank.values()].sort((a, b) => a.rank - b.rank),
-        });
-      }
+  try {
+    const result = await evaluatePositionWithStockfish({
+      transport,
+      position,
+      limits: { depth, multiPv, timeoutMs },
+      identity: PINNED_STOCKFISH_IDENTITY,
+    });
+    return {
+      bestMove: result.bestMove,
+      lines: result.lines.map((line) => ({
+        rank: line.rank,
+        move: line.move,
+        scoreCp: moverPovCentipawn(line.score, position.turn),
+        pv: line.pv,
+      })),
     };
-
-    try {
-      engine.sendCommand('uci');
-      engine.sendCommand('isready');
-      engine.sendCommand('ucinewgame');
-      engine.sendCommand(`setoption name MultiPV value ${multiPv}`);
-      engine.sendCommand(`position fen ${fen}`);
-      engine.sendCommand(`go depth ${depth}`);
-    } catch (e) {
-      clearTimeout(timeout);
-      if (globalThis.fetch !== originalFetch) globalThis.fetch = originalFetch;
-      reject(e);
+  } catch (err) {
+    if (err instanceof EngineFailure && err.code === 'ENGINE_TIMEOUT') {
+      throw new Error('engine_eval_timeout');
     }
-  });
+    throw err;
+  } finally {
+    if (globalThis.fetch !== originalFetch) globalThis.fetch = originalFetch;
+  }
 }
 
 /**

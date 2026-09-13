@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "accl.stockfish.provenance.1",
+  "upstream": {
+    "project": "official-stockfish/Stockfish",
+    "commit": "cb3d4ee9b47d0c5aae855b12379378ea1439675c",
+    "sourceArchiveSha256": "b5d3b85e08cdf9189a4753142eb21a4333983d97501531b19e1cd1ac9fc43f35"
+  },
+  "architecture": "x86-64-universal",
+  "sourceModified": false,
+  "networks": [
+    {
+      "file": "nn-c288c895ea92.nnue",
+      "sha256": "c288c895ea924429ea9092e3f36b2b3c1f00f2a3a4c759ff7e57e79e3b43e4a7"
+    },
+    {
+      "file": "nn-37f18f62d772.nnue",
+      "sha256": "37f18f62d772f3107e1d6aaca3898c130c3c86f2ab63e6555fbbca20635a899d"
+    }
+  ],
+  "builderImageDigest": "sha256:470d3decc32e6a67a14de00611b8b8f96d405a6c4b6ad7a028538792f7239e51",
+  "toolchain": {
+    "image": "docker.io/library/gcc@sha256:470d3decc32e6a67a14de00611b8b8f96d405a6c4b6ad7a028538792f7239e51",
+    "gcc": "12.5.0",
+    "gxx": "12.5.0",
+    "binutils": "2.40-2",
+    "make": "4.3",
+    "glibc": "2.36-9+deb12u14",
+    "libstdcxx": "12.2.0-14+deb12u1",
+    "command": "make -j2 build ARCH=x86-64 && make strip",
+    "networkMode": "none"
+  },
+  "executableSha256": "23219830b9789eba3c6b7921ea8f4e7567ee36b610e59e8839d8484d8f32462e",
+  "executableSizeBytes": 113122992,
+  "reproducibility": {
+    "cleanBuilds": 2,
+    "byteIdentical": true
+  },
+  "runtimeCompatibility": {
+    "image": "docker.io/library/debian@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171",
+    "glibc": "2.36-9+deb12u14",
+    "libstdcxx": "12.2.0-14+deb12u1",
+    "elf": "ELF64 x86-64 dynamically linked",
+    "probe": "pass"
+  },
+  "uciIdentity": {
+    "name": "Stockfish 18",
+    "author": "the Stockfish developers (see AUTHORS file)",
+    "evalFile": "nn-c288c895ea92.nnue",
+    "evalFileSmall": "nn-37f18f62d772.nnue",
+    "commands": ["uci", "quit"],
+    "uciok": true
+  },
+  "containerDigest": null,
+  "container": {
+    "platform": "linux/amd64",
+    "nodeSource": "docker.io/library/node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e",
+    "runtimeBase": "gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f",
+    "node": "24.20.0",
+    "nodeExecutableSha256": "89af8424dd53e560b1933f87ba650d8bf57c83ca5a04600eefb31f416aabbae7",
+    "user": "65532:65532",
+    "digestEvidence": "external:ACCL_SLICE3_ENGINE_IMAGE_EVIDENCE.md",
+    "published": false,
+    "deployed": false
+  },
+  "releaseApproval": null
+}

@@ -15,7 +15,7 @@ export const BOT_DIFFICULTY_LABELS: Record<BotDifficultyLevel, string> = {
 export type BotDifficultyProfile = {
   level: BotDifficultyLevel;
   label: string;
-  /** UCI search depth when engine is used (levels 4+). */
+  /** UCI search depth when engine is used. */
   engineDepth: number;
   engineMultiPv: number;
   engineTimeoutMs: number;
@@ -64,7 +64,7 @@ const PROFILES: Record<BotDifficultyLevel, BotDifficultyProfile> = {
     thinkTimeMaxMs: 1_800,
     blunderProbability: 0.14,
     maxCandidates: 22,
-    useEngine: false,
+    useEngine: true,
   },
   4: {
     level: 4,

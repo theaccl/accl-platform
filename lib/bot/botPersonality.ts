@@ -4,7 +4,73 @@ export type BotName = 'Cardi Bot' | 'Aggro Bot' | 'Endgame Bot';
 
 export type BotCandidateLine = {
   move: string;
+  /** @deprecated Compatibility score for the legacy selector. */
   scoreCp: number | null;
+  /** Raw Stockfish score from the side-to-move point of view. */
+  engineScoreCp?: number | null;
+  engineRank?: number | null;
+  /** Difference from the best engine candidate; populated by the safety layer. */
+  lossFromBestCp?: number | null;
+  source?: 'engine' | 'static-fallback';
+  openingReference?: boolean;
+  /** Stockfish principal variation beginning with this candidate move. */
+  enginePv?: string[];
+  /** Concrete continuation evidence derived through the opponent's best PV reply. */
+  planEvidence?: {
+    opponentReply: string | null;
+    continuation: string | null;
+    observedPlies: number;
+    materialDeltaAfterPvCp: number | null;
+    concreteCompensation: boolean;
+    sustainedInitiative: boolean;
+    initiativeReasons: string[];
+  };
+  /** Best-reply continuation evidence used only to order safe Trap candidates. */
+  trapEvidence?: {
+    opponentReply: string | null;
+    continuation: string | null;
+    observedPlies: number;
+    materialDeltaAfterPvCp: number | null;
+    tacticalGain: boolean;
+    forcingContinuation: boolean;
+    sustainedKingPressure: boolean;
+    materialPreserved: boolean;
+    reasons: string[];
+  };
+  /** Deterministic, position-derived evidence used only by the Endgame ordering pass. */
+  endgameEvidence?: {
+    isEndgame: boolean;
+    kingActivityDelta: number;
+    passedPawnAdvance: boolean;
+    promotionPrevention: boolean;
+    favorableSimplification: boolean;
+    materialPreserved: boolean;
+    reasons: string[];
+  };
+  /** Opponent-reply evidence used only to order safe Defensive candidates. */
+  defensiveEvidence?: {
+    observedReplies: number;
+    checkingReplies: number;
+    winningCaptureReplies: number;
+    soundExchange: boolean;
+    safeDevelopment: boolean;
+    materialPreserved: boolean;
+    reasons: string[];
+  };
+  staticRiskCp?: number;
+  allowsForcedMate?: boolean;
+  features?: {
+    capture: boolean;
+    check: boolean;
+    mate: boolean;
+    promotion: boolean;
+    development: boolean;
+    centerControl: boolean;
+    kingPressure: boolean;
+    movedPieceEnPrise: boolean;
+    opponentReplyCount: number;
+    materialDeltaAfterMoveCp: number;
+  };
 };
 
 export type BotSelection = {

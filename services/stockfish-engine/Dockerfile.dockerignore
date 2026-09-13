@@ -1,0 +1,11 @@
+**
+!services/
+!services/stockfish-engine/
+!services/stockfish-engine/dist/
+!services/stockfish-engine/dist/index.js
+!services/stockfish-engine/dist/licenses.txt
+!services/stockfish-engine/build-input/
+!services/stockfish-engine/build-input/stockfish
+!services/stockfish-engine/third_party/
+!services/stockfish-engine/third_party/stockfish/
+!services/stockfish-engine/third_party/stockfish/**

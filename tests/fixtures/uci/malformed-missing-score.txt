@@ -1,0 +1,2 @@
+info depth 8 seldepth 8 multipv 1 pv e2e4
+bestmove e2e4
