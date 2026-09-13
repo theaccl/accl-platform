@@ -231,6 +231,23 @@ test('mobile period controls belong to Main and never render inside comparison p
   }
 });
 
+test('ACCL Main keeps every period control when its history is empty', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    empty: true,
+    viewport: { width: 390, height: 844 },
+  });
+
+  const main = page.getByTestId('compare-panel-main');
+  await expect(main.getByTestId('rating-lane-tabs')).toHaveCount(1);
+  for (const lane of ['day', 'week', 'month', 'year', 'overall']) {
+    await expect(main.getByTestId(`rating-lane-tab-${lane}`)).toHaveCount(1);
+  }
+  await expect(main).toContainText('Game-by-game rating history is not populated yet.');
+  await expect(page.locator('[data-testid^="compare-panel-ct"]')).toHaveCount(0);
+});
+
 test('Expand opens Independent with Main first and every retained CT on its own scale', async ({ page }) => {
   await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1200, height: 900 } });
   await page.getByTestId('rating-lane-tab-week').click();

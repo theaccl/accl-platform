@@ -389,14 +389,14 @@ export function RatingTrackDetailPanel({
       ) : null}
     </>
   );
-  const mainLaneControls = !allEmpty ? (
+  const mainLaneControls = (
     <RatingLaneTabs
       lane={lane}
       onLaneChange={changeLane}
       testIdPrefix="rating"
       ariaLabel="Rating history window"
     />
-  ) : null;
+  );
 
   return (
     <div data-testid="rating-track-detail-panel" className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4">
