@@ -354,8 +354,21 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
 
     const drawer = page.getByTestId('expanded-independent-compare-drawer');
     const body = drawer.getByTestId('expanded-independent-body-scroll');
+    const panelNavigation = drawer.getByTestId('expanded-independent-panel-navigation');
     await expect(drawer).toHaveAttribute('data-panel-count', '4');
     await expect(body).toHaveCSS('overflow-y', 'auto');
+    await expect(panelNavigation.getByRole('button')).toHaveCount(4);
+    for (const panel of ['Main', 'CT1', 'CT2', 'CT3']) {
+      await expect(panelNavigation.getByRole('button', { name: panel, exact: true })).toBeVisible();
+    }
+    await panelNavigation.getByRole('button', { name: 'CT3', exact: true }).click();
+    const ct3 = drawer.getByTestId('expanded-compare-panel-ct3');
+    await expect(ct3).toBeInViewport({ ratio: 0.5 });
+    const [navigationBottom, targetTop] = await Promise.all([
+      panelNavigation.evaluate((element) => element.getBoundingClientRect().bottom),
+      ct3.evaluate((element) => element.getBoundingClientRect().top),
+    ]);
+    expect(targetTop).toBeGreaterThanOrEqual(navigationBottom - 1);
     const fit = await drawer.evaluate((element) => {
       const panels = [...element.querySelectorAll<HTMLElement>('[data-testid^="expanded-compare-panel-"]')];
       return {

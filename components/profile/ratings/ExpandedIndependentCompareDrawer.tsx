@@ -92,6 +92,20 @@ function ExpandedIndependentOverlay({
     if (result.ok) onSessionChange(result.state);
   }
 
+  function showPanel(panelId: string) {
+    dialogRef.current
+      ?.querySelector<HTMLElement>(`#${panelId}`)
+      ?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }
+
+  const mobilePanelLinks = [
+    { id: 'expanded-independent-panel-main', label: 'Main' },
+    ...orderedCts.map((ticker) => ({
+      id: `expanded-independent-panel-${ticker.slot}`,
+      label: ticker.slot.toUpperCase(),
+    })),
+  ];
+
   return (
     <div
       ref={dialogRef}
@@ -157,9 +171,28 @@ function ExpandedIndependentOverlay({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-3 sm:px-4"
         data-testid="expanded-independent-body-scroll"
       >
+        <nav
+          className="sticky top-0 z-10 -mx-3 mb-3 flex items-center gap-2 overflow-x-auto border-b border-[#2f3f54] bg-[#070b10] px-3 py-2 lg:hidden"
+          aria-label="Independent comparison panels"
+          data-testid="expanded-independent-panel-navigation"
+        >
+          <span className="shrink-0 text-xs font-semibold text-gray-300">Panels</span>
+          {mobilePanelLinks.map((panel) => (
+            <button
+              key={panel.id}
+              type="button"
+              aria-controls={panel.id}
+              onClick={() => showPanel(panel.id)}
+              className="min-h-9 shrink-0 rounded-md border border-[#3d5168] px-3 py-1 text-xs font-semibold text-sky-200"
+            >
+              {panel.label}
+            </button>
+          ))}
+        </nav>
         <div className="grid min-w-0 gap-3 lg:grid-cols-2" data-testid="expanded-independent-panel-grid">
           <article
-            className="min-w-0 space-y-3 rounded-xl border border-sky-400/40 bg-[#0f1723] p-3"
+            id="expanded-independent-panel-main"
+            className="min-w-0 scroll-mt-16 space-y-3 rounded-xl border border-sky-400/40 bg-[#0f1723] p-3"
             data-testid="expanded-compare-panel-main"
           >
             <header>
@@ -181,6 +214,7 @@ function ExpandedIndependentOverlay({
             return (
               <CompareTickerPanel
                 key={ticker.slot}
+                panelId={`expanded-independent-panel-${ticker.slot}`}
                 ticker={ticker}
                 period={period}
                 loaded={loads[ticker.slot]}

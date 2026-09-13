@@ -25,6 +25,7 @@ type Props = {
   onStep: (direction: 'prev' | 'next') => void;
   onSetAnchor: (anchorMs: number) => void;
   panelRef?: (node: HTMLElement | null) => void;
+  panelId?: string;
 };
 
 export function comparePeriodLaneWindow(period: ComparePeriod): RatingLaneWindow {
@@ -78,6 +79,7 @@ export function CompareTickerPanel({
   onStep,
   onSetAnchor,
   panelRef,
+  panelId,
 }: Props) {
   const occupancy = loaded ? periodOccupancy(loaded.points, period, loaded.coverage) : null;
   const periodPoints = loaded?.points.filter((point) => {
@@ -91,12 +93,13 @@ export function CompareTickerPanel({
 
   return (
     <article
+      id={panelId}
       ref={panelRef}
       aria-labelledby={panelTitleId}
       className={
         variant === 'compact'
           ? 'w-[min(100%,38rem)] min-w-[min(100%,22rem)] shrink-0 snap-start space-y-3 rounded-xl border border-[#3d5168] bg-[#0f1723] p-3'
-          : 'min-w-0 space-y-3 rounded-xl border border-[#3d5168] bg-[#0f1723] p-3'
+          : 'min-w-0 scroll-mt-16 space-y-3 rounded-xl border border-[#3d5168] bg-[#0f1723] p-3'
       }
       data-testid={`${variant === 'expanded' ? 'expanded-' : ''}compare-panel-${ticker.slot}`}
     >
