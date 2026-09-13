@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/RatingFamilyComparisonPanel';
 import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
@@ -155,18 +155,49 @@ function harnessPeriodLoader(
 
 export function ComparisonHarness() {
   const initial = readOptions();
+  const [alternateTrack, setAlternateTrack] = useState(false);
   const empty = Boolean(initial.empty);
   const crossing = Boolean(initial.crossing);
   const single = Boolean(initial.single);
   const accl = Boolean(initial.accl);
-  const [alternateTrack, setAlternateTrack] = useState(false);
+  const historyByTrack = useMemo(
+    () => empty
+      ? {}
+      : crossing
+        ? LANDSCAPE_TICKER_CROSSING_HISTORY
+        : buildHistory(),
+    [crossing, empty],
+  );
   const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : 'free_day';
   const selectedTrackLabel = accl ? 'ACCL Rating' : alternateTrack ? 'Blitz Overall' : 'Daily Overall';
-  const historyByTrack = empty
-    ? {}
-    : crossing
-      ? LANDSCAPE_TICKER_CROSSING_HISTORY
-      : buildHistory();
+  const comparePeriodLoader = useCallback(
+    (period: ComparePeriod) =>
+      harnessPeriodLoader(
+        initial.compareAdjustment
+          ? [point({
+              id: 'preview-adjustment',
+              ratingTrackId: selectedTrackId,
+              eventType: 'manual_admin_adjustment',
+              result: 'draw',
+              gameId: 'stray-adjustment-game-id',
+              occurredAt: '2026-08-29T20:00:00Z',
+              ratingBefore: 1510,
+              ratingAfter: 1522,
+              ratingDelta: 12,
+            })]
+          : historyByTrack[selectedTrackId] ?? [],
+        period,
+        initial.compareCoverage,
+        initial.compareLoadDelayMs,
+      ),
+    [
+      historyByTrack,
+      initial.compareAdjustment,
+      initial.compareCoverage,
+      initial.compareLoadDelayMs,
+      selectedTrackId,
+    ],
+  );
 
   return (
     <div
@@ -189,26 +220,7 @@ export function ComparisonHarness() {
             isSelf
             canLinkFinishedGames
             historyByTrack={historyByTrack}
-            comparePeriodLoader={(period) =>
-              harnessPeriodLoader(
-                initial.compareAdjustment
-                  ? [point({
-                      id: 'preview-adjustment',
-                      ratingTrackId: selectedTrackId,
-                      eventType: 'manual_admin_adjustment',
-                      result: 'draw',
-                      gameId: 'stray-adjustment-game-id',
-                      occurredAt: '2026-08-29T20:00:00Z',
-                      ratingBefore: 1510,
-                      ratingAfter: 1522,
-                      ratingDelta: 12,
-                    })]
-                  : historyByTrack[selectedTrackId] ?? [],
-                period,
-                initial.compareCoverage,
-                initial.compareLoadDelayMs,
-              )
-            }
+            comparePeriodLoader={comparePeriodLoader}
           />
         </>
       ) : (
