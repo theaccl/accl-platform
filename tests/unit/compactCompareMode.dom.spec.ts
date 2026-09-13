@@ -310,6 +310,22 @@ test('Expanded Independent keeps Main as the only lane selector and hides CTs on
   await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(2);
 });
 
+test('an open comparison expands as Independent when Main is already on Overall', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('rating-lane-tab-overall').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByTestId('expanded-compare-overall-explanation')).toBeVisible();
+  await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(0);
+
+  await drawer.getByTestId('rating-lane-tab-month').click();
+  await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(2);
+});
+
 for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
   test(`Expanded Independent fits and scrolls safely at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await mountComparisonPanel(page, { single: true, accl: true, viewport });

@@ -309,7 +309,9 @@ export function RatingTrackDetailPanel({
     setNowMs(currentMs);
     setCompareSession(reopened);
     setDrawerMode(
-      comparePeriodLoader && lane !== 'overall' && (compareOpen || activeCompareTickers(reopened).length > 0)
+      comparePeriodLoader && (
+        compareOpen || (lane !== 'overall' && activeCompareTickers(reopened).length > 0)
+      )
         ? 'independent'
         : 'landscape',
     );
