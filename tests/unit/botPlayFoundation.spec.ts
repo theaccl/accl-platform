@@ -9,6 +9,7 @@ import {
   defaultBotGameConfig,
 } from '@/lib/bot/botGameConfig';
 import { selectBotMoveForStyle } from '@/lib/bot/botPersonalityStyle';
+import { moverPovCentipawn, toWhitePov } from '@/lib/chess';
 
 test.describe('bot play foundation', () => {
   test('uciFromVerboseMove never appends bogus capture suffix', () => {
@@ -62,5 +63,25 @@ test.describe('bot play foundation', () => {
     ];
     const pick = selectBotMoveForStyle('balanced', candidates, 3, 0);
     expect(pick?.move).toBeTruthy();
+  });
+
+  test('Black-to-move selection stays mover-POV after White-POV normalization', () => {
+    const whitePovLines = [
+      { move: 'e7e5', score: toWhitePov({ kind: 'cp', cp: 80 }, 'b') },
+      { move: 'a7a6', score: toWhitePov({ kind: 'cp', cp: -40 }, 'b') },
+    ];
+    const rankedWhite = [...whitePovLines].sort((a, b) => {
+      const aCp = a.score.kind === 'cp' ? a.score.cp : -99999;
+      const bCp = b.score.kind === 'cp' ? b.score.cp : -99999;
+      return bCp - aCp;
+    });
+    expect(rankedWhite[0]?.move).toBe('a7a6');
+
+    const moverLines = whitePovLines.map((line) => ({
+      move: line.move,
+      scoreCp: moverPovCentipawn(line.score, 'b'),
+    }));
+    const pick = selectBotMoveForStyle('endgame', moverLines, 6, 0);
+    expect(pick?.move).toBe('e7e5');
   });
 });

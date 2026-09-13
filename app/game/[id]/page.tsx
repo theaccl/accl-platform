@@ -790,6 +790,8 @@ export default function GamePage() {
     setMoveLogs,
     replayStep,
     setReplayStep,
+    isReplayPlaying,
+    toggleReplayPlayback,
     pairedRows,
     boardPosition: replayBoardPosition,
     lastMoveSquareStyles,
@@ -4024,6 +4026,19 @@ export default function GamePage() {
             >
               Prev
             </button>
+            {game.status === 'finished' ? (
+              <button
+                type="button"
+                onClick={toggleReplayPlayback}
+                disabled={maxReplayStep === 0}
+                data-testid="game-replay-playback"
+                aria-pressed={isReplayPlaying}
+                aria-label="Play or pause replay"
+                style={{ padding: '6px 10px' }}
+              >
+                {isReplayPlaying ? 'Pause' : 'Play'}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() =>
