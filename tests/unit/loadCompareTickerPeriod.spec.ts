@@ -99,6 +99,47 @@ test('does not mislabel bounded legacy game fallback as complete ledger coverage
   expect(mock.getFromCalls()).toBe(0);
 });
 
+test('keeps an unknown empty source incomplete after an exact ledger query', async () => {
+  const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
+  const mock = mockClient([]);
+  const result = await loadCompareTickerPeriod(
+    mock.client,
+    'u1',
+    true,
+    'free_day',
+    period,
+    { dashboardSource: 'unknown', dashboardPoints: [] },
+  );
+  expect(result.status).toBe('incomplete');
+  expect(result.message).toContain('could not be verified');
+  expect(result.coverage.priorToStartResolved).toBe(false);
+  expect(mock.getFromCalls()).toBe(2);
+});
+
+test('treats an omitted dashboard source as unknown during initial loading', async () => {
+  const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
+  const mock = mockClient([]);
+  const result = await loadCompareTickerPeriod(mock.client, 'u1', true, 'free_day', period);
+  expect(result.status).toBe('incomplete');
+  expect(result.message).toContain('could not be verified');
+  expect(mock.getFromCalls()).toBe(2);
+});
+
+test('proves an unknown source complete when the exact track query finds ledger history', async () => {
+  const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
+  const mock = mockClient([row('inside', '2026-08-10T12:00:00Z', 1500, 1510)]);
+  const result = await loadCompareTickerPeriod(
+    mock.client,
+    'u1',
+    true,
+    'free_day',
+    period,
+    { dashboardSource: 'unknown', dashboardPoints: [] },
+  );
+  expect(result.status).toBe('complete');
+  expect(result.points.map((point) => point.id)).toEqual(['inside']);
+});
+
 test('loads the exact period and prior baseline with explicit complete coverage', async () => {
   const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
   const mock = mockClient(

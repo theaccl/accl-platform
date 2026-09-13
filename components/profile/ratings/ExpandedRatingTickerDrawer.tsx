@@ -7,6 +7,7 @@ import { LandscapeTickerFamilyPager } from '@/components/profile/ratings/Landsca
 import { LandscapeRatingTickerChart } from '@/components/profile/ratings/LandscapeRatingTickerChart';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { RATING_LANE_EMPTY } from '@/components/profile/ratings/ratingTickerEmptyStates';
+import { canLinkCompareEvent } from '@/lib/profile/compareMode';
 import {
   attachLandscapeTickerDialogChrome,
   syncNativeInert,
@@ -481,7 +482,7 @@ function LandscapeTickerOverlay({
                             <span className="mt-0.5 block text-[11px] text-gray-500" data-testid="landscape-ticker-event-iso">
                               {p.occurredAt}
                             </span>
-                            {canLinkFinishedGames && p.gameId ? (
+                            {canLinkFinishedGames && canLinkCompareEvent(p) ? (
                               <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                                 <Link
                                   href={finishedGameHref(p.gameId)}

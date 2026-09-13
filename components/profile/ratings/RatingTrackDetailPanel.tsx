@@ -296,6 +296,7 @@ export function RatingTrackDetailPanel({
 
       {comparePeriodLoader ? (
         <CompactCompareMode
+          loadKey={ratingTrackId}
           lane={lane}
           isSelf={isSelf}
           canLinkFinishedGames={canLinkFinishedGames}

@@ -14,6 +14,7 @@ import {
 import type { RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
 import { formatOccurredAtInZone } from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingLane } from '@/lib/ratingHistoryMetrics';
+import { canLinkCompareEvent } from '@/lib/profile/compareMode';
 import { CompactRatingTickerAxes } from '@/components/profile/ratings/CompactRatingTickerAxes';
 
 type Props = {
@@ -322,7 +323,7 @@ export function MultiLineRatingTickerChart({
             {laneWindow.timeZone} ·{' '}
             {activePoint.point.result}
           </p>
-          {canLinkFinishedGames && activePoint.point.gameId ? (
+          {canLinkFinishedGames && canLinkCompareEvent(activePoint.point) ? (
             <p className="mt-2 mb-0 flex flex-wrap gap-x-3 gap-y-1">
               <Link
                 href={finishedGameHref(activePoint.point.gameId)}

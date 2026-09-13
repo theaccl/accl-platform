@@ -7,6 +7,7 @@ import {
   type RatingHistoryLedgerRow,
 } from '@/lib/ratingHistoryLedgerBuild';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
+import type { ProfileRatingHistorySource } from '@/lib/loadProfileRatingDashboard';
 
 const LEDGER_COLUMNS =
   'id,player_id,rating_track_id,ecosystem,rating_scope,mode,time_control,badge_track_key,event_type,game_id,tournament_id,bracket_id,opponent_id,opponent_username,result,rating_before,rating_after,rating_delta,occurred_at,badge_state_before,badge_state_after,badge_event,streak_before,streak_after,is_backfilled,metadata';
@@ -20,7 +21,7 @@ export type CompareTickerPeriodLoad = {
 };
 
 export type CompareTickerPeriodLoadContext = {
-  dashboardSource?: 'ledger' | 'games' | 'none';
+  dashboardSource?: ProfileRatingHistorySource;
   dashboardPoints?: RatingHistoryPoint[];
 };
 
@@ -107,7 +108,9 @@ export async function loadCompareTickerPeriod(
     };
   }
 
-  if (context.dashboardSource === 'games') {
+  const dashboardSource = context.dashboardSource ?? 'unknown';
+
+  if (dashboardSource === 'games') {
     return {
       status: 'incomplete',
       points: context.dashboardPoints ?? [],
@@ -128,9 +131,10 @@ export async function loadCompareTickerPeriod(
       from + PAGE_SIZE - 1,
     );
     if (result.error) {
+      const ledgerPoints = buildRatingHistoryPointsFromLedger(rows, playerId, ratingTrackId);
       return {
         status: 'incomplete',
-        points: buildRatingHistoryPointsFromLedger(rows, playerId, ratingTrackId),
+        points: ledgerPoints.length > 0 ? ledgerPoints : context.dashboardPoints ?? [],
         coverage: emptyCoverage(period),
         message: 'This historical period could not be fully verified.',
       };
@@ -152,6 +156,14 @@ export async function loadCompareTickerPeriod(
   }
 
   const allRows = [...((prior.data ?? []) as RatingHistoryLedgerRow[]), ...rows];
+  if (dashboardSource === 'unknown' && allRows.length === 0) {
+    return {
+      status: 'incomplete',
+      points: context.dashboardPoints ?? [],
+      coverage: emptyCoverage(period),
+      message: 'This track\'s complete history source could not be verified.',
+    };
+  }
   return {
     status: 'complete',
     points: buildRatingHistoryPointsFromLedger(allRows, playerId, ratingTrackId),

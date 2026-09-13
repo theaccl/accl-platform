@@ -454,18 +454,36 @@ test.describe('R042 compare mode — progression / dates / transparency never re
 
 test.describe('R042 compare mode — game-link truthfulness', () => {
   test('a real game id yields Open game and Trainer review targets', () => {
-    const links = compareEventLinks({ gameId: 'g-123' });
+    const links = compareEventLinks({ eventType: 'game', gameId: 'g-123' });
     expect(links.openGameHref).toBe('/finished/g-123');
     expect(links.trainerReviewHref).toBe('/finished/g-123/train');
-    expect(canLinkCompareEvent({ gameId: 'g-123' })).toBe(true);
+    expect(canLinkCompareEvent({ eventType: 'game', gameId: 'g-123' })).toBe(true);
+  });
+
+  test('a game-backed backfill uses the retained finished-game destinations', () => {
+    const event = { eventType: 'backfill' as const, gameId: 'g-backfilled' };
+    expect(compareEventLinks(event)).toEqual({
+      openGameHref: '/finished/g-backfilled',
+      trainerReviewHref: '/finished/g-backfilled/train',
+    });
+    expect(canLinkCompareEvent(event)).toBe(true);
   });
 
   test('missing/blank game ids never produce fabricated links', () => {
     for (const gameId of [null, undefined, '', '   ']) {
-      const links = compareEventLinks({ gameId: gameId as string | null | undefined });
+      const event = { eventType: 'game' as const, gameId: gameId as string | null | undefined };
+      const links = compareEventLinks(event);
       expect(links.openGameHref).toBeNull();
       expect(links.trainerReviewHref).toBeNull();
-      expect(canLinkCompareEvent({ gameId: gameId as string | null | undefined })).toBe(false);
+      expect(canLinkCompareEvent(event)).toBe(false);
+    }
+  });
+
+  test('a stray game id on a non-game event never creates finished-game links', () => {
+    for (const eventType of ['tournament_batch', 'bracket_settlement', 'manual_admin_adjustment'] as const) {
+      const event = { eventType, gameId: 'stray-game-id' };
+      expect(compareEventLinks(event)).toEqual({ openGameHref: null, trainerReviewHref: null });
+      expect(canLinkCompareEvent(event)).toBe(false);
     }
   });
 });
@@ -560,15 +578,21 @@ test.describe('R042 correction 2 — no rank gaps', () => {
 });
 
 test.describe('R042 correction 3 — rating events vs real games', () => {
-  test('isRealGameEvent / countRealGames exclude non-game ledger events', () => {
+  test('isRealGameEvent / countRealGames include game-backed backfills only', () => {
     const pts = [
       point({ id: 'g1', occurredAt: '2026-08-05T10:00:00Z', eventType: 'game', gameId: 'g1' }),
+      point({ id: 'bf1', occurredAt: '2026-08-05T11:00:00Z', eventType: 'backfill', gameId: 'g-backfilled' }),
+      point({ id: 'bf2', occurredAt: '2026-08-05T12:00:00Z', eventType: 'backfill', gameId: null }),
       point({ id: 'b1', occurredAt: '2026-08-06T10:00:00Z', eventType: 'tournament_batch', gameId: null }),
-      point({ id: 's1', occurredAt: '2026-08-07T10:00:00Z', eventType: 'bracket_settlement', gameId: null }),
+      point({ id: 's1', occurredAt: '2026-08-07T10:00:00Z', eventType: 'bracket_settlement', gameId: 'not-a-game' }),
+      point({ id: 'a1', occurredAt: '2026-08-08T10:00:00Z', eventType: 'manual_admin_adjustment', gameId: 'not-a-game' }),
     ];
     expect(isRealGameEvent(pts[0])).toBe(true);
-    expect(isRealGameEvent(pts[1])).toBe(false);
-    expect(countRealGames(pts)).toBe(1);
+    expect(isRealGameEvent(pts[1])).toBe(true);
+    expect(isRealGameEvent(pts[2])).toBe(false);
+    expect(isRealGameEvent(pts[4])).toBe(false);
+    expect(isRealGameEvent(pts[5])).toBe(false);
+    expect(countRealGames(pts)).toBe(2);
   });
 
   test('occupancy preserves non-game movement but counts only real games', () => {

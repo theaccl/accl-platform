@@ -166,6 +166,35 @@ test('comparison adjustments retain ratings and UTC time without claiming a draw
   await expect(page.getByTestId('compare-panel-main')).not.toContainText('Rating adjustment');
 });
 
+test('CTs withhold stale results while a new period or track is loading', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    switchableTrack: true,
+    compareLoadDelayMs: 1_000,
+    viewport: { width: 1000, height: 760 },
+  });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  const ct = page.getByTestId('compare-panel-ct1');
+
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+
+  await ct.getByRole('button', { name: 'Previous period', exact: true }).click();
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+
+  await page.getByTestId('switch-rating-track').click();
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+});
+
 test('Previous panel moves immediately after removing the last visible comparison', async ({ page }) => {
   await mountComparisonPanel(page, { single: true, viewport: { width: 390, height: 844 } });
   await page.getByTestId('compare-mode-toggle').click();

@@ -34,12 +34,21 @@ export type ComparePeriodLoader = (
 ) => Promise<CompareTickerPeriodLoad>;
 
 type Props = {
+  loadKey: string;
   lane: RatingLane;
   isSelf: boolean;
   canLinkFinishedGames: boolean;
   gamePickerPoints: RatingHistoryPoint[];
   children: ReactNode;
   loadPeriod: ComparePeriodLoader;
+};
+
+type ComparePeriodLoadEntry = {
+  loadKey: string;
+  lane: ComparePeriod['lane'];
+  startMs: number;
+  endMs: number;
+  load: CompareTickerPeriodLoad;
 };
 
 function asLaneWindow(period: ComparePeriod): RatingLaneWindow {
@@ -84,6 +93,7 @@ function compareResultLabel(point: RatingHistoryPoint): string {
 }
 
 export function CompactCompareMode({
+  loadKey,
   lane,
   isSelf,
   canLinkFinishedGames,
@@ -96,7 +106,9 @@ export function CompactCompareMode({
   const [session, setSession] = useState<CompareSessionState>(() =>
     createCompareSession(lane, Date.now()),
   );
-  const [loads, setLoads] = useState<Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>>>({});
+  const [loadEntries, setLoadEntries] = useState<
+    Partial<Record<CompareTickerSlot, ComparePeriodLoadEntry>>
+  >({});
   const [activePanel, setActivePanel] = useState(0);
   const mainPanelRef = useRef<HTMLElement | null>(null);
   const panelRefs = useRef<Partial<Record<CompareTickerSlot, HTMLElement | null>>>({});
@@ -116,9 +128,11 @@ export function CompactCompareMode({
     let cancelled = false;
     if (!open || lane === 'overall') return () => { cancelled = true; };
     const activeSlots = activeCompareTickers(session).map((ct) => ct.slot);
-    setLoads((previous) =>
+    setLoadEntries((previous) =>
       Object.fromEntries(
-        Object.entries(previous).filter(([slot]) => !activeSlots.includes(slot as CompareTickerSlot)),
+        Object.entries(previous).filter(([slot, entry]) =>
+          activeSlots.includes(slot as CompareTickerSlot) && entry.loadKey === loadKey,
+        ),
       ),
     );
     for (const ct of activeCompareTickers(session)) {
@@ -127,28 +141,45 @@ export function CompactCompareMode({
       const runner = loadPeriod(period, ct.slot);
       void runner
         .then((result) => {
-          if (!cancelled) setLoads((previous) => ({ ...previous, [ct.slot]: result }));
+          if (!cancelled) {
+            setLoadEntries((previous) => ({
+              ...previous,
+              [ct.slot]: {
+                loadKey,
+                lane: period.lane,
+                startMs: period.startMs,
+                endMs: period.endMs,
+                load: result,
+              },
+            }));
+          }
         })
         .catch(() => {
           if (!cancelled) {
-            setLoads((previous) => ({
+            setLoadEntries((previous) => ({
               ...previous,
               [ct.slot]: {
-                status: 'incomplete',
-                points: [],
-                coverage: {
-                  startMs: period.startMs,
-                  endMs: period.startMs,
-                  priorToStartResolved: false,
+                loadKey,
+                lane: period.lane,
+                startMs: period.startMs,
+                endMs: period.endMs,
+                load: {
+                  status: 'incomplete',
+                  points: [],
+                  coverage: {
+                    startMs: period.startMs,
+                    endMs: period.startMs,
+                    priorToStartResolved: false,
+                  },
+                  message: 'This historical period could not be fully verified.',
                 },
-                message: 'This historical period could not be fully verified.',
               },
             }));
           }
         });
     }
     return () => { cancelled = true; };
-  }, [lane, loadPeriod, open, session]);
+  }, [lane, loadKey, loadPeriod, open, session]);
 
   if (!isSelf) return <>{children}</>;
 
@@ -257,7 +288,14 @@ export function CompactCompareMode({
           <>
             {orderedCts.map((ct) => {
               const period = ctPeriod(session, ct.slot, RATING_TICKER_DISPLAY_TIME_ZONE)!;
-              const loaded = loads[ct.slot];
+              const entry = loadEntries[ct.slot];
+              const loaded =
+                entry?.loadKey === loadKey &&
+                entry.lane === period.lane &&
+                entry.startMs === period.startMs &&
+                entry.endMs === period.endMs
+                  ? entry.load
+                  : undefined;
               const occupancy = loaded
                 ? periodOccupancy(loaded.points, period, loaded.coverage)
                 : null;

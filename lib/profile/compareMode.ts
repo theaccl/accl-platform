@@ -315,9 +315,13 @@ export function pointsInPeriod(
   });
 }
 
-/** A history point is a real game only when its event type is 'game'. */
-export function isRealGameEvent(point: Pick<RatingHistoryPoint, 'eventType'>): boolean {
-  return point.eventType === 'game';
+/** A real game is either a live game event or a game-backed backfill row. */
+export function isRealGameEvent(
+  point: Pick<RatingHistoryPoint, 'eventType' | 'gameId'>,
+): boolean {
+  if (point.eventType === 'game') return true;
+  const gameId = typeof point.gameId === 'string' ? point.gameId.trim() : '';
+  return point.eventType === 'backfill' && gameId.length > 0;
 }
 
 /** Count actual games (excludes tournament_batch / bracket_settlement / etc.). */
@@ -388,12 +392,16 @@ export type CompareEventLinks = {
 
 /**
  * Link targets for a history event. Open game / Trainer review exist only when
- * the event carries a real game id (invariant 10; "missing game IDs never
- * produce fabricated links"). A null/blank id yields null hrefs.
+ * the event is a real game and carries a game id (invariant 10). A non-game
+ * event or null/blank id yields null hrefs.
  */
-export function compareEventLinks(point: Pick<RatingHistoryPoint, 'gameId'>): CompareEventLinks {
+export function compareEventLinks(
+  point: Pick<RatingHistoryPoint, 'eventType' | 'gameId'>,
+): CompareEventLinks {
   const id = typeof point.gameId === 'string' ? point.gameId.trim() : '';
-  if (!id) return { openGameHref: null, trainerReviewHref: null };
+  if (!isRealGameEvent(point) || !id) {
+    return { openGameHref: null, trainerReviewHref: null };
+  }
   return {
     openGameHref: finishedGameHref(id),
     trainerReviewHref: finishedGameTrainHref(id),
@@ -401,7 +409,9 @@ export function compareEventLinks(point: Pick<RatingHistoryPoint, 'gameId'>): Co
 }
 
 /** Whether an event may expose finished-game links at all. */
-export function canLinkCompareEvent(point: Pick<RatingHistoryPoint, 'gameId'>): boolean {
+export function canLinkCompareEvent<T extends Pick<RatingHistoryPoint, 'eventType' | 'gameId'>>(
+  point: T,
+): point is T & { gameId: string } {
   const links = compareEventLinks(point);
   return links.openGameHref != null;
 }
