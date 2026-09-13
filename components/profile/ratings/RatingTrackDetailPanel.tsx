@@ -26,6 +26,10 @@ import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import { MultiLineRatingTickerChart } from '@/components/profile/ratings/MultiLineRatingTickerChart';
 import {
+  CompactCompareMode,
+  type ComparePeriodLoader,
+} from '@/components/profile/ratings/CompactCompareMode';
+import {
   exactTrackHistoryEmptyLabel,
   RATING_EXACT_SELF_ONLY,
   RATING_LANE_EMPTY,
@@ -40,6 +44,7 @@ type Props = {
   isSelf: boolean;
   canLinkFinishedGames: boolean;
   historyByTrack?: Record<string, RatingHistoryPoint[]>;
+  comparePeriodLoader?: ComparePeriodLoader;
 };
 
 export function RatingTrackDetailPanel({
@@ -51,6 +56,7 @@ export function RatingTrackDetailPanel({
   isSelf,
   canLinkFinishedGames,
   historyByTrack = {},
+  comparePeriodLoader,
 }: Props) {
   const def = timeControlByRatingTrackId(ratingTrackId);
   const isExact = Boolean(def?.badgeTrackKey);
@@ -141,6 +147,14 @@ export function RatingTrackDetailPanel({
       ),
     [lane, majorBaseSeries, nowMs],
   );
+  const compareGamePickerPoints = useMemo(() => {
+    const unique = new Map<string, RatingHistoryPoint>();
+    for (const point of Object.values(historyByTrack).flat()) {
+      const key = point.gameId ? `game:${point.gameId}` : `event:${point.id}`;
+      if (!unique.has(key)) unique.set(key, point);
+    }
+    return [...unique.values()];
+  }, [historyByTrack]);
   const useAcclMultiLine = isAcclTicker && acclSupplementalOrder.length > 0;
   const acclDominanceOrder = useMemo(
     () => ['accl', ...acclSupplementalOrder],
@@ -173,6 +187,78 @@ export function RatingTrackDetailPanel({
     );
   }
 
+  const mainFamilyControls = isAcclTicker ? (
+    <ul
+      className="m-0 flex list-none flex-wrap gap-2 p-0"
+      data-testid="accl-ticker-major-family-options"
+      aria-label="Add major rating families to the ACCL ticker"
+    >
+      {MAJOR_FAMILY_COMPARISON_SERIES.map((series) => {
+        const selected = acclSupplementalOrder.includes(series.trackId);
+        return (
+          <li key={series.trackId}>
+            <button
+              type="button"
+              data-testid={`accl-ticker-option-${series.trackId}`}
+              data-point-count={majorLaneCounts.get(series.trackId) ?? 0}
+              aria-pressed={selected}
+              onClick={() => toggleAcclSupplement(series.trackId)}
+              className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-opacity ${
+                selected
+                  ? 'border-[#3d5168] text-gray-200'
+                  : 'border-[#23303f] text-gray-500 opacity-60'
+              }`}
+            >
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: series.color }}
+                aria-hidden="true"
+              />
+              {series.label}
+              <span className="tabular-nums text-gray-500">
+                ({majorLaneCounts.get(series.trackId) ?? 0})
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  ) : null;
+
+  const mainTicker = (
+    <>
+      {laneEmpty && !laneDrawable ? (
+        <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
+          {RATING_LANE_EMPTY}
+        </p>
+      ) : useAcclMultiLine ? (
+        <MultiLineRatingTickerChart
+          series={acclLaneSeries}
+          visibleTrackIds={acclVisibleTrackIds}
+          dominanceOrder={acclDominanceOrder}
+          canLinkFinishedGames={canLinkFinishedGames}
+          lane={lane}
+          window={laneWindow}
+          carryInRatings={acclCarryInRatings}
+        />
+      ) : (
+        <RatingTickerChart
+          points={lanePoints}
+          currentRating={currentRating}
+          canLinkFinishedGames={canLinkFinishedGames}
+          lane={lane}
+          window={laneWindow}
+          carryInRating={carryInRating}
+        />
+      )}
+      {laneEmpty && laneDrawable ? (
+        <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
+          {RATING_LANE_EMPTY}
+        </p>
+      ) : null}
+    </>
+  );
+
   return (
     <div data-testid="rating-track-detail-panel" className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4">
       <div className="flex items-center justify-between gap-2">
@@ -192,43 +278,7 @@ export function RatingTrackDetailPanel({
         <p className="m-0 text-xs text-gray-500">{RATING_EXACT_SELF_ONLY}</p>
       ) : null}
 
-      {isAcclTicker ? (
-        <ul
-          className="m-0 flex list-none flex-wrap gap-2 p-0"
-          data-testid="accl-ticker-major-family-options"
-          aria-label="Add major rating families to the ACCL ticker"
-        >
-          {MAJOR_FAMILY_COMPARISON_SERIES.map((series) => {
-            const selected = acclSupplementalOrder.includes(series.trackId);
-            return (
-              <li key={series.trackId}>
-                <button
-                  type="button"
-                  data-testid={`accl-ticker-option-${series.trackId}`}
-                  data-point-count={majorLaneCounts.get(series.trackId) ?? 0}
-                  aria-pressed={selected}
-                  onClick={() => toggleAcclSupplement(series.trackId)}
-                  className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-opacity ${
-                    selected
-                      ? 'border-[#3d5168] text-gray-200'
-                      : 'border-[#23303f] text-gray-500 opacity-60'
-                  }`}
-                >
-                  <span
-                    className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: series.color }}
-                    aria-hidden="true"
-                  />
-                  {series.label}
-                  <span className="tabular-nums text-gray-500">
-                    ({majorLaneCounts.get(series.trackId) ?? 0})
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+      {!comparePeriodLoader ? mainFamilyControls : null}
       {exactEmptyHistory ? (
         <p className="m-0 text-xs text-gray-500" data-testid="rating-exact-track-history-empty">
           {exactTrackHistoryEmptyLabel(trackLabel)}
@@ -244,38 +294,19 @@ export function RatingTrackDetailPanel({
         />
       ) : null}
 
-      {laneEmpty && !laneDrawable ? (
-        <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
-          {RATING_LANE_EMPTY}
-        </p>
-      ) : (
-        useAcclMultiLine ? (
-          <MultiLineRatingTickerChart
-            series={acclLaneSeries}
-            visibleTrackIds={acclVisibleTrackIds}
-            dominanceOrder={acclDominanceOrder}
-            canLinkFinishedGames={canLinkFinishedGames}
-            lane={lane}
-            window={laneWindow}
-            carryInRatings={acclCarryInRatings}
-          />
-        ) : (
-          <RatingTickerChart
-            points={lanePoints}
-            currentRating={currentRating}
-            canLinkFinishedGames={canLinkFinishedGames}
-            lane={lane}
-            window={laneWindow}
-            carryInRating={carryInRating}
-          />
-        )
-      )}
-
-      {laneEmpty && laneDrawable ? (
-        <p className="m-0 text-xs text-gray-500" data-testid="rating-lane-empty">
-          {RATING_LANE_EMPTY}
-        </p>
-      ) : null}
+      {comparePeriodLoader ? (
+        <CompactCompareMode
+          loadKey={ratingTrackId}
+          lane={lane}
+          isSelf={isSelf}
+          canLinkFinishedGames={canLinkFinishedGames}
+          gamePickerPoints={compareGamePickerPoints}
+          loadPeriod={comparePeriodLoader}
+        >
+          {mainFamilyControls}
+          {mainTicker}
+        </CompactCompareMode>
+      ) : mainTicker}
 
       <BadgeBoundaryPanel badge={badge} showUnavailable={showBadgeUnavailable || (isSelf && isExact)} />
       <ExpandedRatingTickerDrawer

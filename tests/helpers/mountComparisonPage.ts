@@ -66,6 +66,10 @@ export type MountComparisonOptions = {
   crossing?: boolean;
   single?: boolean;
   accl?: boolean;
+  compareCoverage?: 'complete' | 'incomplete';
+  compareAdjustment?: boolean;
+  compareLoadDelayMs?: number;
+  switchableTrack?: boolean;
   viewport?: { width: number; height: number };
 };
 
@@ -123,6 +127,10 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
     crossing: Boolean(opts.crossing),
     single: Boolean(opts.single),
     accl: Boolean(opts.accl),
+    compareCoverage: opts.compareCoverage ?? 'complete',
+    compareAdjustment: Boolean(opts.compareAdjustment),
+    compareLoadDelayMs: opts.compareLoadDelayMs ?? 0,
+    switchableTrack: Boolean(opts.switchableTrack),
   };
   await page.addScriptTag({
     content: `window.__HARNESS_OPTIONS = ${JSON.stringify(harnessOptions)};`,

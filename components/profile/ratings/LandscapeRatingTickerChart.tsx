@@ -30,6 +30,7 @@ import {
 } from '@/lib/profile/landscapeTickerSession';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
+import { canLinkCompareEvent } from '@/lib/profile/compareMode';
 import {
   chartPointMarkerForPoint,
   chartPointMarkerStyle,
@@ -769,7 +770,7 @@ export function LandscapeRatingTickerChart({
           <p className="mt-0.5 text-[11px] text-gray-500" data-testid="landscape-ticker-point-iso">
             {active.point.occurredAt}
           </p>
-          {canLinkFinishedGames && active.point.gameId ? (
+          {canLinkFinishedGames && canLinkCompareEvent(active.point) ? (
             <p className="mt-2 mb-0 flex flex-wrap gap-x-3 gap-y-1">
               <Link
                 href={finishedGameHref(active.point.gameId)}
