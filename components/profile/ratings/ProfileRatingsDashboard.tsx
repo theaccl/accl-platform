@@ -173,7 +173,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
 
   return (
     <section
-      className="space-y-4"
+      className="min-w-0 space-y-4"
       aria-labelledby="profile-ratings-heading"
       data-testid="profile-rating-dashboard"
     >
@@ -219,6 +219,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
         badge={dashboard.badgeByTrack[selectedDetail]}
         isSelf={isSelf}
         canLinkFinishedGames={isSelf}
+        historyByTrack={dashboard.historyByTrack}
       />
 
       {isSelf ? (

@@ -6,22 +6,30 @@ import type { MajorFamilySeriesData } from '@/lib/profileRatingChartLevels';
 import { filterPointsByLane, type RatingLane } from '@/lib/ratingHistoryMetrics';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
+type ComparableRatingSeries = {
+  trackId: string;
+  label: string;
+  color: string;
+  points: RatingHistoryPoint[];
+};
+
 export { buildMajorFamilySeriesData, countMajorFamilyInputPoints } from '@/lib/profileRatingChartLevels';
 
 export function filterMajorFamilySeriesByLane(
   series: MajorFamilySeriesData[],
   lane: RatingLane,
   nowMs: number = Date.now(),
+  timeZone?: string,
 ): MajorFamilySeriesData[] {
   return series.map((s) => ({
     ...s,
-    points: filterPointsByLane(s.points, lane, nowMs),
+    points: filterPointsByLane(s.points, lane, nowMs, timeZone),
   }));
 }
 
 /** Points that share an exact authoritative timestamp (no cross-family fabrication). */
 export function pointsAtExactTimestamp(
-  series: MajorFamilySeriesData[],
+  series: ComparableRatingSeries[],
   occurredAt: string,
   visibleTrackIds: ReadonlySet<string>,
 ): { trackId: string; label: string; color: string; point: RatingHistoryPoint }[] {

@@ -16,6 +16,12 @@ export const RATING_EXACT_SELF_ONLY =
 /** Selected lane window has no authoritative points (other lanes may still have data). */
 export const RATING_LANE_EMPTY = 'No rating movement in this lane yet.';
 
+/** Overall lane has no real events; do not invent a start date or path. */
+export const RATING_TICKER_NO_HISTORY = 'No rating history.';
+
+/** Compact comparison opens with no families selected. */
+export const COMPARISON_SELECT_EMPTY = 'Select ratings to compare.';
+
 export function exactTrackNoGamesLabel(displayLabel: string): string {
   return `No rated ${displayLabel} games recorded yet.`;
 }

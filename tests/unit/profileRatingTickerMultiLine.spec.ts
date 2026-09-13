@@ -28,7 +28,8 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     expect(panel).toContain('data-visible');
     expect(panel).toContain('RatingLaneTabs');
     expect(panel).toContain("testIdPrefix=\"comparison\"");
-    expect(panel).toContain('ExpandedRatingComparisonDrawer');
+    expect(panel).toContain('ExpandedRatingTickerDrawer');
+    expect(panel).not.toContain('ExpandedRatingComparisonDrawer');
     expect(panel).toContain('data-testid={def.legendTestId}');
     expect(MAJOR_FAMILY_COMPARISON_SERIES).toHaveLength(5);
   });
@@ -50,16 +51,17 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     expect(chart).toContain('stroke={s.color}');
   });
 
-  test('mobile comparison drawer exists without replacing single-track drawer', () => {
-    const drawer = src('components/profile/ratings/ExpandedRatingComparisonDrawer.tsx');
+  test('comparison expand uses the landscape ticker without a second overlay', () => {
+    const panel = src('components/profile/ratings/RatingFamilyComparisonPanel.tsx');
     const singleDrawer = src('components/profile/ratings/ExpandedRatingTickerDrawer.tsx');
-    expect(drawer).toContain('expanded-rating-comparison-drawer');
-    expect(drawer).toContain('RatingLaneTabs');
-    expect(drawer).toContain('MultiLineRatingTickerChart');
-    expect(drawer).toContain('baseSeries');
+    expect(panel).toContain('rating-comparison-expand-mobile');
+    expect(panel).toContain('ExpandedRatingTickerDrawer');
+    expect(panel).toContain('historyByTrack={historyByTrack}');
+    expect(panel).not.toContain('ExpandedRatingComparisonDrawer');
+    expect(panel).toContain('visibleTrackIds={visibleTrackIds}');
     expect(singleDrawer).toContain('expanded-rating-ticker-drawer');
     expect(singleDrawer).toContain('RatingLaneTabs');
-    expect(singleDrawer).toContain('RatingTickerChart');
+    expect(singleDrawer).toContain('LandscapeRatingTickerChart');
     expect(singleDrawer).not.toContain('MultiLineRatingTickerChart');
   });
 
@@ -68,6 +70,7 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     const chart = src('components/profile/ratings/MultiLineRatingTickerChart.tsx');
     expect(chart).toContain('data-testid="multi-line-finished-link"');
     expect(chart).toContain('activePoint.point.gameId');
+    expect(chart).toContain('Open game');
   });
 
   test('legend toggle hides series via visibleTrackIds', () => {
@@ -76,5 +79,9 @@ test.describe('profile rating ticker multi-line (unit)', () => {
     expect(panel).toContain('visibleTrackIds');
     const chart = src('components/profile/ratings/MultiLineRatingTickerChart.tsx');
     expect(chart).toContain('visibleTrackIds.has');
+    expect(chart).toContain('dominanceOrder');
+    expect(chart).toContain('sortItemsByDominance');
+    expect(chart).not.toContain('heroGlow');
+    expect(chart).not.toContain('pendingActivations');
   });
 });

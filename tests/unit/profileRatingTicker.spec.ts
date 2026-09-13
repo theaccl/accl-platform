@@ -83,6 +83,11 @@ test.describe('profile rating ticker (unit)', () => {
   test('profile page wires dashboard test id', () => {
     const src = readFileSync(join(process.cwd(), 'components', 'profile', 'ProfileRatings.tsx'), 'utf8');
     expect(src).toContain('ProfileRatingsDashboard');
+    const dashboard = readFileSync(
+      join(process.cwd(), 'components', 'profile', 'ratings', 'ProfileRatingsDashboard.tsx'),
+      'utf8',
+    );
+    expect(dashboard).toContain('className="min-w-0 space-y-4"');
     const page = readFileSync(join(process.cwd(), 'app', 'profile', '[id]', 'page.tsx'), 'utf8');
     expect(page).toContain('profileUserId');
     expect(page).toContain('ProfileRatings');
