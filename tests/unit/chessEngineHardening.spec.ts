@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { getChessTruthForMoves, ChessTruthError } from '../../lib/analysis/intelligence';
 import { StockfishWebAdapter } from '../../lib/analysis/engine';
+import { parsePosition } from '../../lib/chess';
 
 type WorkerLike = {
   postMessage: (message: string) => void;
@@ -98,6 +99,9 @@ test.describe('Engine hardening integration', () => {
     expect(res.engine?.candidate_moves.length).toBeGreaterThan(1);
     expect(res.engine?.confidence).toBeGreaterThanOrEqual(0);
     expect(res.engine?.confidence).toBeLessThanOrEqual(1);
+    const parsed = parsePosition(START_FEN);
+    expect(parsed.engineFen.split(' ')).toHaveLength(6);
+    expect(parsed.legalUciMoves.length).toBeGreaterThan(0);
   });
 
   test('invalid FEN is blocked before engine call', async () => {

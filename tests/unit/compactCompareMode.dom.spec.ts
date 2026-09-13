@@ -169,6 +169,35 @@ test('comparison adjustments retain ratings and UTC time without claiming a draw
   await expect(page.getByTestId('compare-panel-main')).not.toContainText('Rating adjustment');
 });
 
+test('CTs withhold stale results while a new period or track is loading', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    switchableTrack: true,
+    compareLoadDelayMs: 1_000,
+    viewport: { width: 1000, height: 760 },
+  });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  const ct = page.getByTestId('compare-panel-ct1');
+
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+
+  await ct.getByRole('button', { name: 'Previous period for CT1', exact: true }).click();
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+
+  await page.getByTestId('switch-rating-track').click();
+  await expect(ct.getByText('Loading verified history…')).toBeVisible();
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(ct.getByTestId('rating-ticker-chart')).toBeVisible();
+});
+
 test('Previous panel moves immediately after removing the last visible comparison', async ({ page }) => {
   await mountComparisonPanel(page, { single: true, viewport: { width: 390, height: 844 } });
   await page.getByTestId('compare-mode-toggle').click();
@@ -184,6 +213,22 @@ test('Previous panel moves immediately after removing the last visible compariso
   await page.getByRole('button', { name: 'Previous panel', exact: true }).click();
   await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeLessThan(before - 100);
   await expect(page.getByTestId('compare-panel-ct1')).toBeInViewport({ ratio: 0.5 });
+});
+
+test('mobile period controls belong to Main and never render inside comparison panels', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, viewport: { width: 390, height: 844 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+
+  const main = page.getByTestId('compare-panel-main');
+  await expect(main.getByTestId('rating-lane-tabs')).toHaveCount(1);
+  for (const lane of ['day', 'week', 'month', 'year', 'overall']) {
+    await expect(main.getByTestId(`rating-lane-tab-${lane}`)).toHaveCount(1);
+  }
+
+  for (const slot of ['ct1', 'ct2']) {
+    await expect(page.getByTestId(`compare-panel-${slot}`).getByTestId('rating-lane-tabs')).toHaveCount(0);
+  }
 });
 
 test('Expand opens Independent with Main first and every retained CT on its own scale', async ({ page }) => {

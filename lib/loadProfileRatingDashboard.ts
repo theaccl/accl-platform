@@ -12,15 +12,30 @@ import {
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 
 export type ProfileBadgeStateByTrack = Partial<Record<string, PlayerBadgeStateRow>>;
+export type ProfileRatingHistorySource = 'ledger' | 'games' | 'none' | 'unknown';
 
 export type ProfileRatingDashboardData = {
   historyByTrack: Record<string, RatingHistoryPoint[]>;
-  historySourceByTrack: Record<string, 'ledger' | 'games' | 'none'>;
+  historySourceByTrack: Record<string, ProfileRatingHistorySource>;
   badgeByTrack: ProfileBadgeStateByTrack;
   gamesCountByTrack: Record<string, number>;
 };
 
 const HISTORY_GAME_LIMIT = 120;
+const LEDGER_HISTORY_LIMIT = 500;
+
+export function classifyProfileRatingHistorySource(input: {
+  ledgerPointCount: number;
+  gamePointCount: number;
+  ledgerSampleComplete: boolean;
+  gameSampleComplete: boolean;
+}): ProfileRatingHistorySource {
+  if (input.ledgerPointCount > 0) return 'ledger';
+  if (input.gamePointCount > 0) {
+    return input.ledgerSampleComplete ? 'games' : 'unknown';
+  }
+  return input.ledgerSampleComplete && input.gameSampleComplete ? 'none' : 'unknown';
+}
 
 /**
  * Loads self-only dashboard enrichment (badge rows + per-game rating snapshots).
@@ -60,22 +75,25 @@ export async function loadProfileRatingDashboardData(
       )
       .eq('player_id', profileUserId)
       .order('occurred_at', { ascending: true })
-      .limit(500),
+      .limit(LEDGER_HISTORY_LIMIT),
   ]);
 
   const games = (gamesRes.data ?? []) as ProfileHistoryGameRow[];
   const ledgerRows = (ledgerRes.error ? [] : (ledgerRes.data ?? [])) as RatingHistoryLedgerRow[];
+  const gameSampleComplete = !gamesRes.error && games.length < HISTORY_GAME_LIMIT;
+  const ledgerSampleComplete = !ledgerRes.error && ledgerRows.length < LEDGER_HISTORY_LIMIT;
   const historyByTrack: Record<string, RatingHistoryPoint[]> = {};
-  const historySourceByTrack: Record<string, 'ledger' | 'games' | 'none'> = {};
+  const historySourceByTrack: Record<string, ProfileRatingHistorySource> = {};
   for (const trackId of trackIds) {
     const fromLedger = buildRatingHistoryPointsFromLedger(ledgerRows, profileUserId, trackId);
     const fromGames = buildRatingHistoryPointsForTrack(games, profileUserId, trackId);
     historyByTrack[trackId] = fromLedger.length > 0 ? fromLedger : fromGames;
-    historySourceByTrack[trackId] = fromLedger.length > 0
-      ? 'ledger'
-      : fromGames.length > 0
-        ? 'games'
-        : 'none';
+    historySourceByTrack[trackId] = classifyProfileRatingHistorySource({
+      ledgerPointCount: fromLedger.length,
+      gamePointCount: fromGames.length,
+      ledgerSampleComplete,
+      gameSampleComplete,
+    });
   }
 
   const badgeByTrack: ProfileBadgeStateByTrack = {};

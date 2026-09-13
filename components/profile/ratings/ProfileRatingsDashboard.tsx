@@ -60,7 +60,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
   const comparePeriodLoader = useCallback(
     (period: Parameters<typeof loadCompareTickerPeriod>[4]) =>
       loadCompareTickerPeriod(supabase, profileUserId, isSelf, selectedDetail, period, {
-        dashboardSource: dashboard.historySourceByTrack[selectedDetail],
+        dashboardSource: dashboard.historySourceByTrack[selectedDetail] ?? 'unknown',
         dashboardPoints: dashboard.historyByTrack[selectedDetail] ?? [],
       }),
     [dashboard.historyByTrack, dashboard.historySourceByTrack, isSelf, profileUserId, selectedDetail],

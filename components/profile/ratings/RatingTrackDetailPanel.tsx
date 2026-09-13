@@ -58,6 +58,7 @@ type Props = {
 };
 
 type ComparePeriodLoadEntry = {
+  loadKey: string;
   lane: Exclude<RatingLane, 'overall'>;
   startMs: number;
   endMs: number;
@@ -197,6 +198,7 @@ export function RatingTrackDetailPanel({
       if (
         period &&
         entry &&
+        entry.loadKey === ratingTrackId &&
         entry.lane === period.lane &&
         entry.startMs === period.startMs &&
         entry.endMs === period.endMs
@@ -205,7 +207,7 @@ export function RatingTrackDetailPanel({
       }
     }
     return current;
-  }, [compareLoadEntries, compareSession]);
+  }, [compareLoadEntries, compareSession, ratingTrackId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,7 +219,9 @@ export function RatingTrackDetailPanel({
     const activeSlots = active.map((ticker) => ticker.slot);
     setCompareLoadEntries((previous) =>
       Object.fromEntries(
-        Object.entries(previous).filter(([slot]) => activeSlots.includes(slot as CompareTickerSlot)),
+        Object.entries(previous).filter(([slot, entry]) =>
+          activeSlots.includes(slot as CompareTickerSlot) && entry.loadKey === ratingTrackId,
+        ),
       ),
     );
     for (const ticker of active) {
@@ -229,6 +233,7 @@ export function RatingTrackDetailPanel({
             setCompareLoadEntries((previous) => ({
               ...previous,
               [ticker.slot]: {
+                loadKey: ratingTrackId,
                 lane: period.lane,
                 startMs: period.startMs,
                 endMs: period.endMs,
@@ -242,6 +247,7 @@ export function RatingTrackDetailPanel({
             setCompareLoadEntries((previous) => ({
               ...previous,
               [ticker.slot]: {
+                loadKey: ratingTrackId,
                 lane: period.lane,
                 startMs: period.startMs,
                 endMs: period.endMs,
@@ -261,7 +267,7 @@ export function RatingTrackDetailPanel({
         });
     }
     return () => { cancelled = true; };
-  }, [compareOpen, comparePeriodLoader, compareSession, drawerMode, drawerOpen, lane]);
+  }, [compareOpen, comparePeriodLoader, compareSession, drawerMode, drawerOpen, lane, ratingTrackId]);
   const useAcclMultiLine = isAcclTicker && acclSupplementalOrder.length > 0;
   const acclDominanceOrder = useMemo(
     () => ['accl', ...acclSupplementalOrder],
@@ -381,6 +387,14 @@ export function RatingTrackDetailPanel({
       ) : null}
     </>
   );
+  const mainLaneControls = !allEmpty ? (
+    <RatingLaneTabs
+      lane={lane}
+      onLaneChange={changeLane}
+      testIdPrefix="rating"
+      ariaLabel="Rating history window"
+    />
+  ) : null;
 
   return (
     <div data-testid="rating-track-detail-panel" className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4">
@@ -408,14 +422,7 @@ export function RatingTrackDetailPanel({
         </p>
       ) : null}
 
-      {!allEmpty ? (
-        <RatingLaneTabs
-          lane={lane}
-          onLaneChange={changeLane}
-          testIdPrefix="rating"
-          ariaLabel="Rating history window"
-        />
-      ) : null}
+      {!comparePeriodLoader ? mainLaneControls : null}
 
       {comparePeriodLoader ? (
         <CompactCompareMode
@@ -432,6 +439,7 @@ export function RatingTrackDetailPanel({
           onNowMsChange={refreshComparisonNow}
         >
           {mainFamilyControls}
+          {mainLaneControls}
           {mainTicker}
         </CompactCompareMode>
       ) : mainTicker}

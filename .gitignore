@@ -24,6 +24,8 @@
 
 # production
 /build
+/services/stockfish-engine/dist/
+/services/stockfish-engine/build-input/
 
 # misc
 .DS_Store

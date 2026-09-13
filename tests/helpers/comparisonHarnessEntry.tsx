@@ -1,10 +1,12 @@
 'use client';
 
+import { useCallback, useMemo, useState } from 'react';
 import { RatingFamilyComparisonPanel } from '@/components/profile/ratings/RatingFamilyComparisonPanel';
 import { RatingTrackDetailPanel } from '@/components/profile/ratings/RatingTrackDetailPanel';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
 import { LANDSCAPE_TICKER_CROSSING_HISTORY } from './landscapeTickerCrossingFixture';
 import type { ComparePeriod } from '@/lib/profile/compareMode';
+import type { CompareTickerPeriodLoad } from '@/lib/profile/loadCompareTickerPeriod';
 
 type HarnessOptions = {
   empty?: boolean;
@@ -14,6 +16,7 @@ type HarnessOptions = {
   compareCoverage?: 'complete' | 'incomplete';
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
+  switchableTrack?: boolean;
 };
 
 function readOptions(): HarnessOptions {
@@ -134,8 +137,8 @@ function harnessPeriodLoader(
   period: ComparePeriod,
   coverage: 'complete' | 'incomplete' = 'complete',
   delayMs = 0,
-) {
-  const result = {
+): Promise<CompareTickerPeriodLoad> {
+  const result: CompareTickerPeriodLoad = {
     status: coverage,
     points: history,
     coverage: {
@@ -146,21 +149,55 @@ function harnessPeriodLoader(
     ...(coverage === 'incomplete' ? { message: 'Fixture coverage is incomplete.' } : {}),
   };
   return delayMs > 0
-    ? new Promise<typeof result>((resolve) => window.setTimeout(() => resolve(result), delayMs))
+    ? new Promise((resolve) => window.setTimeout(() => resolve(result), delayMs))
     : Promise.resolve(result);
 }
 
 export function ComparisonHarness() {
   const initial = readOptions();
+  const [alternateTrack, setAlternateTrack] = useState(false);
   const empty = Boolean(initial.empty);
   const crossing = Boolean(initial.crossing);
   const single = Boolean(initial.single);
   const accl = Boolean(initial.accl);
-  const historyByTrack = empty
-    ? {}
-    : crossing
-      ? LANDSCAPE_TICKER_CROSSING_HISTORY
-      : buildHistory();
+  const historyByTrack = useMemo(
+    () => empty
+      ? {}
+      : crossing
+        ? LANDSCAPE_TICKER_CROSSING_HISTORY
+        : buildHistory(),
+    [crossing, empty],
+  );
+  const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : 'free_day';
+  const selectedTrackLabel = accl ? 'ACCL Rating' : alternateTrack ? 'Blitz Overall' : 'Daily Overall';
+  const comparePeriodLoader = useCallback(
+    (period: ComparePeriod) =>
+      harnessPeriodLoader(
+        initial.compareAdjustment
+          ? [point({
+              id: 'preview-adjustment',
+              ratingTrackId: selectedTrackId,
+              eventType: 'manual_admin_adjustment',
+              result: 'draw',
+              gameId: 'stray-adjustment-game-id',
+              occurredAt: '2026-08-29T20:00:00Z',
+              ratingBefore: 1510,
+              ratingAfter: 1522,
+              ratingDelta: 12,
+            })]
+          : historyByTrack[selectedTrackId] ?? [],
+        period,
+        initial.compareCoverage,
+        initial.compareLoadDelayMs,
+      ),
+    [
+      historyByTrack,
+      initial.compareAdjustment,
+      initial.compareCoverage,
+      initial.compareLoadDelayMs,
+      selectedTrackId,
+    ],
+  );
 
   return (
     <div
@@ -168,36 +205,24 @@ export function ComparisonHarness() {
       data-fixture={empty ? 'empty' : crossing ? 'crossing' : 'default'}
     >
       {single ? (
-        <RatingTrackDetailPanel
-          trackLabel={accl ? 'ACCL Rating' : 'Daily Overall'}
-          ratingTrackId={accl ? 'accl' : 'free_day'}
-          currentRating={accl ? 1505 : 1508}
-          points={historyByTrack[accl ? 'accl' : 'free_day'] ?? []}
-          badge={null}
-          isSelf
-          canLinkFinishedGames
-          historyByTrack={historyByTrack}
-          comparePeriodLoader={(period) =>
-            harnessPeriodLoader(
-              initial.compareAdjustment
-                ? [point({
-                    id: 'preview-adjustment',
-                    ratingTrackId: accl ? 'accl' : 'free_day',
-                    eventType: 'manual_admin_adjustment',
-                    result: 'draw',
-                    gameId: null,
-                    occurredAt: '2026-08-29T20:00:00Z',
-                    ratingBefore: 1510,
-                    ratingAfter: 1522,
-                    ratingDelta: 12,
-                  })]
-                : historyByTrack[accl ? 'accl' : 'free_day'] ?? [],
-              period,
-              initial.compareCoverage,
-              initial.compareLoadDelayMs,
-            )
-          }
-        />
+        <>
+          {initial.switchableTrack ? (
+            <button type="button" data-testid="switch-rating-track" onClick={() => setAlternateTrack((value) => !value)}>
+              Switch rating track
+            </button>
+          ) : null}
+          <RatingTrackDetailPanel
+            trackLabel={selectedTrackLabel}
+            ratingTrackId={selectedTrackId}
+            currentRating={accl ? 1505 : alternateTrack ? 1511 : 1508}
+            points={historyByTrack[selectedTrackId] ?? []}
+            badge={null}
+            isSelf
+            canLinkFinishedGames
+            historyByTrack={historyByTrack}
+            comparePeriodLoader={comparePeriodLoader}
+          />
+        </>
       ) : (
         <RatingFamilyComparisonPanel historyByTrack={historyByTrack} canLinkFinishedGames />
       )}

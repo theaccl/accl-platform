@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { classifyProfileRatingHistorySource } from '../../lib/loadProfileRatingDashboard';
 
 import { buildRatingHistoryPointsForTrack } from '../../lib/profileRatingHistoryBuild';
 import { buildRatingHistoryPointsFromLedger, type RatingHistoryLedgerRow } from '../../lib/ratingHistoryLedgerBuild';
@@ -15,6 +16,42 @@ function preferLedger(
 }
 
 test.describe('profile rating ledger integration', () => {
+  test('keeps bounded source detection unknown until track coverage is proved', () => {
+    expect(classifyProfileRatingHistorySource({
+      ledgerPointCount: 0,
+      gamePointCount: 1,
+      ledgerSampleComplete: false,
+      gameSampleComplete: true,
+    })).toBe('unknown');
+    expect(classifyProfileRatingHistorySource({
+      ledgerPointCount: 0,
+      gamePointCount: 0,
+      ledgerSampleComplete: true,
+      gameSampleComplete: false,
+    })).toBe('unknown');
+  });
+
+  test('labels a source only when the bounded samples prove it', () => {
+    expect(classifyProfileRatingHistorySource({
+      ledgerPointCount: 1,
+      gamePointCount: 1,
+      ledgerSampleComplete: false,
+      gameSampleComplete: false,
+    })).toBe('ledger');
+    expect(classifyProfileRatingHistorySource({
+      ledgerPointCount: 0,
+      gamePointCount: 1,
+      ledgerSampleComplete: true,
+      gameSampleComplete: false,
+    })).toBe('games');
+    expect(classifyProfileRatingHistorySource({
+      ledgerPointCount: 0,
+      gamePointCount: 0,
+      ledgerSampleComplete: true,
+      gameSampleComplete: true,
+    })).toBe('none');
+  });
+
   test('prefers ledger when available', () => {
     const points = preferLedger(
       [
