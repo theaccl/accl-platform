@@ -170,7 +170,10 @@ async function tryRecoverIdempotentHumanMove(
     fenBefore: string | null;
     fenAfter: string;
   },
-): Promise<{ ok: true; row: Record<string, unknown> } | { ok: false; conflictMessage?: string }> {
+): Promise<
+  | { ok: true; row: Record<string, unknown>; completedBotTurn: boolean }
+  | { ok: false; conflictMessage?: string }
+> {
   const lookup = await findCommittedMoveLogByKey(supabase, details.gameId, details.idempotencyKey);
   if (!lookup.found) return { ok: false };
 
@@ -191,11 +194,35 @@ async function tryRecoverIdempotentHumanMove(
   const actualFen = String(current.data.fen ?? '').trim();
   const expectedAfter = String(details.fenAfter).trim();
   if (actualFen !== expectedAfter) {
-    return { ok: false };
+    const completedJob = await supabase
+      .from('bot_move_jobs')
+      .select('status,post_human_fen')
+      .eq('game_id', details.gameId)
+      .eq('idempotency_key', details.idempotencyKey)
+      .maybeSingle();
+    const status = String(completedJob.data?.status ?? '').trim().toLowerCase();
+    const postHumanFen = String(completedJob.data?.post_human_fen ?? '').trim();
+    if (completedJob.error || status !== 'completed' || postHumanFen !== expectedAfter) {
+      return { ok: false };
+    }
+
+    auditApiLog('submit_move', {
+      result: 'idempotent_duplicate_completed_bot_turn',
+      game_id: shortId(details.gameId),
+    });
+    return {
+      ok: true,
+      row: current.data as Record<string, unknown>,
+      completedBotTurn: true,
+    };
   }
 
   auditApiLog('submit_move', { result: 'idempotent_duplicate', game_id: shortId(details.gameId) });
-  return { ok: true, row: current.data as Record<string, unknown> };
+  return {
+    ok: true,
+    row: current.data as Record<string, unknown>,
+    completedBotTurn: false,
+  };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -258,11 +285,6 @@ export async function POST(request: Request): Promise<Response> {
     auditApiLog('submit_move', { result: 'not_both_seated', game_id: shortId(gameId), user: shortId(userId) });
     return badMoveJson('Game has not started. Both seats must be filled before moves are allowed.');
   }
-  const normalizedStatus = String(gameRow.status ?? '').trim().toLowerCase();
-  if (normalizedStatus !== 'active' && normalizedStatus !== 'waiting') {
-    auditApiLog('submit_move', { result: 'invalid_status', game_id: shortId(gameId), user: shortId(userId) });
-    return badMoveJson('Game is not in a playable state.');
-  }
   const actorColor: 'white' | 'black' = gameRow.white_player_id === userId ? 'white' : 'black';
   const inputMove = (body.move ?? {}) as {
     from_sq?: unknown;
@@ -289,6 +311,7 @@ export async function POST(request: Request): Promise<Response> {
   });
 
   let humanAlreadyCommitted = false;
+  let recoveredHumanSan: string | undefined;
 
   if (fenBefore && fenBefore !== String(gameRow.fen ?? '').trim()) {
     const actualFen = String(gameRow.fen ?? '').trim() || null;
@@ -308,6 +331,7 @@ export async function POST(request: Request): Promise<Response> {
       return badMoveJson('Illegal move.');
     }
     const probeNextFen = boardProbe.fen();
+    recoveredHumanSan = probeMove.san;
     const recoveredStale = await tryRecoverIdempotentHumanMove(supabase, {
       gameId,
       idempotencyKey: humanIdempotencyKey,
@@ -327,7 +351,21 @@ export async function POST(request: Request): Promise<Response> {
       return conflictJson({ gameId, expectedFen: fenBefore || null, actualFen });
     }
     gameRow = recoveredStale.row as typeof initialGame.data;
+    if (
+      recoveredStale.completedBotTurn ||
+      String(gameRow.status ?? '').trim().toLowerCase() === 'finished'
+    ) {
+      return idempotentSuccessJson(gameRow, {
+        botMoveApplied: recoveredStale.completedBotTurn,
+      });
+    }
     humanAlreadyCommitted = true;
+  }
+
+  const normalizedStatus = String(gameRow.status ?? '').trim().toLowerCase();
+  if (normalizedStatus !== 'active' && normalizedStatus !== 'waiting') {
+    auditApiLog('submit_move', { result: 'invalid_status', game_id: shortId(gameId), user: shortId(userId) });
+    return badMoveJson('Game is not in a playable state.');
   }
 
   if (!humanAlreadyCommitted) {
@@ -394,6 +432,7 @@ export async function POST(request: Request): Promise<Response> {
       toSquare,
       moveDurationMs: Number(inputMove.move_duration_ms ?? 0),
       humanIdempotencyKey,
+      humanSan: recoveredHumanSan,
       initialGameRow: initialGame.data as Record<string, unknown>,
       gameRow: gameRow as Record<string, unknown>,
       humanAlreadyCommitted,
@@ -447,13 +486,44 @@ export async function POST(request: Request): Promise<Response> {
           game_id: shortId(gameId),
           user: shortId(userId),
         });
-        return botMoveFailedJson(code, botResult.message, botResult.humanRow, {
-          thinkMs: botResult.thinkMs ?? undefined,
-          expectedFen: botResult.expectedFen,
-          actualFen: botResult.actualFen,
-        });
+        if (botResult.humanMoveApplied && botResult.humanRow) {
+          return botMoveFailedJson(code, botResult.message, botResult.humanRow, {
+            thinkMs: botResult.thinkMs ?? undefined,
+            expectedFen: botResult.expectedFen,
+            actualFen: botResult.actualFen,
+          });
+        }
+        return json(
+          {
+            error: {
+              code,
+              message: botResult.message,
+              retryable: true,
+              think_ms: botResult.thinkMs ?? null,
+              expected_fen: botResult.expectedFen ?? null,
+              actual_fen: botResult.actualFen ?? null,
+            },
+          },
+          409,
+        );
       }
       auditApiLog('submit_move', { result: 'move_commit_failed', game_id: shortId(gameId), user: shortId(userId) });
+      if (botResult.humanMoveApplied && botResult.humanRow) {
+        return json(
+          {
+            error: {
+              code: 'move_commit_failed',
+              message: botResult.message,
+              retryable: true,
+            },
+            human_move_applied: true,
+            bot_move_applied: false,
+            think_ms: botResult.thinkMs ?? null,
+            row: botResult.humanRow,
+          },
+          409,
+        );
+      }
       return json(
         { error: 'move_commit_failed', message: botResult.message },
         409,
