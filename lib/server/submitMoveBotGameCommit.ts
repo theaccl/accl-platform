@@ -274,6 +274,10 @@ export async function commitBotGameTurn(
       blackClockMs:
         typeof postHumanRow.black_clock_ms === 'number' ? postHumanRow.black_clock_ms : null,
       lastMoveAt: postHumanRow.last_move_at == null ? null : String(postHumanRow.last_move_at),
+      // The client keeps showing the post-human position during this intentional pause.
+      // Start the human's next clock when that bot move becomes visible, while charging
+      // the bot for both calculation time and its configured simulated think time.
+      movedAt: new Date(Date.now() + thinkMs),
     });
 
     const botIdempotencyKey = buildMoveIdempotencyKey({

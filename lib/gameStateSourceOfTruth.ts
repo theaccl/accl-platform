@@ -49,7 +49,7 @@ export function buildAuthoritativeMovePatch(input: MovePatchInput): MoveWritePay
   const whiteStoredBefore = Number.isFinite(input.whiteClockMs) ? Number(input.whiteClockMs) : baseClockMs;
   const blackStoredBefore = Number.isFinite(input.blackClockMs) ? Number(input.blackClockMs) : baseClockMs;
   const elapsedSinceLastMove = input.lastMoveAt
-    ? Math.max(0, Date.now() - new Date(input.lastMoveAt).getTime())
+    ? Math.max(0, movedAt.getTime() - new Date(input.lastMoveAt).getTime())
     : 0;
   const whiteAfter =
     input.currentTurn === 'white'

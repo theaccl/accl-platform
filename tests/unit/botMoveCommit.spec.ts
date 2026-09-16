@@ -145,6 +145,7 @@ test.describe('submit-move bot hardening (static)', () => {
   test('bot commit uses composite RPC module not raw games.update', () => {
     const p = join(process.cwd(), 'app', 'api', 'game', 'submit-move', 'route.ts');
     const src = readFileSync(p, 'utf8');
+    const gamePageSrc = readFileSync(join(process.cwd(), 'app', 'game', '[id]', 'page.tsx'), 'utf8');
     const commitSrc = readFileSync(
       join(process.cwd(), 'lib', 'server', 'submitMoveBotGameCommit.ts'),
       'utf8',
@@ -158,6 +159,9 @@ test.describe('submit-move bot hardening (static)', () => {
     expect(src).toContain('bot_move_invalid_uci');
     expect(src).toContain('human_move_applied');
     expect(src).toContain('think_ms');
+    expect(gamePageSrc).toContain('buildOptimisticMoveClockRow');
+    expect(gamePageSrc).toContain('moveSubmitInFlightRef.current = true');
+    expect(commitSrc).toContain('movedAt: new Date(Date.now() + thinkMs)');
     const guardSrc = readFileSync(join(process.cwd(), 'lib', 'bot', 'botMoveCommit.ts'), 'utf8');
     expect(guardSrc).toContain('bot_turn_mismatch');
   });
