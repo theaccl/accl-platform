@@ -156,10 +156,14 @@ export async function loadCompareTickerPeriod(
   }
 
   const allRows = [...((prior.data ?? []) as RatingHistoryLedgerRow[]), ...rows];
-  if (dashboardSource === 'unknown' && allRows.length === 0) {
+  const dashboardPoints = context.dashboardPoints ?? [];
+  // ACCL has no legacy game-history fallback; its successful accl/accl_overall
+  // ledger query is therefore authoritative even when it is completely empty.
+  const emptyLedgerProvesComplete = ratingTrackId === 'accl' && dashboardPoints.length === 0;
+  if (dashboardSource === 'unknown' && allRows.length === 0 && !emptyLedgerProvesComplete) {
     return {
       status: 'incomplete',
-      points: context.dashboardPoints ?? [],
+      points: dashboardPoints,
       coverage: emptyCoverage(period),
       message: 'This track\'s complete history source could not be verified.',
     };
