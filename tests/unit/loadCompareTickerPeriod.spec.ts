@@ -99,30 +99,64 @@ test('does not mislabel bounded legacy game fallback as complete ledger coverage
   expect(mock.getFromCalls()).toBe(0);
 });
 
-test('keeps an unknown empty source incomplete after an exact ledger query', async () => {
+test('treats a successful exact empty ACCL ledger query as complete coverage', async () => {
   const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
   const mock = mockClient([]);
   const result = await loadCompareTickerPeriod(
     mock.client,
     'u1',
     true,
-    'free_day',
+    'accl',
     period,
     { dashboardSource: 'unknown', dashboardPoints: [] },
   );
+  expect(result.status).toBe('complete');
+  expect(result.message).toBeUndefined();
+  expect(result.coverage).toEqual({
+    startMs: period.startMs,
+    endMs: period.endMs,
+    priorToStartResolved: true,
+  });
+  expect(mock.getFromCalls()).toBe(2);
+});
+
+test('keeps an unknown legacy-backed empty source incomplete', async () => {
+  const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
+  const mock = mockClient([]);
+  const result = await loadCompareTickerPeriod(mock.client, 'u1', true, 'free_day', period);
   expect(result.status).toBe('incomplete');
   expect(result.message).toContain('could not be verified');
   expect(result.coverage.priorToStartResolved).toBe(false);
   expect(mock.getFromCalls()).toBe(2);
 });
 
-test('treats an omitted dashboard source as unknown during initial loading', async () => {
+test('preserves known fallback points while an unknown legacy source remains incomplete', async () => {
   const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
   const mock = mockClient([]);
-  const result = await loadCompareTickerPeriod(mock.client, 'u1', true, 'free_day', period);
+  const fallbackPoint = {
+    id: 'legacy-unknown',
+    playerId: 'u1',
+    ratingTrackId: 'free_day',
+    ecosystem: 'free' as const,
+    eventType: 'game' as const,
+    result: 'win' as const,
+    ratingBefore: 1500,
+    ratingAfter: 1508,
+    ratingDelta: 8,
+    occurredAt: '2026-08-10T12:00:00Z',
+  };
+  const result = await loadCompareTickerPeriod(
+    mock.client,
+    'u1',
+    true,
+    'free_day',
+    period,
+    { dashboardSource: 'unknown', dashboardPoints: [fallbackPoint] },
+  );
   expect(result.status).toBe('incomplete');
+  expect(result.points).toEqual([fallbackPoint]);
   expect(result.message).toContain('could not be verified');
-  expect(mock.getFromCalls()).toBe(2);
+  expect(result.coverage.priorToStartResolved).toBe(false);
 });
 
 test('proves an unknown source complete when the exact track query finds ledger history', async () => {

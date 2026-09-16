@@ -114,12 +114,29 @@ test('CTs retain independent anchors while sharing Main week, and removal frees 
   await ct2Date.fill('2026-08-18');
   await expect(ct1Date).toHaveValue('2026-08-01');
   await expect(ct2Date).toHaveValue('2026-08-18');
+  await expect(page.getByTestId('compare-date-controls-ct1')).toHaveAttribute('data-lane', 'week');
+  await expect(page.getByTestId('compare-panel-ct1')).toContainText(
+    'Main controls the Week view. Pick a date to compare its full week.',
+  );
   await expect(page.getByTestId('compare-panel-ct1').getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'week');
   await expect(page.getByTestId('compare-panel-ct2').getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'week');
 
   await page.getByRole('button', { name: 'Remove CT1' }).click();
   await expect(page.getByTestId('compare-panel-ct1')).toHaveCount(0);
   await expect(page.getByTestId('compare-panel-ct2')).toContainText('rank 2');
+});
+
+test('Main keeps comparison periods on its lane after direct date changes', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, viewport: { width: 390, height: 844 } });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+
+  const ct = page.getByTestId('compare-panel-ct1');
+  await ct.locator('input[type="date"]').fill('2026-08-01');
+  await expect(ct.getByTestId('compare-date-controls-ct1')).toHaveAttribute('data-lane', 'month');
+  await expect(ct.getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'month');
+  await expect(ct).toContainText('Aug 2026 · UTC');
+  await expect(ct).toContainText('Main controls the Month view. Pick a date to compare its full month.');
 });
 
 test('complete carry-in, true empty, and incomplete coverage stay distinguishable', async ({ page }) => {
