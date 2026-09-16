@@ -56,6 +56,8 @@ test.describe('live clock timeout sweep route (static)', () => {
     expect(src).toContain('verifyLiveTimeoutSweepSecret');
     expect(src).toContain('createServiceRoleClient');
     expect(src).toContain("rpc('expire_live_clock_timeouts'");
+    expect(src).toContain('processNextBotMoveRecoveryJob');
+    expect(src).toContain('bot_recovery');
     expect(src).toContain('export async function GET');
     expect(src).toContain('export async function POST');
     expect(src).toContain('finished');
