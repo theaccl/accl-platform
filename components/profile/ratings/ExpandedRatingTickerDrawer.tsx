@@ -67,6 +67,7 @@ type Props = {
   points: RatingHistoryPoint[];
   lane: RatingLane;
   onLaneChange: (lane: RatingLane) => void;
+  showLaneControls?: boolean;
   canLinkFinishedGames: boolean;
   /** Family histories for landscape category lines. Compact ticker is unchanged. */
   historyByTrack?: Record<string, RatingHistoryPoint[]>;
@@ -99,6 +100,7 @@ function LandscapeTickerOverlay({
   points,
   lane,
   onLaneChange,
+  showLaneControls = true,
   canLinkFinishedGames,
   historyByTrack = {},
 }: Props) {
@@ -424,14 +426,16 @@ function LandscapeTickerOverlay({
                         })}
                       </div>
 
-                      <div className={styles.laneTabs}>
-                        <RatingLaneTabs
-                          lane={lane}
-                          onLaneChange={handleLaneChange}
-                          testIdPrefix="rating"
-                          ariaLabel="Rating history window"
-                        />
-                      </div>
+                      {showLaneControls ? (
+                        <div className={styles.laneTabs}>
+                          <RatingLaneTabs
+                            lane={lane}
+                            onLaneChange={handleLaneChange}
+                            testIdPrefix="rating"
+                            ariaLabel="Rating history window"
+                          />
+                        </div>
+                      ) : null}
 
                       <p
                         hidden={landscapeFit}

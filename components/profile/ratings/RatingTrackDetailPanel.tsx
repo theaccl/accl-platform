@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PlayerBadgeStateRow } from '@/lib/badgeSettlement';
 import { timeControlByRatingTrackId } from '@/lib/acclTimeControls';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
@@ -21,6 +21,7 @@ import {
 import { applyActivationToggle } from '@/lib/profile/ratingLineDominanceOrder';
 import { BadgeBoundaryPanel } from '@/components/profile/ratings/BadgeBoundaryPanel';
 import { ExpandedRatingTickerDrawer } from '@/components/profile/ratings/ExpandedRatingTickerDrawer';
+import { ExpandedIndependentCompareDrawer } from '@/components/profile/ratings/ExpandedIndependentCompareDrawer';
 import styles from '@/components/profile/ratings/landscapeRatingTicker.module.css';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
@@ -29,6 +30,15 @@ import {
   CompactCompareMode,
   type ComparePeriodLoader,
 } from '@/components/profile/ratings/CompactCompareMode';
+import {
+  activeCompareTickers,
+  createCompareSession,
+  ctPeriod,
+  reopenCompareSessionForUtcDay,
+  setMainLane,
+  type CompareTickerSlot,
+} from '@/lib/profile/compareMode';
+import type { CompareTickerPeriodLoad } from '@/lib/profile/loadCompareTickerPeriod';
 import {
   exactTrackHistoryEmptyLabel,
   RATING_EXACT_SELF_ONLY,
@@ -45,6 +55,16 @@ type Props = {
   canLinkFinishedGames: boolean;
   historyByTrack?: Record<string, RatingHistoryPoint[]>;
   comparePeriodLoader?: ComparePeriodLoader;
+  lane: RatingLane;
+  onLaneChange: (lane: RatingLane) => void;
+};
+
+type ComparePeriodLoadEntry = {
+  loadKey: string;
+  lane: Exclude<RatingLane, 'overall'>;
+  startMs: number;
+  endMs: number;
+  load: CompareTickerPeriodLoad;
 };
 
 export function RatingTrackDetailPanel({
@@ -57,15 +77,33 @@ export function RatingTrackDetailPanel({
   canLinkFinishedGames,
   historyByTrack = {},
   comparePeriodLoader,
+  lane,
+  onLaneChange,
 }: Props) {
   const def = timeControlByRatingTrackId(ratingTrackId);
   const isExact = Boolean(def?.badgeTrackKey);
   const showBadgeUnavailable = isExact && !isSelf;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
+  const [drawerMode, setDrawerMode] = useState<'landscape' | 'independent'>('landscape');
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareNowMs, setCompareNowMs] = useState(() => Date.now());
+  const [compareSession, setCompareSession] = useState(() =>
+    createCompareSession(DEFAULT_RATING_LANE, Date.now()),
+  );
+  const [compareLoadEntries, setCompareLoadEntries] = useState<
+    Partial<Record<CompareTickerSlot, ComparePeriodLoadEntry>>
+  >({});
   const [acclSupplementalOrder, setAcclSupplementalOrder] = useState<MajorFamilyTrackId[]>([]);
-  const [nowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const refreshComparisonNow = useCallback((currentMs: number) => {
+    setCompareNowMs(currentMs);
+    setNowMs(currentMs);
+  }, []);
+  const changeLane = useCallback((nextLane: RatingLane) => {
+    onLaneChange(nextLane);
+    setCompareSession((previous) => setMainLane(previous, nextLane));
+  }, [onLaneChange]);
   const isAcclTicker = ratingTrackId === 'accl';
 
   const majorBaseSeries = useMemo(
@@ -155,6 +193,84 @@ export function RatingTrackDetailPanel({
     }
     return [...unique.values()];
   }, [historyByTrack]);
+  const compareLoads = useMemo(() => {
+    const current: Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>> = {};
+    for (const ticker of activeCompareTickers(compareSession)) {
+      const period = ctPeriod(compareSession, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
+      const entry = compareLoadEntries[ticker.slot];
+      if (
+        period &&
+        entry &&
+        entry.loadKey === ratingTrackId &&
+        entry.lane === period.lane &&
+        entry.startMs === period.startMs &&
+        entry.endMs === period.endMs
+      ) {
+        current[ticker.slot] = entry.load;
+      }
+    }
+    return current;
+  }, [compareLoadEntries, compareSession, ratingTrackId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const surfaceActive = compareOpen || (drawerOpen && drawerMode === 'independent');
+    if (!comparePeriodLoader || !surfaceActive || lane === 'overall') {
+      return () => { cancelled = true; };
+    }
+    const active = activeCompareTickers(compareSession);
+    const activeSlots = active.map((ticker) => ticker.slot);
+    setCompareLoadEntries((previous) =>
+      Object.fromEntries(
+        Object.entries(previous).filter(([slot, entry]) =>
+          activeSlots.includes(slot as CompareTickerSlot) && entry.loadKey === ratingTrackId,
+        ),
+      ),
+    );
+    for (const ticker of active) {
+      const period = ctPeriod(compareSession, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
+      if (!period) continue;
+      void comparePeriodLoader(period, ticker.slot)
+        .then((result) => {
+          if (!cancelled) {
+            setCompareLoadEntries((previous) => ({
+              ...previous,
+              [ticker.slot]: {
+                loadKey: ratingTrackId,
+                lane: period.lane,
+                startMs: period.startMs,
+                endMs: period.endMs,
+                load: result,
+              },
+            }));
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCompareLoadEntries((previous) => ({
+              ...previous,
+              [ticker.slot]: {
+                loadKey: ratingTrackId,
+                lane: period.lane,
+                startMs: period.startMs,
+                endMs: period.endMs,
+                load: {
+                  status: 'incomplete',
+                  points: [],
+                  coverage: {
+                    startMs: period.startMs,
+                    endMs: period.startMs,
+                    priorToStartResolved: false,
+                  },
+                  message: 'This historical period could not be fully verified.',
+                },
+              },
+            }));
+          }
+        });
+    }
+    return () => { cancelled = true; };
+  }, [compareOpen, comparePeriodLoader, compareSession, drawerMode, drawerOpen, lane, ratingTrackId]);
   const useAcclMultiLine = isAcclTicker && acclSupplementalOrder.length > 0;
   const acclDominanceOrder = useMemo(
     () => ['accl', ...acclSupplementalOrder],
@@ -185,6 +301,24 @@ export function RatingTrackDetailPanel({
     setAcclSupplementalOrder((previous) =>
       applyActivationToggle(previous, trackId, !previous.includes(trackId)),
     );
+  }
+
+  function openDrawer() {
+    const currentMs = Date.now();
+    const reopened = comparePeriodLoader && !compareOpen
+      ? reopenCompareSessionForUtcDay(compareSession, currentMs)
+      : compareSession;
+    setCompareNowMs(currentMs);
+    setNowMs(currentMs);
+    setCompareSession(reopened);
+    setDrawerMode(
+      comparePeriodLoader && (
+        compareOpen || (lane !== 'overall' && activeCompareTickers(reopened).length > 0)
+      )
+        ? 'independent'
+        : 'landscape',
+    );
+    setDrawerOpen(true);
   }
 
   const mainFamilyControls = isAcclTicker ? (
@@ -258,6 +392,14 @@ export function RatingTrackDetailPanel({
       ) : null}
     </>
   );
+  const mainLaneControls = (
+    <RatingLaneTabs
+      lane={lane}
+      onLaneChange={changeLane}
+      testIdPrefix="rating"
+      ariaLabel="Rating history window"
+    />
+  );
 
   return (
     <div data-testid="rating-track-detail-panel" className="space-y-3 rounded-xl border border-[#2f3f54] bg-[#0b121c] p-4">
@@ -268,7 +410,7 @@ export function RatingTrackDetailPanel({
             type="button"
             className={`${styles.expandAlways} shrink-0 rounded-md border border-[#3d5168] px-2 py-1 text-xs text-gray-300`}
             data-testid="rating-ticker-expand-mobile"
-            onClick={() => setDrawerOpen(true)}
+            onClick={openDrawer}
           >
             Expand
           </button>
@@ -285,41 +427,58 @@ export function RatingTrackDetailPanel({
         </p>
       ) : null}
 
-      {!allEmpty ? (
-        <RatingLaneTabs
-          lane={lane}
-          onLaneChange={setLane}
-          testIdPrefix="rating"
-          ariaLabel="Rating history window"
-        />
-      ) : null}
+      {!comparePeriodLoader ? mainLaneControls : null}
 
       {comparePeriodLoader ? (
         <CompactCompareMode
-          loadKey={ratingTrackId}
           lane={lane}
           isSelf={isSelf}
           canLinkFinishedGames={canLinkFinishedGames}
           gamePickerPoints={compareGamePickerPoints}
-          loadPeriod={comparePeriodLoader}
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
+          session={compareSession}
+          onSessionChange={setCompareSession}
+          loads={compareLoads}
+          nowMs={compareNowMs}
+          onNowMsChange={refreshComparisonNow}
         >
           {mainFamilyControls}
+          {mainLaneControls}
           {mainTicker}
         </CompactCompareMode>
       ) : mainTicker}
 
       <BadgeBoundaryPanel badge={badge} showUnavailable={showBadgeUnavailable || (isSelf && isExact)} />
-      <ExpandedRatingTickerDrawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        trackLabel={trackLabel}
-        currentRating={currentRating}
-        points={points}
-        lane={lane}
-        onLaneChange={setLane}
-        canLinkFinishedGames={canLinkFinishedGames}
-        historyByTrack={historyByTrack}
-      />
+      {drawerMode === 'independent' ? (
+        <ExpandedIndependentCompareDrawer
+          open={drawerOpen}
+          onClose={closeDrawer}
+          trackLabel={trackLabel}
+          lane={lane}
+          onLaneChange={changeLane}
+          canLinkFinishedGames={canLinkFinishedGames}
+          gamePickerPoints={compareGamePickerPoints}
+          session={compareSession}
+          loads={compareLoads}
+          nowMs={compareNowMs}
+          onSessionChange={setCompareSession}
+          mainFamilyControls={mainFamilyControls}
+          mainTicker={mainTicker}
+        />
+      ) : (
+        <ExpandedRatingTickerDrawer
+          open={drawerOpen}
+          onClose={closeDrawer}
+          trackLabel={trackLabel}
+          currentRating={currentRating}
+          points={points}
+          lane={lane}
+          onLaneChange={changeLane}
+          canLinkFinishedGames={canLinkFinishedGames}
+          historyByTrack={historyByTrack}
+        />
+      )}
     </div>
   );
 }

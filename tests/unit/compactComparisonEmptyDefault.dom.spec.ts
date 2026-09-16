@@ -17,7 +17,7 @@ async function mountCompactCrossing(page: Page): Promise<void> {
     crossing: true,
     viewport: { width: 360, height: 800 },
   });
-  await page.getByTestId('comparison-lane-tab-overall').click();
+  await page.getByTestId('rating-lane-tab-overall').click();
 }
 
 async function assertFreshEmptyCompact(page: Page): Promise<void> {
@@ -104,14 +104,14 @@ test.describe('compact comparison empty default', () => {
       'true',
     );
 
-    await page.getByTestId('comparison-lane-tab-year').click();
+    await page.getByTestId('rating-lane-tab-year').click();
     await expect(panel).toHaveAttribute('data-dominance-order', 'free_blitz free_day free_rapid');
     await expect(panel).toHaveAttribute('data-dominant-category', 'free_rapid');
     await expect(page.getByTestId('major-family-legend-rapid')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('major-family-legend-blitz')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('major-family-legend-daily')).toHaveAttribute('aria-pressed', 'true');
 
-    await page.getByTestId('comparison-lane-tab-overall').click();
+    await page.getByTestId('rating-lane-tab-overall').click();
     await expect(panel).toHaveAttribute('data-dominance-order', 'free_blitz free_day free_rapid');
     await expect(panel).toHaveAttribute('data-dominant-category', 'free_rapid');
   });
@@ -166,7 +166,7 @@ test.describe('compact comparison empty default', () => {
       crossing: true,
       viewport: { width: 360, height: 800 },
     });
-    await page.getByTestId('comparison-lane-tab-overall').click();
+    await page.getByTestId('rating-lane-tab-overall').click();
     await assertFreshEmptyCompact(page);
   });
 });

@@ -220,7 +220,7 @@ test.describe('mobile real-data dominance and landscape fit', () => {
   test('Compare-major-ratings Expand uses the same overlay and dominance', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-08-30T12:00:00Z') });
     await mountComparisonPanel(page, { crossing: true, viewport: { width: 360, height: 800 } });
-    await page.getByTestId('comparison-lane-tab-overall').click();
+    await page.getByTestId('rating-lane-tab-overall').click();
     await page.getByTestId('rating-comparison-expand-mobile').click();
     await page.getByTestId('expanded-rating-ticker-drawer').waitFor();
     await expect(page.getByTestId('expanded-rating-comparison-drawer')).toHaveCount(0);
@@ -418,7 +418,7 @@ test.describe('mobile real-data dominance and landscape fit', () => {
     await page.screenshot({ path: shot('m08-fitted-landscape-667x375.png'), fullPage: true });
 
     await mountComparisonPanel(page, { crossing: true, viewport: { width: 360, height: 800 } });
-    await page.getByTestId('comparison-lane-tab-overall').click();
+    await page.getByTestId('rating-lane-tab-overall').click();
     await page.screenshot({ path: shot('m09-compare-expand-entrypoint-360x800.png'), fullPage: true });
     await page.getByTestId('rating-comparison-expand-mobile').click();
     await page.getByTestId('expanded-rating-ticker-drawer').waitFor();

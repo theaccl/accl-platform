@@ -58,11 +58,11 @@ test.describe('profile rating ticker lane tabs (unit)', () => {
     expect(drawer).toContain('lanePoints');
   });
 
-  test('comparison expand reuses landscape drawer lane controls instead of a second overlay', () => {
+  test('comparison expand reuses the landscape drawer without duplicating Main lane controls', () => {
     const panel = src('components/profile/ratings/RatingFamilyComparisonPanel.tsx');
     const drawer = src('components/profile/ratings/ExpandedRatingTickerDrawer.tsx');
     expect(panel).toContain('ExpandedRatingTickerDrawer');
-    expect(panel).toContain('onLaneChange={setLane}');
+    expect(panel).toContain('showLaneControls={false}');
     expect(panel).not.toContain('ExpandedRatingComparisonDrawer');
     expect(drawer).toContain('RatingLaneTabs');
     expect(drawer).toContain('filterPointsByLane');
@@ -70,15 +70,17 @@ test.describe('profile rating ticker lane tabs (unit)', () => {
     expect(drawer).toContain('testIdPrefix="rating"');
   });
 
-  test('inline comparison panel still uses shared lane tabs unchanged', () => {
+  test('Main owns the shared lane and inline comparison renders no duplicate lane tabs', () => {
     const panel = src('components/profile/ratings/RatingFamilyComparisonPanel.tsx');
-    expect(panel).toContain('RatingLaneTabs');
-    expect(panel).toContain('RatingLaneTabs');
-    expect(panel).toContain("testIdPrefix=\"comparison\"");
+    const dashboard = src('components/profile/ratings/ProfileRatingsDashboard.tsx');
+    expect(panel).not.toContain('RatingLaneTabs');
+    expect(panel).toContain('lane: RatingLane');
+    expect(panel).toContain("Uses Main&apos;s {lane} view.");
     expect(panel).toContain('toggleTrack');
     expect(panel).toContain('visibleTrackIds');
     expect(panel).toContain('historyByTrack={historyByTrack}');
-    expect(panel).toContain('onLaneChange={setLane}');
+    expect(dashboard).toContain('lane={ratingLane}');
+    expect(dashboard).toContain('onLaneChange={setRatingLane}');
   });
 
   test('lane filter returns only real ledger points in window', () => {
