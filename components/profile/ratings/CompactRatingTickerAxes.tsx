@@ -11,7 +11,7 @@ type Props = {
   geometry: LandscapeTickerPlotGeometry;
   lane: RatingLane;
   window: RatingLaneWindow;
-  testIdPrefix: 'compact-rating' | 'compact-comparison';
+  testIdPrefix: 'compact-rating' | 'compact-comparison' | 'expanded-merge';
 };
 
 export function CompactRatingTickerAxes({ geometry, lane, window, testIdPrefix }: Props) {

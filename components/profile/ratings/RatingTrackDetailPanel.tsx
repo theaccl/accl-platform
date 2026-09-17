@@ -465,6 +465,12 @@ export function RatingTrackDetailPanel({
           onSessionChange={setCompareSession}
           mainFamilyControls={mainFamilyControls}
           mainTicker={mainTicker}
+          mainPoints={lanePoints}
+          mainCarryInRating={carryInRating}
+          mainColor={
+            LANDSCAPE_TICKER_CATEGORIES.find((category) => category.trackId === ratingTrackId)?.color
+              ?? '#38bdf8'
+          }
         />
       ) : (
         <ExpandedRatingTickerDrawer
