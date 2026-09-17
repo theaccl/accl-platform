@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 import { hasTwoUserE2ECredentials } from '../fixtures/env';
 import { playOpeningE2E4 } from '../helpers/board';
+import { readLiveClockTexts } from '../helpers/clock';
 import { setupAcceptedLiveChallenge } from '../helpers/liveChallengePair';
 
 test.describe('first move sync (two users)', () => {
@@ -19,7 +20,36 @@ test.describe('first move sync (two users)', () => {
         timeout: 25_000,
       });
 
-      await playOpeningE2E4(pageA);
+      let releaseSubmit = () => {};
+      let markSubmitReady = () => {};
+      const submitReady = new Promise<void>((resolve) => {
+        markSubmitReady = resolve;
+      });
+      const holdSubmit = new Promise<void>((resolve) => {
+        releaseSubmit = resolve;
+      });
+      await pageA.route('**/api/game/submit-move', async (route) => {
+        const response = await route.fetch();
+        markSubmitReady();
+        await holdSubmit;
+        await route.fulfill({ response });
+      });
+
+      try {
+        await playOpeningE2E4(pageA);
+        await submitReady;
+
+        await expect(pageA.getByTestId('digital-chess-clock')).toHaveAttribute('data-clock-ticking', 'true', {
+          timeout: 1_000,
+        });
+        const pendingClock = await readLiveClockTexts(pageA);
+        await expect
+          .poll(async () => (await readLiveClockTexts(pageA)).black, { timeout: 2_500 })
+          .not.toBe(pendingClock.black);
+      } finally {
+        releaseSubmit();
+        await pageA.unroute('**/api/game/submit-move');
+      }
 
       await expect(pageA.getByTestId('digital-chess-clock')).toHaveAttribute('data-clock-ticking', 'true', {
         timeout: 15_000,

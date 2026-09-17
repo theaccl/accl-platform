@@ -4,6 +4,7 @@ import { createServiceRoleClient } from '@/lib/supabaseServiceRoleClient';
 import { buildAuthoritativeMovePatch } from '@/lib/gameStateSourceOfTruth';
 import { Chess } from 'chess.js';
 import { terminalStateFromBoard, type BotMoveFailureCode } from '@/lib/bot/botMoveCommit';
+import { botRevealDelayForResponse } from '@/lib/bot/botClockTransition';
 import {
   committedLogMatchesPayload,
   findCommittedMoveLogByKey,
@@ -53,7 +54,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 function badMoveJson(message: string, status = 409): Response {
-  return json({ error: 'invalid_move', message }, status);
+  return json({ error: 'invalid_move', message, human_move_applied: false }, status);
 }
 
 function conflictJson(details: {
@@ -71,6 +72,7 @@ function conflictJson(details: {
         expected_fen: details.expectedFen,
         actual_fen: details.actualFen,
       },
+      human_move_applied: false,
     },
     409
   );
@@ -85,12 +87,16 @@ function idempotencyConflictJson(message: string): Response {
         message,
         retryable: false,
       },
+      human_move_applied: false,
     },
     409,
   );
 }
 
-function idempotentSuccessJson(row: unknown, extras?: { botMoveApplied?: boolean; thinkMs?: number | null }) {
+function idempotentSuccessJson(
+  row: unknown,
+  extras?: { botMoveApplied?: boolean; thinkMs?: number | null; botRevealDelayMs?: number },
+) {
   return json(
     {
       ok: true,
@@ -98,6 +104,7 @@ function idempotentSuccessJson(row: unknown, extras?: { botMoveApplied?: boolean
       row,
       bot_move_applied: extras?.botMoveApplied ?? false,
       think_ms: extras?.thinkMs ?? null,
+      bot_reveal_delay_ms: extras?.botRevealDelayMs ?? 0,
     },
     200,
   );
@@ -112,6 +119,7 @@ function moveLogInvalidPayloadJson(message: string): Response {
         message,
         retryable: false,
       },
+      human_move_applied: false,
     },
     400,
   );
@@ -120,7 +128,6 @@ function moveLogInvalidPayloadJson(message: string): Response {
 function botMoveFailedJson(
   code: BotMoveFailureCode,
   message: string,
-  humanRow: unknown,
   extra?: { thinkMs?: number; expectedFen?: string | null; actualFen?: string | null },
 ): Response {
   return json(
@@ -131,10 +138,12 @@ function botMoveFailedJson(
         retryable: true,
         ...extra,
       },
-      human_move_applied: true,
+      // Bot preparation happens before apply_bot_game_turn_system. No move is
+      // committed when one of these errors is returned, so the client must
+      // roll its optimistic human move back.
+      human_move_applied: false,
       bot_move_applied: false,
       think_ms: extra?.thinkMs ?? null,
-      row: humanRow,
     },
     409,
   );
@@ -447,7 +456,7 @@ export async function POST(request: Request): Promise<Response> {
           game_id: shortId(gameId),
           user: shortId(userId),
         });
-        return botMoveFailedJson(code, botResult.message, botResult.humanRow, {
+        return botMoveFailedJson(code, botResult.message, {
           thinkMs: botResult.thinkMs ?? undefined,
           expectedFen: botResult.expectedFen,
           actualFen: botResult.actualFen,
@@ -471,10 +480,17 @@ export async function POST(request: Request): Promise<Response> {
       bot_move_applied: botResult.botMoveApplied,
       bot_composite_rpc: true,
     });
+    const botRevealDelayMs = botResult.botMoveApplied
+      ? botRevealDelayForResponse(
+          botResult.finalRow.last_move_at == null ? null : String(botResult.finalRow.last_move_at),
+          botResult.thinkMs,
+        )
+      : 0;
     if (botResult.humanWasIdempotentDuplicate && !botResult.botMoveApplied) {
       return idempotentSuccessJson(botResult.finalRow, {
         botMoveApplied: botResult.botMoveApplied,
         thinkMs: botResult.thinkMs,
+        botRevealDelayMs,
       });
     }
     return json(
@@ -484,6 +500,7 @@ export async function POST(request: Request): Promise<Response> {
         row: botResult.finalRow,
         bot_move_applied: botResult.botMoveApplied,
         think_ms: botResult.thinkMs,
+        bot_reveal_delay_ms: botRevealDelayMs,
       },
       200,
     );
