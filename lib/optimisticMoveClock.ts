@@ -37,14 +37,3 @@ export function buildOptimisticMoveClockRow<T extends OptimisticMoveClockRow>(
 
   return { ...game, ...patch };
 }
-
-/** Wait only until the server's scheduled bot-move reveal time. */
-export function remainingBotMoveRevealDelayMs(
-  lastMoveAt: string | null | undefined,
-  fallbackThinkMs: number | null | undefined,
-  nowMs: number = Date.now(),
-): number {
-  const revealAtMs = lastMoveAt ? new Date(lastMoveAt).getTime() : Number.NaN;
-  if (Number.isFinite(revealAtMs)) return Math.max(0, revealAtMs - nowMs);
-  return Number.isFinite(fallbackThinkMs) ? Math.max(0, Number(fallbackThinkMs)) : 0;
-}

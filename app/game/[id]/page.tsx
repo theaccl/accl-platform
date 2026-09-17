@@ -60,10 +60,8 @@ import {
 } from '@/lib/badgeSettlementRead';
 import RatingBadgeTicker from '@/components/game/RatingBadgeTicker';
 import { START_FEN } from '@/lib/startFen';
-import {
-  buildOptimisticMoveClockRow,
-  remainingBotMoveRevealDelayMs,
-} from '@/lib/optimisticMoveClock';
+import { buildOptimisticMoveClockRow } from '@/lib/optimisticMoveClock';
+import { botRevealDelayForClient } from '@/lib/bot/botClockTransition';
 import { createSeatedGameGuard } from '@/lib/createSeatedFreePlayGame';
 import { formatCreateSeatedGameGuardError } from '@/lib/formatCreateSeatedGameGuardError';
 import { supabase } from '@/lib/supabaseClient';
@@ -384,6 +382,7 @@ function DigitalChessClock({
     <div
       data-testid="digital-chess-clock"
       data-clock-ticking={activeTurn != null ? 'true' : 'false'}
+      data-active-turn={activeTurn ?? 'none'}
       className={['accl-game-clock', className].filter(Boolean).join(' ')}
       style={{
         display: 'flex',
@@ -817,6 +816,7 @@ export default function GamePage() {
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
   const liveTimeoutInFlightRef = useRef(false);
   const moveSubmitInFlightRef = useRef(false);
+  const deferredGameSnapshotRef = useRef<GameRow | null>(null);
   const timeoutCheckRef = useRef<string | null>(null);
   const lastMoveCountRef = useRef<number | null>(null);
   const [finishedGameArtifacts, setFinishedGameArtifacts] = useState<FinishedGameAnalysisArtifactRow[] | null>(
@@ -1456,6 +1456,7 @@ export default function GamePage() {
         };
       }
       if (error) {
+        if (moveSubmitInFlightRef.current) return;
         setMessage(error.message);
         setGame(null);
         if (moveLogsRequestIsCurrent()) setMoveLogs([]);
@@ -1467,7 +1468,11 @@ export default function GamePage() {
         return;
       }
       const gameRow = data as GameRow;
-      setGame(gameRow);
+      if (moveSubmitInFlightRef.current) {
+        deferredGameSnapshotRef.current = gameRow;
+      } else {
+        setGame(gameRow);
+      }
       setGameAccess('ok');
       if (moveLogsResult?.error) {
         if (moveLogsRequestIsCurrent()) {
@@ -1997,6 +2002,45 @@ export default function GamePage() {
       return;
     }
     let moveSubmitRes: Response;
+    const reconcileUnknownMoveOutcome = async (reason: string) => {
+      let reconciled: GameRow | null = null;
+      // A disconnected request can continue running on the server. Do not
+      // treat the unchanged pre-move row as proof that the move was rejected.
+      // Master bot calculation can take ~12s, so allow an 18s bounded window.
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        const reconcileResult = await supabase.from('games').select('*').eq('id', game!.id).single();
+        if (!reconcileResult.error && reconcileResult.data) {
+          const candidate = reconcileResult.data as GameRow;
+          if (String(candidate.fen ?? '').trim() !== String(fenBefore ?? '').trim()) {
+            reconciled = candidate;
+            break;
+          }
+        }
+        if (attempt < 23) {
+          await new Promise((resolve) => window.setTimeout(resolve, 750));
+        }
+      }
+
+      moveSubmitInFlightRef.current = false;
+      setPendingMoveClockGame(null);
+      deferredGameSnapshotRef.current = null;
+      setSelectedSquare(null);
+      setReplayStep(null);
+
+      if (reconciled) {
+        setGame(reconciled);
+        setClockNowMs(Date.now());
+        setSavingMove(false);
+        setMessage(`${reason} The board was restored from the server.`);
+        void loadMoveLogs('post_move');
+        return;
+      }
+
+      // The outcome is still unknown. Keep move input locked until a fresh
+      // snapshot succeeds instead of undoing into a possibly stale position.
+      setSavingMove(true);
+      setMessage(`${reason} Reload this page to confirm the current position before moving again.`);
+    };
     try {
       moveSubmitRes = await fetch('/api/game/submit-move', {
         method: 'POST',
@@ -2028,13 +2072,7 @@ export default function GamePage() {
         }),
       });
     } catch {
-      chessRef.current?.undo();
-      setLiveChessVersion((v) => v + 1);
-      moveSubmitInFlightRef.current = false;
-      setPendingMoveClockGame(null);
-      setSavingMove(false);
-      setSelectedSquare(null);
-      setMessage('Move submit failed. Check your connection and try again.');
+      await reconcileUnknownMoveOutcome('The move response was interrupted.');
       return;
     }
     const moveSubmitPayload = (await moveSubmitRes.json().catch(() => ({}))) as {
@@ -2046,6 +2084,7 @@ export default function GamePage() {
       move_log_failed?: boolean;
       idempotent_duplicate?: boolean;
       think_ms?: number | null;
+      bot_reveal_delay_ms?: number | null;
     };
     const submitErrorMessage =
       typeof moveSubmitPayload.error === 'object' && moveSubmitPayload.error?.message
@@ -2064,6 +2103,7 @@ export default function GamePage() {
         setGame(moveSubmitPayload.row);
         moveSubmitInFlightRef.current = false;
         setPendingMoveClockGame(null);
+        deferredGameSnapshotRef.current = null;
         setClockNowMs(Date.now());
         setReplayStep(null);
         setSavingMove(false);
@@ -2075,29 +2115,31 @@ export default function GamePage() {
         }, 600);
         return;
       }
+      if (moveSubmitPayload.human_move_applied !== false) {
+        await reconcileUnknownMoveOutcome(submitErrorMessage);
+        return;
+      }
       chessRef.current?.undo();
       setLiveChessVersion((v) => v + 1);
       moveSubmitInFlightRef.current = false;
       setPendingMoveClockGame(null);
+      deferredGameSnapshotRef.current = null;
       setSavingMove(false);
       setSelectedSquare(null);
       setMessage(submitErrorMessage);
       return;
     }
     if (!moveSubmitPayload.row) {
-      chessRef.current?.undo();
-      setLiveChessVersion((v) => v + 1);
-      moveSubmitInFlightRef.current = false;
-      setPendingMoveClockGame(null);
-      setSavingMove(false);
-      setSelectedSquare(null);
-      setMessage(submitErrorMessage);
+      await reconcileUnknownMoveOutcome(submitErrorMessage);
       return;
     }
     const finalRow = moveSubmitPayload.row;
     const thinkDelayMs =
       moveSubmitPayload.bot_move_applied
-        ? remainingBotMoveRevealDelayMs(finalRow.last_move_at, moveSubmitPayload.think_ms)
+        ? botRevealDelayForClient(
+            moveSubmitPayload.bot_reveal_delay_ms,
+            moveSubmitPayload.think_ms,
+          )
         : 0;
     if (thinkDelayMs > 0) {
       await new Promise((resolve) => window.setTimeout(resolve, thinkDelayMs));
@@ -2105,6 +2147,7 @@ export default function GamePage() {
     setGame(finalRow);
     moveSubmitInFlightRef.current = false;
     setPendingMoveClockGame(null);
+    deferredGameSnapshotRef.current = null;
     setClockNowMs(Date.now());
 
     setReplayStep(null);
@@ -2750,6 +2793,12 @@ export default function GamePage() {
       ? Math.max(0, blackStoredNow - elapsedSinceLastMoveMs)
       : blackStoredNow;
   const clockTurn = displayClockTurn(clockGame.turn);
+  const displayIsMyTurn = myColor != null && clockTurn === myColor;
+  const computerThinking =
+    game.source_type === 'bot_game' &&
+    pendingMoveClockGame?.id === game.id &&
+    myColor != null &&
+    displayClockTurn(pendingMoveClockGame.turn) !== myColor;
   const correspondencePaceLabel = correspondencePaceCompactLabel(clockGame.live_time_control);
 
   void liveChessVersion;
@@ -3753,8 +3802,8 @@ export default function GamePage() {
               data-game-state={!bothPlayersSeated(game) ? 'waiting' : 'seated'}
               data-spectator-readonly={isPublicViewer || (isSpectator && !!userId) ? '1' : '0'}
               style={{
-                fontWeight: isMyTurn && !isSpectator ? 'bold' : undefined,
-                color: isMyTurn && !isSpectator ? 'red' : '#777',
+                fontWeight: displayIsMyTurn && !isSpectator ? 'bold' : undefined,
+                color: displayIsMyTurn && !isSpectator ? 'red' : '#777',
               }}
             >
               {isPublicViewer || (isSpectator && !!userId) ? (
@@ -3767,11 +3816,20 @@ export default function GamePage() {
                 'Waiting for an opponent to join — the board is shown but play starts once Black is seated.'
               ) : !canPlayMoves(game) ? (
                 'Game is not ready for moves yet.'
-              ) : isMyTurn ? (
+              ) : displayIsMyTurn ? (
                 'YOUR TURN'
               ) : (
                 "OPPONENT'S TURN"
               )}
+            </p>
+          ) : null}
+          {computerThinking ? (
+            <p
+              aria-live="polite"
+              data-testid="computer-thinking"
+              style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 12 }}
+            >
+              Computer thinking…
             </p>
           ) : null}
         </div>

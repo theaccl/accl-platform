@@ -157,11 +157,13 @@ test.describe('submit-move bot hardening (static)', () => {
     expect(src).not.toContain('function sleep');
     expect(src).not.toContain('await sleep');
     expect(src).toContain('bot_move_invalid_uci');
-    expect(src).toContain('human_move_applied');
+    expect(src).toContain('human_move_applied: false');
+    expect(src).not.toContain('human_move_applied: true');
     expect(src).toContain('think_ms');
     expect(gamePageSrc).toContain('buildOptimisticMoveClockRow');
     expect(gamePageSrc).toContain('moveSubmitInFlightRef.current = true');
-    expect(commitSrc).toContain('movedAt: new Date(Date.now() + thinkMs)');
+    expect(commitSrc).toContain('botTimeoutFinishBeforeMove');
+    expect(commitSrc).toContain('humanTerminal: terminal ?? botPreMoveTimeout');
     const guardSrc = readFileSync(join(process.cwd(), 'lib', 'bot', 'botMoveCommit.ts'), 'utf8');
     expect(guardSrc).toContain('bot_turn_mismatch');
   });

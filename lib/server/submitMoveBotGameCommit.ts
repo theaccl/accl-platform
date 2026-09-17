@@ -13,6 +13,7 @@ import {
 } from '@/lib/bot/botMoveCommit';
 import { defaultBotGameConfig } from '@/lib/bot/botGameConfig';
 import { botNameFromUserId } from '@/lib/bot/botIdentity';
+import { botTimeoutFinishBeforeMove } from '@/lib/bot/botClockTransition';
 import { selectBotMoveForStyle } from '@/lib/bot/botPersonalityStyle';
 import { buildAuthoritativeMovePatch } from '@/lib/gameStateSourceOfTruth';
 import {
@@ -74,7 +75,6 @@ export type SubmitMoveBotGameFailure = {
     | 'bot_invalid_uci'
     | 'commit_failed';
   message: string;
-  humanRow?: Record<string, unknown>;
   thinkMs?: number | null;
   expectedFen?: string | null;
   actualFen?: string | null;
@@ -178,6 +178,7 @@ export async function commitBotGameTurn(
   let botLogPayload: ReturnType<typeof validateRpcMoveLogPayload> | null = null;
   let botPatch: ReturnType<typeof buildAuthoritativeMovePatch> | null = null;
   let botTerminal: ReturnType<typeof terminalStateFromBoard> = null;
+  let botPreMoveTimeout: { result: 'white_win' | 'black_win'; endReason: 'timeout' } | null = null;
   let thinkMs: number | null = null;
   let botShadow: BotShadowContext | null = null;
   const correlationId =
@@ -210,7 +211,6 @@ export async function commitBotGameTurn(
         kind: 'bot_precondition',
         message: pre.message,
         botCode: pre.code,
-        humanRow: postHumanRow,
       };
     }
 
@@ -232,7 +232,6 @@ export async function commitBotGameTurn(
         ok: false,
         kind: 'bot_no_candidates',
         message: 'Computer could not find a legal move.',
-        humanRow: postHumanRow,
         thinkMs,
       };
     }
@@ -251,7 +250,6 @@ export async function commitBotGameTurn(
         ok: false,
         kind: 'bot_invalid_uci',
         message: 'Computer selected an illegal move.',
-        humanRow: postHumanRow,
         thinkMs,
       };
     }
@@ -259,63 +257,77 @@ export async function commitBotGameTurn(
     const { board: botBoard, moved: botMoved } = applied;
     const botNextFen = botBoard.fen();
     const botNextTurn = botBoard.turn() === 'w' ? 'white' : 'black';
-    botTerminal = terminalStateFromBoard(botBoard, pre.botMoverColor);
-
-    botPatch = buildAuthoritativeMovePatch({
-      nextFen: botNextFen,
-      nextTurn: botNextTurn,
-      statusBefore: String(postHumanRow.status ?? 'active'),
+    const botMovedAt = new Date(Date.now() + thinkMs);
+    botPreMoveTimeout = botTimeoutFinishBeforeMove({
       tempo: postHumanRow.tempo == null ? null : String(postHumanRow.tempo),
       liveTimeControl:
         postHumanRow.live_time_control == null ? null : String(postHumanRow.live_time_control),
-      currentTurn: String(postHumanRow.turn ?? 'white'),
+      botMoverColor: pre.botMoverColor,
+      lastMoveAt: postHumanRow.last_move_at == null ? null : String(postHumanRow.last_move_at),
+      movedAt: botMovedAt,
       whiteClockMs:
         typeof postHumanRow.white_clock_ms === 'number' ? postHumanRow.white_clock_ms : null,
       blackClockMs:
         typeof postHumanRow.black_clock_ms === 'number' ? postHumanRow.black_clock_ms : null,
-      lastMoveAt: postHumanRow.last_move_at == null ? null : String(postHumanRow.last_move_at),
-      // The client keeps showing the post-human position during this intentional pause.
-      // Start the human's next clock when that bot move becomes visible, while charging
-      // the bot for both calculation time and its configured simulated think time.
-      movedAt: new Date(Date.now() + thinkMs),
     });
+    if (!botPreMoveTimeout) {
+      botTerminal = terminalStateFromBoard(botBoard, pre.botMoverColor);
+      botPatch = buildAuthoritativeMovePatch({
+        nextFen: botNextFen,
+        nextTurn: botNextTurn,
+        statusBefore: String(postHumanRow.status ?? 'active'),
+        tempo: postHumanRow.tempo == null ? null : String(postHumanRow.tempo),
+        liveTimeControl:
+          postHumanRow.live_time_control == null ? null : String(postHumanRow.live_time_control),
+        currentTurn: String(postHumanRow.turn ?? 'white'),
+        whiteClockMs:
+          typeof postHumanRow.white_clock_ms === 'number' ? postHumanRow.white_clock_ms : null,
+        blackClockMs:
+          typeof postHumanRow.black_clock_ms === 'number' ? postHumanRow.black_clock_ms : null,
+        lastMoveAt: postHumanRow.last_move_at == null ? null : String(postHumanRow.last_move_at),
+        // The client keeps showing the post-human position during this intentional pause.
+        // Start the human's next clock when that bot move becomes visible, while charging
+        // the bot for both calculation time and its configured simulated think time.
+        movedAt: botMovedAt,
+      });
 
-    const botIdempotencyKey = buildMoveIdempotencyKey({
-      gameId,
-      fenBefore: pre.fenNow,
-      playerId: pre.sideToMoveUserId,
-      fromSq: botMoved.from,
-      toSq: botMoved.to,
-      promotion: botMoved.promotion ?? null,
-    });
+      const botIdempotencyKey = buildMoveIdempotencyKey({
+        gameId,
+        fenBefore: pre.fenNow,
+        playerId: pre.sideToMoveUserId,
+        fromSq: botMoved.from,
+        toSq: botMoved.to,
+        promotion: botMoved.promotion ?? null,
+      });
 
-    botLogPayload = validateRpcMoveLogPayload(
-      gameId,
-      {
-        game_id: gameId,
-        player_id: pre.sideToMoveUserId,
-        san: botMoved.san,
-        from_sq: botMoved.from,
-        to_sq: botMoved.to,
-        fen_before: pre.fenNow,
-        fen_after: botNextFen,
-        move_duration_ms: thinkMs,
-      },
-      { idempotencyKey: botIdempotencyKey },
-    );
-    if (!botLogPayload.ok) {
-      return { ok: false, kind: 'move_log_invalid', message: botLogPayload.message, thinkMs };
+      botLogPayload = validateRpcMoveLogPayload(
+        gameId,
+        {
+          game_id: gameId,
+          player_id: pre.sideToMoveUserId,
+          san: botMoved.san,
+          from_sq: botMoved.from,
+          to_sq: botMoved.to,
+          fen_before: pre.fenNow,
+          fen_after: botNextFen,
+          move_duration_ms: thinkMs,
+        },
+        { idempotencyKey: botIdempotencyKey },
+      );
+      if (!botLogPayload.ok) {
+        return { ok: false, kind: 'move_log_invalid', message: botLogPayload.message, thinkMs };
+      }
+
+      botShadow = {
+        gameId,
+        postHumanFen: pre.fenNow,
+        botPlayerId: pre.sideToMoveUserId,
+        idempotencyKey: botIdempotencyKey,
+        selectedUci: selected.move,
+        thinkMs,
+        correlationId,
+      };
     }
-
-    botShadow = {
-      gameId,
-      postHumanFen: pre.fenNow,
-      botPlayerId: pre.sideToMoveUserId,
-      idempotencyKey: botIdempotencyKey,
-      selectedUci: selected.move,
-      thinkMs,
-      correlationId,
-    };
   }
 
   const compositeParams = buildBotGameTurnRpcParams({
@@ -330,7 +342,7 @@ export async function commitBotGameTurn(
       black_clock_ms: humanPatch.black_clock_ms,
       promote_waiting_to_active: humanPatch.status === 'active' && String(gameRow.status ?? '') === 'waiting',
     },
-    humanTerminal: terminal,
+    humanTerminal: terminal ?? botPreMoveTimeout,
     humanMoveLog: humanLogPayload.payload,
     botPatch: botPatch
       ? {
@@ -476,7 +488,6 @@ export async function commitBotGameTurn(
     message: terminal
       ? 'Move could not be committed. Refresh and try again.'
       : 'Computer turn could not be committed. Refresh and try again.',
-    humanRow: postHumanRow,
     thinkMs,
     expectedFen: preMoveFen,
     actualFen,
