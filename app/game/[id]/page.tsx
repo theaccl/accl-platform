@@ -50,6 +50,7 @@ import {
   formatFinishedAtLocal,
   isGameRecordFinished,
 } from '@/lib/finishedGame';
+import { keepReplayMoveVisible } from '@/lib/replay/keepReplayMoveVisible';
 import {
   classifyGameForRating,
   ratingClassificationSummaryLine,
@@ -805,6 +806,17 @@ export default function GamePage() {
     game?.fen ?? null,
     game?.status !== 'finished'
   );
+  const replayMoveListRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (replayStep === null || replayStep <= 0) return;
+    const moveList = replayMoveListRef.current;
+    const activeMove = moveList?.querySelector<HTMLElement>(
+      `[data-replay-step="${replayStep}"]`
+    );
+    if (!moveList || !activeMove) return;
+    keepReplayMoveVisible(moveList, activeMove);
+  }, [replayStep]);
 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [pgnExportCount, setPgnExportCount] = useState(0);
@@ -3988,43 +4000,6 @@ export default function GamePage() {
           />
         ) : null}
       </div>
-      </div>
-
-      <div className="accl-game-shell-tail">
-      {showAbandonOpenSeat ? (
-        <p style={{ margin: '0 0 12px 0' }}>
-          <button
-            type="button"
-            data-testid="game-abandon-open-seat"
-            onClick={() => void handleAbandonOpenSeat()}
-            disabled={resigning}
-            style={{ padding: '8px 12px' }}
-          >
-            {resigning ? 'Leaving…' : 'Leave waiting seat'}
-          </button>
-        </p>
-      ) : null}
-
-      {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
-        <TournamentFirstMoveGraceBanner
-          gameId={game.id}
-          game={{
-            play_context: game.play_context,
-            tournament_id: game.tournament_id,
-            tempo: game.tempo,
-            status: game.status,
-            white_player_id: game.white_player_id,
-            black_player_id: game.black_player_id,
-            turn: game.turn,
-            created_at: game.created_at,
-          }}
-          gameStatus={game.status}
-          moveCount={moveLogs.length}
-          userId={userId}
-          isMyTurn={Boolean(isMyTurn && !isSpectator)}
-        />
-      ) : null}
-
       {game.status === 'finished' && moveLogs.length > 0 && (
         <div
           className="accl-game-side-panel accl-game-replay-panel"
@@ -4052,6 +4027,8 @@ export default function GamePage() {
               Notation — click a move to jump
             </div>
             <div
+              ref={replayMoveListRef}
+              data-testid="game-replay-move-list"
               className="accl-scroll-no-anchor"
               style={{
                 maxHeight: 180,
@@ -4069,6 +4046,7 @@ export default function GamePage() {
                 const sanBtn = (idx: number, label: string) => (
                   <button
                     key={idx}
+                    data-replay-step={idx + 1}
                     type="button"
                     title="Jump to position after this move"
                     onClick={() => setReplayStep(idx + 1)}
@@ -4173,6 +4151,43 @@ export default function GamePage() {
           </div>
         </div>
       )}
+
+      </div>
+
+      <div className="accl-game-shell-tail">
+      {showAbandonOpenSeat ? (
+        <p style={{ margin: '0 0 12px 0' }}>
+          <button
+            type="button"
+            data-testid="game-abandon-open-seat"
+            onClick={() => void handleAbandonOpenSeat()}
+            disabled={resigning}
+            style={{ padding: '8px 12px' }}
+          >
+            {resigning ? 'Leaving…' : 'Leave waiting seat'}
+          </button>
+        </p>
+      ) : null}
+
+      {game.tournament_id && String(game.play_context ?? '') === 'tournament' ? (
+        <TournamentFirstMoveGraceBanner
+          gameId={game.id}
+          game={{
+            play_context: game.play_context,
+            tournament_id: game.tournament_id,
+            tempo: game.tempo,
+            status: game.status,
+            white_player_id: game.white_player_id,
+            black_player_id: game.black_player_id,
+            turn: game.turn,
+            created_at: game.created_at,
+          }}
+          gameStatus={game.status}
+          moveCount={moveLogs.length}
+          userId={userId}
+          isMyTurn={Boolean(isMyTurn && !isSpectator)}
+        />
+      ) : null}
 
       {userId ? (
         <div style={{ marginTop: 20, maxWidth: 520 }}>
