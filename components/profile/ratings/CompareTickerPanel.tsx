@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import {
   compareEventLinks,
+  compareResultLabel,
   periodOccupancy,
   type ComparePeriod,
   type CompareTicker,
@@ -61,10 +62,6 @@ function eventLabel(point: RatingHistoryPoint): string {
   const control = point.timeControl ? ` · ${point.timeControl}` : '';
   const opponent = point.opponentUsername ? ` · vs ${point.opponentUsername}` : '';
   return `${point.occurredAt.slice(0, 16).replace('T', ' ')} UTC · ${family}${control}${opponent}`;
-}
-
-function compareResultLabel(point: RatingHistoryPoint): string {
-  return point.eventType === 'manual_admin_adjustment' ? 'Rating adjustment' : point.result;
 }
 
 export function CompareTickerPanel({

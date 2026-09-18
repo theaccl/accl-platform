@@ -186,6 +186,31 @@ test('comparison adjustments retain ratings and UTC time without claiming a draw
   await expect(page.getByTestId('compare-panel-main')).not.toContainText('Rating adjustment');
 });
 
+test('Expanded Merge labels administrative corrections as adjustments instead of draws', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    compareAdjustment: true,
+    viewport: { width: 1000, height: 800 },
+  });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await drawer.getByRole('button', { name: 'Previous period for CT1' }).click();
+  const chart = drawer.getByTestId('expanded-merge-chart');
+  const adjustment = chart.getByTestId('expanded-merge-point-ct1').first();
+  await adjustment.focus();
+  await page.keyboard.press('Enter');
+
+  const detail = chart.getByTestId('expanded-merge-point-detail');
+  await expect(detail).toContainText('Rating adjustment');
+  await expect(detail).not.toContainText('draw');
+  await expect(detail.getByRole('link', { name: 'Open game' })).toHaveCount(0);
+  await expect(detail.getByRole('link', { name: 'Trainer review' })).toHaveCount(0);
+});
+
 test('CTs withhold stale results while a new period or track is loading', async ({ page }) => {
   await mountComparisonPanel(page, {
     single: true,

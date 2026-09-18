@@ -11,6 +11,7 @@ import {
 } from '@/components/profile/ratings/MultiLineRatingTickerChart';
 import {
   canLinkCompareEvent,
+  compareResultLabel,
   type CompareBucketLane,
   type CompareSeriesId,
 } from '@/lib/profile/compareMode';
@@ -348,7 +349,7 @@ export function ExpandedMergeCompareChart({
           </p>
           <p className="m-0 mt-1 text-xs text-gray-400">
             {formatOccurredAtInZone(activePoint.point.occurredAt, activePoint.series.sourceWindow.timeZone)}{' '}
-            {activePoint.series.sourceWindow.timeZone} · {activePoint.point.result}
+            {activePoint.series.sourceWindow.timeZone} · {compareResultLabel(activePoint.point)}
           </p>
           {canLinkFinishedGames && canLinkCompareEvent(activePoint.point) ? (
             <p className="m-0 mt-2 flex flex-wrap gap-3">
