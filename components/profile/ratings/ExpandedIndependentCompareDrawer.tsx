@@ -142,6 +142,7 @@ function ExpandedIndependentOverlay({
       const loaded = loads[ticker.slot];
       if (!period) continue;
       const occupancy = loaded ? periodOccupancy(loaded.points, period, loaded.coverage) : null;
+      const coverage = occupancy?.coverage ?? 'incomplete';
       const style = MERGE_COMPARE_STYLE[ticker.slot];
       result.push({
         id: ticker.slot,
@@ -149,11 +150,11 @@ function ExpandedIndependentOverlay({
         rank: ticker.rank,
         color: style.color,
         dashArray: style.dashArray,
-        points: loaded ? pointsInPeriod(loaded.points, period) : [],
-        carryInRating: occupancy?.coverage === 'complete' ? occupancy.carryInRating : null,
+        points: loaded && coverage === 'complete' ? pointsInPeriod(loaded.points, period) : [],
+        carryInRating: coverage === 'complete' ? occupancy?.carryInRating ?? null : null,
         sourceWindow: comparePeriodLaneWindow(period),
         periodCaption: comparePeriodLaneWindow(period).caption,
-        coverage: occupancy?.coverage ?? 'incomplete',
+        coverage,
       });
     }
     return result;
