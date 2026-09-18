@@ -496,14 +496,16 @@ test('Expanded Merge keeps CT identity while verified history is loading and nev
   const chart = drawer.getByTestId('expanded-merge-chart');
 
   await expect(chart).toHaveAttribute('data-series-order', 'main ct1');
-  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'loading');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toContainText('verifying history');
   await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(0);
   await page.clock.fastForward(1_000);
   await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'complete');
   await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(1);
 
   await drawer.getByRole('button', { name: 'Previous period for CT1' }).click();
-  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'loading');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toContainText('verifying history');
   await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(0);
 });
 
@@ -521,6 +523,8 @@ test('Expanded Merge withholds non-empty CT history until its coverage is comple
   const chart = drawer.getByTestId('expanded-merge-chart');
 
   await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toContainText('coverage incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).not.toContainText('verifying history');
   await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(0);
   await expect(chart.getByTestId('expanded-merge-point-ct1')).toHaveCount(0);
 
@@ -545,6 +549,8 @@ test('Expanded Merge withholds bounded Main history until its coverage is comple
   const chart = drawer.getByTestId('expanded-merge-chart');
 
   await expect(chart.getByTestId('expanded-merge-legend-main')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-main')).toContainText('coverage incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-main')).not.toContainText('verifying history');
   await expect(chart.getByTestId('expanded-merge-series-main')).toHaveCount(0);
   await expect(chart.getByTestId('expanded-merge-point-main')).toHaveCount(0);
 

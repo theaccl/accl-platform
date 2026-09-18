@@ -130,7 +130,7 @@ function ExpandedIndependentOverlay({
     const mainOccupancy = mainLoad
       ? periodOccupancy(mainLoad.points, mergeTargetPeriod, mainLoad.coverage)
       : null;
-    const mainCoverage = mainOccupancy?.coverage ?? 'incomplete';
+    const mainCoverage = mainLoad ? mainOccupancy?.coverage ?? 'incomplete' : 'loading';
     const result: ExpandedMergeSeries[] = [{
       id: 'main',
       label: 'Main',
@@ -143,13 +143,14 @@ function ExpandedIndependentOverlay({
       sourceWindow: mergeTargetWindow,
       periodCaption: mergeTargetWindow.caption,
       coverage: mainCoverage,
+      coverageMessage: mainLoad?.message,
     }];
     for (const ticker of orderedCts) {
       const period = ctPeriod(session, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
       const loaded = loads[ticker.slot];
       if (!period) continue;
       const occupancy = loaded ? periodOccupancy(loaded.points, period, loaded.coverage) : null;
-      const coverage = occupancy?.coverage ?? 'incomplete';
+      const coverage = loaded ? occupancy?.coverage ?? 'incomplete' : 'loading';
       const style = MERGE_COMPARE_STYLE[ticker.slot];
       result.push({
         id: ticker.slot,
@@ -162,6 +163,7 @@ function ExpandedIndependentOverlay({
         sourceWindow: comparePeriodLaneWindow(period),
         periodCaption: comparePeriodLaneWindow(period).caption,
         coverage,
+        coverageMessage: loaded?.message,
       });
     }
     return result;

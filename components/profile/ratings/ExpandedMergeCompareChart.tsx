@@ -40,7 +40,8 @@ export type ExpandedMergeSeries = {
   carryInRating: number | null;
   sourceWindow: RatingLaneWindow;
   periodCaption: string;
-  coverage: 'complete' | 'incomplete';
+  coverage: 'loading' | 'complete' | 'incomplete';
+  coverageMessage?: string;
 };
 
 type Props = {
@@ -202,7 +203,7 @@ export function ExpandedMergeCompareChart({
           className="rounded-full border border-[#3d5168] bg-[#0b121c] px-2.5 py-1 text-xs text-gray-200"
           data-testid={`expanded-merge-legend-${entry.id}`}
           data-coverage={entry.coverage}
-          title={entry.periodCaption}
+          title={[entry.periodCaption, entry.coverageMessage].filter(Boolean).join(' · ')}
         >
           <span className="mr-1.5 inline-block w-6 align-middle" aria-hidden="true">
             <svg viewBox="0 0 24 4" className="h-2 w-6">
@@ -210,7 +211,11 @@ export function ExpandedMergeCompareChart({
             </svg>
           </span>
           {entry.label} · rank {entry.rank}
-          {entry.coverage === 'incomplete' ? ' · verifying history' : ''}
+          {entry.coverage === 'loading'
+            ? ' · verifying history'
+            : entry.coverage === 'incomplete'
+              ? ' · coverage incomplete'
+              : ''}
         </li>
       ))}
     </ul>
