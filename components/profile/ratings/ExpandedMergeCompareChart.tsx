@@ -24,6 +24,7 @@ import {
   mergeAlignedTimestamp,
   mergeRatingAtPosition,
 } from '@/lib/profile/mergeCompareAlignment';
+import { nearestMergePoint } from '@/lib/profile/mergePointerSelection';
 import { formatOccurredAtInZone } from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
 import { finishedGameHref, finishedGameTrainHref } from '@/lib/profileRatingFinishedLinks';
@@ -46,6 +47,7 @@ type Props = {
   series: ExpandedMergeSeries[];
   targetWindow: RatingLaneWindow;
   canLinkFinishedGames: boolean;
+  nowMs: number;
 };
 
 type PlottedPoint = {
@@ -56,6 +58,21 @@ type PlottedPoint = {
 };
 
 const TOP_AXIS_BAND = 42;
+
+function observedThroughMs(
+  entry: ExpandedMergeSeries,
+  targetWindow: RatingLaneWindow,
+  nowMs: number,
+): number {
+  if (nowMs < entry.sourceWindow.startMs) return targetWindow.startMs;
+  if (nowMs >= entry.sourceWindow.endMs) return targetWindow.endMs;
+  return mergeAlignedTimestamp(
+    nowMs,
+    entry.sourceWindow,
+    targetWindow,
+    targetWindow.lane as CompareBucketLane,
+  );
+}
 
 export const MERGE_COMPARE_STYLE: Record<CompareSeriesId, { color: string; dashArray?: string }> = {
   main: { color: '#34d399' },
@@ -68,6 +85,7 @@ export function ExpandedMergeCompareChart({
   series,
   targetWindow,
   canLinkFinishedGames,
+  nowMs,
 }: Props) {
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
   const [active, setActive] = useState<{ seriesId: CompareSeriesId; pointId: string } | null>(null);
@@ -112,6 +130,7 @@ export function ExpandedMergeCompareChart({
       });
       const path = landscapeTickerPathFromPoints(alignedPoints, geometry, {
         carryInRating: entry.carryInRating,
+        holdUntilMs: observedThroughMs(entry, targetWindow, nowMs),
       });
       if (!path) continue;
       paths.set(entry.id, path.d);
@@ -123,7 +142,7 @@ export function ExpandedMergeCompareChart({
       }
     }
     return { paths, points: plottedPoints, geometry };
-  }, [series, targetWindow]);
+  }, [nowMs, series, targetWindow]);
 
   const activePoint = useMemo(() => {
     if (!active) return null;
@@ -134,18 +153,25 @@ export function ExpandedMergeCompareChart({
 
   const hoverRows = useMemo(() => {
     if (hoverFraction == null) return [];
-    return series.map((entry) => ({
-      entry,
-      state: mergeRatingAtPosition(
-        entry.points,
-        entry.carryInRating,
-        entry.sourceWindow,
-        targetWindow,
-        targetWindow.lane as CompareBucketLane,
-        hoverFraction,
-      ),
-    }));
-  }, [hoverFraction, series, targetWindow]);
+    const targetSpan = Math.max(1, targetWindow.endMs - targetWindow.startMs);
+    const targetMs = targetWindow.startMs + hoverFraction * targetSpan;
+    return series.map((entry) => {
+      const isBeyondVerifiedHistory = targetMs > observedThroughMs(entry, targetWindow, nowMs);
+      const points = isBeyondVerifiedHistory ? [] : entry.points;
+      const carryInRating = isBeyondVerifiedHistory ? null : entry.carryInRating;
+      return {
+        entry,
+        state: mergeRatingAtPosition(
+          points,
+          carryInRating,
+          entry.sourceWindow,
+          targetWindow,
+          targetWindow.lane as CompareBucketLane,
+          hoverFraction,
+        ),
+      };
+    });
+  }, [hoverFraction, nowMs, series, targetWindow]);
 
   function pointerFraction(clientX: number, svg: SVGSVGElement): number {
     const rect = svg.getBoundingClientRect();
@@ -159,24 +185,12 @@ export function ExpandedMergeCompareChart({
     clientX: number,
     clientY: number,
     svg: SVGSVGElement,
-    ownerId?: CompareSeriesId,
   ) {
     const rect = svg.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const x = ((clientX - rect.left) / rect.width) * MULTI_LINE_CHART_W;
     const y = ((clientY - rect.top) / rect.height) * MULTI_LINE_CHART_H_EXPANDED;
-    let best: PlottedPoint | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    // Series and points are already rank ordered. Strict comparison gives rank 1
-    // pointer ownership when points overlap exactly.
-    for (const point of plotted.points) {
-      if (ownerId && point.series.id !== ownerId) continue;
-      const distance = (point.x - x) ** 2 + (point.y - y) ** 2;
-      if (distance < bestDistance) {
-        best = point;
-        bestDistance = distance;
-      }
-    }
+    const best = nearestMergePoint(plotted.points, x, y);
     if (best) setActive({ seriesId: best.series.id, pointId: best.point.id });
   }
 
@@ -276,7 +290,6 @@ export function ExpandedMergeCompareChart({
                       event.clientX,
                       event.clientY,
                       svg,
-                      entry.id,
                     );
                   }}
                 />

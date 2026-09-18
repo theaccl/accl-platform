@@ -39,6 +39,11 @@ export type LandscapeTickerPlottedPoint = {
 export type LandscapeTickerPathOptions = {
   /** Last real ratingAfter strictly before geometry.minT. Not a fabricated event. */
   carryInRating?: number | null;
+  /**
+   * Latest verified instant for the hold. Defaults to geometry.maxT.
+   * Useful for a current period whose axis extends beyond the present instant.
+   */
+  holdUntilMs?: number;
 };
 
 function parseTime(iso: string): number {
@@ -155,7 +160,14 @@ export function landscapeTickerPathFromPoints(
   geometry: LandscapeTickerPlotGeometry,
   options?: LandscapeTickerPathOptions,
 ): { d: string; plotted: LandscapeTickerPlottedPoint[] } | null {
-  const sorted = sortChronological(points).filter((p) => Number.isFinite(parseTime(p.occurredAt)));
+  const requestedHoldUntil = options?.holdUntilMs;
+  const holdUntilMs = Number.isFinite(requestedHoldUntil)
+    ? Math.min(geometry.maxT, Math.max(geometry.minT, requestedHoldUntil as number))
+    : geometry.maxT;
+  const sorted = sortChronological(points).filter((p) => {
+    const occurredAtMs = parseTime(p.occurredAt);
+    return Number.isFinite(occurredAtMs) && occurredAtMs <= holdUntilMs;
+  });
   const carry =
     typeof options?.carryInRating === 'number' && Number.isFinite(options.carryInRating)
       ? options.carryInRating
@@ -169,7 +181,7 @@ export function landscapeTickerPathFromPoints(
   }));
 
   const xLeft = toLandscapeTickerXMs(geometry.minT, geometry);
-  const xRight = toLandscapeTickerXMs(geometry.maxT, geometry);
+  const xRight = toLandscapeTickerXMs(holdUntilMs, geometry);
   const cmds: string[] = [];
 
   if (sorted.length === 0 && carry != null) {

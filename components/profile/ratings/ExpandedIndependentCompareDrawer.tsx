@@ -349,6 +349,7 @@ function ExpandedIndependentOverlay({
                 series={mergeSeries}
                 targetWindow={mergeTargetWindow}
                 canLinkFinishedGames={canLinkFinishedGames}
+                nowMs={nowMs}
               />
             </article>
             <section className="grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3" aria-label="Merged comparison periods" data-testid="expanded-merge-period-controls">

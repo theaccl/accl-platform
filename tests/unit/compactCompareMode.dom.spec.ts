@@ -434,6 +434,13 @@ test('Expanded Merge aligns Main and retained CTs on one absolute ELO chart in r
   for (const id of ['main', 'ct1', 'ct2', 'ct3']) {
     await expect(tooltip.getByTestId(`expanded-merge-tooltip-${id}`)).toBeVisible();
   }
+  const mainPathEndX = await chart.getByTestId('expanded-merge-series-main').getAttribute('d').then((d) => {
+    const match = d?.match(/L ([\d.]+) ([\d.]+)$/);
+    return match ? Number(match[1]) : Number.NaN;
+  });
+  expect(mainPathEndX).toBeLessThan(530);
+  await page.mouse.move(box.x + box.width * 0.95, box.y + box.height / 2);
+  await expect(tooltip.getByTestId('expanded-merge-tooltip-main')).toContainText('No verified rating');
   if (process.env.R042_STACK4_CAPTURE_DIR) {
     mkdirSync(process.env.R042_STACK4_CAPTURE_DIR, { recursive: true });
     await drawer.screenshot({ path: join(process.env.R042_STACK4_CAPTURE_DIR, 'expanded-merge-1200.png') });

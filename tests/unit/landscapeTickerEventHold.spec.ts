@@ -95,6 +95,25 @@ test.describe('landscape ticker event-hold path', () => {
     expect(path!.d).toContain(`L ${Math.round(xRight * 100) / 100} ${Math.round(path!.plotted[0].y * 100) / 100}`);
   });
 
+  test('current-period hold stops at the latest verified instant', () => {
+    const a = point({ id: 'a', occurredAt: '2026-06-30T12:00:00Z', ratingAfter: 1000, ratingDelta: 0 });
+    const holdUntilMs = Date.parse('2026-08-01T00:00:00Z');
+    const path = landscapeTickerPathFromPoints([a], geometry, { holdUntilMs });
+    const xVerified = toLandscapeTickerXMs(holdUntilMs, geometry);
+    const xRight = toLandscapeTickerXMs(geometry.maxT, geometry);
+    expect(path!.d).toContain(`L ${Math.round(xVerified * 100) / 100} ${Math.round(path!.plotted[0].y * 100) / 100}`);
+    expect(path!.d).not.toContain(`L ${Math.round(xRight * 100) / 100} ${Math.round(path!.plotted[0].y * 100) / 100}`);
+  });
+
+  test('events after the latest verified instant are not plotted', () => {
+    const before = point({ id: 'before', occurredAt: '2026-07-01T00:00:00Z' });
+    const future = point({ id: 'future', occurredAt: '2026-08-20T00:00:00Z' });
+    const path = landscapeTickerPathFromPoints([before, future], geometry, {
+      holdUntilMs: Date.parse('2026-08-01T00:00:00Z'),
+    });
+    expect(path!.plotted.map((entry) => entry.point.id)).toEqual(['before']);
+  });
+
   test('empty window with carry-in draws a hold and zero markers', () => {
     const path = landscapeTickerPathFromPoints([], geometry, { carryInRating: 1000 });
     expect(path).not.toBeNull();
