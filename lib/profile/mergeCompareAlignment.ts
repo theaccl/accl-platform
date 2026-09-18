@@ -44,6 +44,7 @@ export function mergeSourceTimestampAtFraction(
   lane: CompareBucketLane,
 ): number {
   const safeFraction = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
+  if (safeFraction === 1) return sourceWindow.endMs;
   if (lane === 'year') {
     const targetMs = targetWindow.startMs + safeFraction * windowSpan(targetWindow);
     return alignYearCalendarPosition(targetMs, targetWindow, sourceWindow);
@@ -84,11 +85,14 @@ export function mergeRatingAtPosition(
   lane: CompareBucketLane,
   fraction: number,
 ): MergeRatingAtPosition {
-  const mappedMs = mergeSourceTimestampAtFraction(fraction, sourceWindow, targetWindow, lane);
+  const lookupMs = mergeSourceTimestampAtFraction(fraction, sourceWindow, targetWindow, lane);
+  const mappedMs = lookupMs >= sourceWindow.endMs
+    ? Math.max(sourceWindow.startMs, sourceWindow.endMs - 1)
+    : lookupMs;
   const eligible = points
     .filter((point) => {
       const time = Date.parse(point.occurredAt);
-      return Number.isFinite(time) && time >= sourceWindow.startMs && time < sourceWindow.endMs && time <= mappedMs;
+      return Number.isFinite(time) && time >= sourceWindow.startMs && time < sourceWindow.endMs && time <= lookupMs;
     })
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
   const point = eligible[eligible.length - 1] ?? null;

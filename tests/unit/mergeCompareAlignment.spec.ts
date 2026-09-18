@@ -53,6 +53,19 @@ test.describe('R042 merge calendar alignment', () => {
     );
   });
 
+  test('Year right endpoint maps to the source year end and includes December events', () => {
+    const leapYear = { startMs: Date.parse('2024-01-01T00:00:00Z'), endMs: Date.parse('2025-01-01T00:00:00Z') };
+    const normalYear = { startMs: Date.parse('2025-01-01T00:00:00Z'), endMs: Date.parse('2026-01-01T00:00:00Z') };
+    const december = point('december', '2024-12-31T18:00:00Z', 1530);
+    const nextYear = point('next-year', '2025-01-01T00:00:00Z', 1540);
+
+    expect(mergeSourceTimestampAtFraction(1, leapYear, normalYear, 'year')).toBe(leapYear.endMs);
+    const endpoint = mergeRatingAtPosition([december, nextYear], null, leapYear, normalYear, 'year', 1);
+    expect(endpoint.mappedMs).toBe(leapYear.endMs - 1);
+    expect(endpoint.point?.id).toBe('december');
+    expect(endpoint.rating).toBe(1530);
+  });
+
   test('tooltip state uses only real prior events or verified carry-in', () => {
     const window = { startMs: Date.parse('2026-08-01T00:00:00Z'), endMs: Date.parse('2026-09-01T00:00:00Z') };
     const points = [
