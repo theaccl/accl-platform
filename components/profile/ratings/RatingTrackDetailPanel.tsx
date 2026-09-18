@@ -37,6 +37,7 @@ import {
   ctPeriod,
   reopenCompareSessionForUtcDay,
   setMainLane,
+  type CompareBucketLane,
   type CompareSeriesId,
   type CompareTickerSlot,
 } from '@/lib/profile/compareMode';
@@ -230,6 +231,8 @@ export function RatingTrackDetailPanel({
       ? entry.load
       : undefined;
   }, [compareLoadEntries.main, compareNowMs, lane, ratingTrackId]);
+  const compareSessionCts = compareSession.cts;
+  const compareSessionLane = compareSession.lane;
 
   useEffect(() => {
     let cancelled = false;
@@ -246,8 +249,12 @@ export function RatingTrackDetailPanel({
       );
       if (mainPeriod) requested.push({ seriesId: 'main', period: mainPeriod });
     }
-    for (const ticker of activeCompareTickers(compareSession)) {
-      const period = ctPeriod(compareSession, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
+    for (const ticker of compareSessionLane === 'overall' ? [] : compareSessionCts) {
+      const period = compareAnchorPeriod(
+        compareSessionLane as CompareBucketLane,
+        ticker.anchorMs,
+        RATING_TICKER_DISPLAY_TIME_ZONE,
+      );
       if (period) requested.push({ seriesId: ticker.slot, period });
     }
     const requestedIds = requested.map(({ seriesId }) => seriesId);
@@ -299,7 +306,7 @@ export function RatingTrackDetailPanel({
         });
     }
     return () => { cancelled = true; };
-  }, [compareNowMs, compareOpen, comparePeriodLoader, compareSession, drawerMode, drawerOpen, lane, ratingTrackId]);
+  }, [compareNowMs, compareOpen, comparePeriodLoader, compareSessionCts, compareSessionLane, drawerMode, drawerOpen, lane, ratingTrackId]);
   const useAcclMultiLine = isAcclTicker && acclSupplementalOrder.length > 0;
   const acclDominanceOrder = useMemo(
     () => ['accl', ...acclSupplementalOrder],

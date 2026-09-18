@@ -433,6 +433,23 @@ test('Expanded Merge keeps Main as the only lane selector and CT dates stay edit
   await expect(ct1).toContainText('Aug 2026 · UTC');
 });
 
+test('Expanded layout toggles reuse already loaded Main and CT periods', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  const harness = page.getByTestId('comparison-harness');
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  const chart = drawer.getByTestId('expanded-merge-chart');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await expect(chart.getByTestId('expanded-merge-legend-main')).toHaveAttribute('data-coverage', 'complete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'complete');
+  const settledLoadCount = await harness.getAttribute('data-compare-load-count');
+
+  await drawer.getByRole('tab', { name: 'Independent' }).click();
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await expect(harness).toHaveAttribute('data-compare-load-count', settledLoadCount ?? '');
+});
+
 test('Expanded Merge keeps CT identity while verified history is loading and never paints stale data', async ({ page }) => {
   await mountComparisonPanel(page, {
     single: true,
