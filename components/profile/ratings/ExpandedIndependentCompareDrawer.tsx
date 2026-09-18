@@ -1,10 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
+  CompareGamePicker,
+  ComparePeriodSelector,
   CompareTickerPanel,
   comparePeriodLaneWindow,
 } from '@/components/profile/ratings/CompareTickerPanel';
@@ -16,7 +17,6 @@ import {
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
 import {
   compareAnchorPeriod,
-  compareEventLinks,
   ctPeriod,
   isRealGameEvent,
   periodOccupancy,
@@ -59,13 +59,6 @@ type Props = {
   mainTicker: ReactNode;
   mainColor: string;
 };
-
-function mergeGameSelectionLabel(point: RatingHistoryPoint): string {
-  const family = point.mode ?? point.ratingTrackId;
-  const control = point.timeControl ? ` · ${point.timeControl}` : '';
-  const opponent = point.opponentUsername ? ` · vs ${point.opponentUsername}` : '';
-  return `${point.occurredAt.slice(0, 16).replace('T', ' ')} UTC · ${family}${control}${opponent} · ${point.result} · ${point.ratingBefore} → ${point.ratingAfter} (${point.ratingDelta >= 0 ? '+' : ''}${point.ratingDelta})`;
-}
 
 export function ExpandedIndependentCompareDrawer(props: Props) {
   if (!props.open || typeof document === 'undefined') return null;
@@ -377,65 +370,26 @@ function ExpandedIndependentOverlay({
                       </div>
                       <button type="button" onClick={() => apply(removeCompareTicker(session, ticker.slot))} aria-label={`Remove ${slotName}`} className="text-xs text-gray-300">Remove</button>
                     </header>
-                    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => apply(stepCtPeriod(session, ticker.slot, 'prev', nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
-                        aria-label={`Previous period for ${slotName}`}
-                        className="min-h-10 rounded-md border border-[#3d5168] text-sky-200"
-                      >←</button>
-                      <label className="min-w-0 text-xs text-gray-300">
-                        Choose date
-                        <input
-                          type="date"
-                          aria-label={`UTC date for ${slotName}`}
-                          value={new Date(ticker.anchorMs).toISOString().slice(0, 10)}
-                          max={new Date(nowMs).toISOString().slice(0, 10)}
-                          onChange={(event) => {
-                            if (event.target.value) {
-                              apply(setCtAnchor(session, ticker.slot, Date.parse(`${event.target.value}T00:00:00Z`), nowMs, RATING_TICKER_DISPLAY_TIME_ZONE));
-                            }
-                          }}
-                          className="mt-1 block min-h-10 w-full min-w-0 rounded-md border border-[#3d5168] bg-[#0b121c] px-2 text-gray-100"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        disabled={period.endMs > nowMs}
-                        onClick={() => apply(stepCtPeriod(session, ticker.slot, 'next', nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
-                        aria-label={`Next period for ${slotName}`}
-                        className="min-h-10 rounded-md border border-[#3d5168] text-sky-200 disabled:opacity-40"
-                      >→</button>
+                    <div className="space-y-2">
+                      <ComparePeriodSelector
+                        ticker={ticker}
+                        period={period}
+                        nowMs={nowMs}
+                        slotName={slotName}
+                        onStep={(direction) => apply(stepCtPeriod(session, ticker.slot, direction, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
+                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
+                      />
                     </div>
-                    <details className="mt-2 rounded-md border border-[#2f3f54]">
-                      <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-sky-300">Choose from games</summary>
-                      <ul className="m-0 max-h-40 list-none space-y-1 overflow-y-auto border-t border-[#2f3f54] p-2">
-                        {games.length ? games.map((game) => {
-                          const links = compareEventLinks(game);
-                          const selectionLabel = mergeGameSelectionLabel(game);
-                          return (
-                            <li key={game.id} className="text-xs text-gray-300">
-                              <button
-                                type="button"
-                                className="text-left"
-                                aria-label={`Use ${selectionLabel} for ${slotName}`}
-                                onClick={() => apply(setCtAnchor(session, ticker.slot, Date.parse(game.occurredAt), nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
-                              >
-                                {selectionLabel}
-                              </button>
-                              {canLinkFinishedGames && links.openGameHref ? (
-                                <span className="ml-2 inline-flex gap-2">
-                                  <Link href={links.openGameHref}>Open game</Link>
-                                  <Link href={links.trainerReviewHref!}>Trainer review</Link>
-                                </span>
-                              ) : null}
-                            </li>
-                          );
-                        }) : (
-                          <li className="text-xs text-gray-500">No loaded finished games.</li>
-                        )}
-                      </ul>
-                    </details>
+                    <div className="mt-2">
+                      <CompareGamePicker
+                        games={games}
+                        canLinkFinishedGames={canLinkFinishedGames}
+                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
+                        slotName={slotName}
+                        period={period}
+                        loading={!loaded}
+                      />
+                    </div>
                   </article>
                 );
               })}

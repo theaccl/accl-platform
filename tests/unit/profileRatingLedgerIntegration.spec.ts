@@ -43,6 +43,12 @@ test.describe('profile rating ledger integration', () => {
       gamePointCount: 1,
       ledgerSampleComplete: true,
       gameSampleComplete: false,
+    })).toBe('unknown');
+    expect(classifyProfileRatingHistorySource({
+      ledgerPointCount: 0,
+      gamePointCount: 1,
+      ledgerSampleComplete: true,
+      gameSampleComplete: true,
     })).toBe('games');
     expect(classifyProfileRatingHistorySource({
       ledgerPointCount: 0,

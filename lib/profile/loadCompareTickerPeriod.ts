@@ -110,12 +110,18 @@ export async function loadCompareTickerPeriod(
 
   const dashboardSource = context.dashboardSource ?? 'unknown';
 
-  if (dashboardSource === 'games') {
+  // `games` and `none` are assigned only when both dashboard source samples are
+  // complete. They prove the full legacy history, including whether a
+  // pre-period baseline exists, without another ledger request.
+  if (dashboardSource === 'games' || dashboardSource === 'none') {
     return {
-      status: 'incomplete',
+      status: 'complete',
       points: context.dashboardPoints ?? [],
-      coverage: emptyCoverage(period),
-      message: 'This track uses bounded legacy game history, so complete period totals are withheld.',
+      coverage: {
+        startMs: period.startMs,
+        endMs: period.endMs,
+        priorToStartResolved: true,
+      },
     };
   }
 

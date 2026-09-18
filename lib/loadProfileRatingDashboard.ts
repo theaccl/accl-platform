@@ -32,7 +32,7 @@ export function classifyProfileRatingHistorySource(input: {
 }): ProfileRatingHistorySource {
   if (input.ledgerPointCount > 0) return 'ledger';
   if (input.gamePointCount > 0) {
-    return input.ledgerSampleComplete ? 'games' : 'unknown';
+    return input.ledgerSampleComplete && input.gameSampleComplete ? 'games' : 'unknown';
   }
   return input.ledgerSampleComplete && input.gameSampleComplete ? 'none' : 'unknown';
 }
