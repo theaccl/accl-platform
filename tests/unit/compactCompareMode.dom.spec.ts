@@ -186,6 +186,31 @@ test('comparison adjustments retain ratings and UTC time without claiming a draw
   await expect(page.getByTestId('compare-panel-main')).not.toContainText('Rating adjustment');
 });
 
+test('Expanded Merge labels administrative corrections as adjustments instead of draws', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    compareAdjustment: true,
+    viewport: { width: 1000, height: 800 },
+  });
+  await page.getByTestId('rating-lane-tab-month').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await drawer.getByRole('button', { name: 'Previous period for CT1' }).click();
+  const chart = drawer.getByTestId('expanded-merge-chart');
+  const adjustment = chart.getByTestId('expanded-merge-point-ct1').first();
+  await adjustment.focus();
+  await page.keyboard.press('Enter');
+
+  const detail = chart.getByTestId('expanded-merge-point-detail');
+  await expect(detail).toContainText('Rating adjustment');
+  await expect(detail).not.toContainText('draw');
+  await expect(detail.getByRole('link', { name: 'Open game' })).toHaveCount(0);
+  await expect(detail.getByRole('link', { name: 'Trainer review' })).toHaveCount(0);
+});
+
 test('CTs withhold stale results while a new period or track is loading', async ({ page }) => {
   await mountComparisonPanel(page, {
     single: true,
@@ -281,7 +306,7 @@ test('Expand opens Independent with Main first and every retained CT on its own 
   await expect(drawer).toHaveAttribute('data-compare-layout', 'independent');
   await expect(drawer).toHaveAttribute('data-panel-count', '4');
   await expect(drawer.getByRole('tab', { name: 'Independent' })).toHaveAttribute('aria-selected', 'true');
-  await expect(drawer.getByRole('tab', { name: /Merge/ })).toBeDisabled();
+  await expect(drawer.getByRole('tab', { name: 'Merge' })).toBeEnabled();
 
   const grid = drawer.getByTestId('expanded-independent-panel-grid');
   await expect(grid.locator(':scope > article')).toHaveCount(4);
@@ -343,6 +368,244 @@ test('Expanded Independent keeps Main as the only lane selector and hides CTs on
   await drawer.getByTestId('rating-lane-tab-month').click();
   await expect(drawer.locator('[data-testid^="expanded-compare-panel-ct"]')).toHaveCount(2);
 });
+
+test('Expanded Merge aligns Main and retained CTs on one absolute ELO chart in rank order', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1200, height: 900 } });
+  await page.getByTestId('rating-lane-tab-year').click();
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('compare-add-ticker').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await expect(drawer).toHaveAttribute('data-compare-layout', 'merge');
+  await expect(drawer.getByTestId('expanded-independent-panel-grid')).toHaveCount(0);
+
+  const chart = drawer.getByTestId('expanded-merge-chart');
+  await expect(chart).toHaveAttribute('data-series-order', 'main ct1 ct2 ct3');
+  await expect(chart).toHaveAttribute('data-lane', 'year');
+  await expect(chart).toHaveAttribute('data-y-axis', 'absolute-elo');
+  for (const id of ['main', 'ct1', 'ct2', 'ct3']) {
+    await expect(chart.getByTestId(`expanded-merge-legend-${id}`)).toBeVisible();
+    await expect(chart.getByTestId(`expanded-merge-series-${id}`)).toHaveCount(1);
+  }
+  await expect(chart.getByTestId('expanded-merge-series-main')).not.toHaveAttribute('stroke-dasharray');
+  await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveAttribute('stroke-dasharray', '9 4');
+  await expect(chart.getByTestId('expanded-merge-series-ct2')).toHaveAttribute('stroke-dasharray', '3 3');
+  await expect(chart.getByTestId('expanded-merge-series-ct3')).toHaveAttribute('stroke-dasharray', '11 3 2 3');
+  for (const id of ['main', 'ct1', 'ct2', 'ct3']) {
+    await expect(chart.getByTestId(`expanded-merge-series-hit-${id}`)).not.toHaveAttribute('stroke-dasharray');
+  }
+  await expect(chart.getByTestId('expanded-merge-point-ct1').first()).toHaveAttribute('data-original-occurred-at', '2026-08-12T12:00:00Z');
+  await expect(chart.locator('[data-testid^="expanded-merge-series-group-"]')).toHaveCount(4);
+  const paintOrder = await chart.locator('[data-testid^="expanded-merge-series-group-"]').evaluateAll((groups) =>
+    groups.map((group) => group.getAttribute('data-testid')),
+  );
+  expect(paintOrder).toEqual([
+    'expanded-merge-series-group-ct3',
+    'expanded-merge-series-group-ct2',
+    'expanded-merge-series-group-ct1',
+    'expanded-merge-series-group-main',
+  ]);
+
+  const ctPoint = chart.getByTestId('expanded-merge-point-ct1').first();
+  await ctPoint.focus();
+  await page.keyboard.press('Enter');
+  const detail = chart.getByTestId('expanded-merge-point-detail');
+  await expect(detail.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-a-1');
+  await expect(detail.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-a-1/train');
+
+  const mergeCt1 = drawer.getByTestId('expanded-merge-controls-ct1');
+  await mergeCt1.getByText('Choose from games').click();
+  const dailyGame = mergeCt1.locator('li').filter({ hasText: 'free_day' });
+  await expect(dailyGame.getByRole('button')).toHaveAccessibleName(
+    /Use 2026-08-01 12:00 UTC · free_day · win · 1500 → 1508 \(\+8\) for CT1/,
+  );
+  await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
+  await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
+
+  const svg = chart.getByTestId('expanded-merge-chart-svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('Expected merged chart bounds');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const tooltip = chart.getByTestId('expanded-merge-tooltip');
+  await expect(tooltip).toBeVisible();
+  for (const id of ['main', 'ct1', 'ct2', 'ct3']) {
+    await expect(tooltip.getByTestId(`expanded-merge-tooltip-${id}`)).toBeVisible();
+  }
+  const mainPathEndX = await chart.getByTestId('expanded-merge-series-main').getAttribute('d').then((d) => {
+    const match = d?.match(/L ([\d.]+) ([\d.]+)$/);
+    return match ? Number(match[1]) : Number.NaN;
+  });
+  expect(mainPathEndX).toBeLessThan(530);
+  await page.mouse.move(box.x + box.width * 0.95, box.y + box.height / 2);
+  await expect(tooltip.getByTestId('expanded-merge-tooltip-main')).toContainText('No verified rating');
+  if (process.env.R042_STACK4_CAPTURE_DIR) {
+    mkdirSync(process.env.R042_STACK4_CAPTURE_DIR, { recursive: true });
+    await drawer.screenshot({ path: join(process.env.R042_STACK4_CAPTURE_DIR, 'expanded-merge-1200.png') });
+  }
+});
+
+test('Expanded Merge keeps Main as the only lane selector and CT dates stay editable', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+
+  await expect(drawer.getByRole('tablist', { name: 'Expanded rating history window' })).toHaveCount(1);
+  const ct1 = drawer.getByTestId('expanded-merge-controls-ct1');
+  const date = ct1.getByRole('textbox', { name: 'UTC date for CT1' });
+  await date.fill('2026-08-01');
+  await expect(date).toHaveValue('2026-08-01');
+  await drawer.getByTestId('rating-lane-tab-month').click();
+  await expect(drawer).toHaveAttribute('data-compare-layout', 'merge');
+  await expect(drawer.getByTestId('expanded-merge-chart')).toHaveAttribute('data-lane', 'month');
+  await expect(ct1).toContainText('Aug 2026 · UTC');
+});
+
+test('Expanded layout toggles reuse already loaded Main and CT periods', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  const harness = page.getByTestId('comparison-harness');
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  const chart = drawer.getByTestId('expanded-merge-chart');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await expect(chart.getByTestId('expanded-merge-legend-main')).toHaveAttribute('data-coverage', 'complete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'complete');
+  const settledLoadCount = await harness.getAttribute('data-compare-load-count');
+
+  await drawer.getByRole('tab', { name: 'Independent' }).click();
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await expect(harness).toHaveAttribute('data-compare-load-count', settledLoadCount ?? '');
+});
+
+test('Expanded Merge keeps CT identity while verified history is loading and never paints stale data', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    compareLoadDelayMs: 1_000,
+    viewport: { width: 1000, height: 800 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  const chart = drawer.getByTestId('expanded-merge-chart');
+
+  await expect(chart).toHaveAttribute('data-series-order', 'main ct1');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'loading');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toContainText('verifying history');
+  await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(0);
+  await page.clock.fastForward(1_000);
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'complete');
+  await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(1);
+
+  await drawer.getByRole('button', { name: 'Previous period for CT1' }).click();
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'loading');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toContainText('verifying history');
+  await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(0);
+});
+
+test('Expanded Merge withholds non-empty CT history until its coverage is complete', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    compareCoverage: 'incomplete',
+    viewport: { width: 1000, height: 800 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  const chart = drawer.getByTestId('expanded-merge-chart');
+
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).toContainText('coverage incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-ct1')).not.toContainText('verifying history');
+  await expect(chart.getByTestId('expanded-merge-series-ct1')).toHaveCount(0);
+  await expect(chart.getByTestId('expanded-merge-point-ct1')).toHaveCount(0);
+
+  const svg = chart.getByTestId('expanded-merge-chart-svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('Expected merged chart bounds');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(chart.getByTestId('expanded-merge-tooltip-ct1')).toContainText('No verified rating');
+});
+
+test('Expanded Merge withholds bounded Main history until its coverage is complete', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    mainCompareCoverage: 'incomplete',
+    viewport: { width: 1000, height: 800 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  const chart = drawer.getByTestId('expanded-merge-chart');
+
+  await expect(chart.getByTestId('expanded-merge-legend-main')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-main')).toContainText('coverage incomplete');
+  await expect(chart.getByTestId('expanded-merge-legend-main')).not.toContainText('verifying history');
+  await expect(chart.getByTestId('expanded-merge-series-main')).toHaveCount(0);
+  await expect(chart.getByTestId('expanded-merge-point-main')).toHaveCount(0);
+
+  const svg = chart.getByTestId('expanded-merge-chart-svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('Expected merged chart bounds');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(chart.getByTestId('expanded-merge-tooltip-main')).toContainText('No verified rating');
+});
+
+test('Overall disables Merge and returning to Month restores the selected Expanded layout', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await drawer.getByTestId('rating-lane-tab-overall').click();
+  await expect(drawer).toHaveAttribute('data-compare-layout', 'independent');
+  await expect(drawer.getByRole('tab', { name: 'Merge' })).toBeDisabled();
+  await expect(drawer.getByTestId('expanded-compare-overall-explanation')).toBeVisible();
+  await drawer.getByTestId('rating-lane-tab-month').click();
+  await expect(drawer).toHaveAttribute('data-compare-layout', 'merge');
+});
+
+test('removing the last CT exits the visible Merge layout instead of leaving Main alone', async ({ page }) => {
+  await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await drawer.getByRole('button', { name: 'Remove CT1' }).click();
+
+  await expect(drawer).toHaveAttribute('data-compare-layout', 'independent');
+  await expect(drawer.getByRole('tab', { name: 'Merge' })).toBeDisabled();
+  await expect(drawer.getByTestId('expanded-merge-layout')).toHaveCount(0);
+  await expect(drawer.getByTestId('expanded-compare-panel-main')).toBeVisible();
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`Expanded Merge fits without page-width overflow at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await mountComparisonPanel(page, { single: true, accl: true, viewport });
+    await page.getByTestId('compare-mode-toggle').click();
+    await page.getByTestId('compare-add-ticker').click();
+    await page.getByTestId('rating-ticker-expand-mobile').click();
+    const drawer = page.getByTestId('expanded-independent-compare-drawer');
+    await drawer.getByRole('tab', { name: 'Merge' }).click();
+    await expect(drawer.getByTestId('expanded-merge-chart')).toBeVisible();
+    const overflow = await drawer.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
+    expect(overflow).toBe(false);
+    if (process.env.R042_STACK4_CAPTURE_DIR) {
+      mkdirSync(process.env.R042_STACK4_CAPTURE_DIR, { recursive: true });
+      await drawer.screenshot({ path: join(process.env.R042_STACK4_CAPTURE_DIR, `expanded-merge-${viewport.width}x${viewport.height}.png`) });
+    }
+  });
+}
 
 test('an open comparison expands as Independent when Main is already on Overall', async ({ page }) => {
   await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });

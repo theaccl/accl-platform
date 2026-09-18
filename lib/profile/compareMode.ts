@@ -324,6 +324,12 @@ export function isRealGameEvent(
   return point.eventType === 'backfill' && gameId.length > 0;
 }
 
+export function compareResultLabel(
+  point: Pick<RatingHistoryPoint, 'eventType' | 'result'>,
+): string {
+  return point.eventType === 'manual_admin_adjustment' ? 'Rating adjustment' : point.result;
+}
+
 /** Count actual games (excludes tournament_batch / bracket_settlement / etc.). */
 export function countRealGames(points: RatingHistoryPoint[]): number {
   return points.reduce((n, p) => (isRealGameEvent(p) ? n + 1 : n), 0);

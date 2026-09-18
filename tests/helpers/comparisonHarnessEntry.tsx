@@ -16,6 +16,7 @@ type HarnessOptions = {
   single?: boolean;
   accl?: boolean;
   compareCoverage?: 'complete' | 'incomplete';
+  mainCompareCoverage?: 'complete' | 'incomplete';
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
@@ -159,6 +160,7 @@ export function ComparisonHarness() {
   const initial = readOptions();
   const [alternateTrack, setAlternateTrack] = useState(false);
   const [lane, setLane] = useState<RatingLane>(DEFAULT_RATING_LANE);
+  const [compareLoadCount, setCompareLoadCount] = useState(0);
   const empty = Boolean(initial.empty);
   const crossing = Boolean(initial.crossing);
   const single = Boolean(initial.single);
@@ -174,8 +176,9 @@ export function ComparisonHarness() {
   const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : 'free_day';
   const selectedTrackLabel = accl ? 'ACCL Rating' : alternateTrack ? 'Blitz Overall' : 'Daily Overall';
   const comparePeriodLoader = useCallback(
-    (period: ComparePeriod) =>
-      harnessPeriodLoader(
+    (period: ComparePeriod, seriesId: 'main' | 'ct1' | 'ct2' | 'ct3') => {
+      setCompareLoadCount((count) => count + 1);
+      return harnessPeriodLoader(
         initial.compareAdjustment
           ? [point({
               id: 'preview-adjustment',
@@ -190,14 +193,16 @@ export function ComparisonHarness() {
             })]
           : historyByTrack[selectedTrackId] ?? [],
         period,
-        initial.compareCoverage,
+        seriesId === 'main' ? initial.mainCompareCoverage : initial.compareCoverage,
         initial.compareLoadDelayMs,
-      ),
+      );
+    },
     [
       historyByTrack,
       initial.compareAdjustment,
       initial.compareCoverage,
       initial.compareLoadDelayMs,
+      initial.mainCompareCoverage,
       selectedTrackId,
     ],
   );
@@ -206,6 +211,7 @@ export function ComparisonHarness() {
     <div
       data-testid="comparison-harness"
       data-fixture={empty ? 'empty' : crossing ? 'crossing' : 'default'}
+      data-compare-load-count={compareLoadCount}
     >
       {single ? (
         <>
