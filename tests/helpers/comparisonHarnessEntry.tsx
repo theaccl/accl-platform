@@ -16,6 +16,7 @@ type HarnessOptions = {
   single?: boolean;
   accl?: boolean;
   compareCoverage?: 'complete' | 'incomplete';
+  mainCompareCoverage?: 'complete' | 'incomplete';
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
@@ -174,7 +175,7 @@ export function ComparisonHarness() {
   const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : 'free_day';
   const selectedTrackLabel = accl ? 'ACCL Rating' : alternateTrack ? 'Blitz Overall' : 'Daily Overall';
   const comparePeriodLoader = useCallback(
-    (period: ComparePeriod) =>
+    (period: ComparePeriod, seriesId: 'main' | 'ct1' | 'ct2' | 'ct3') =>
       harnessPeriodLoader(
         initial.compareAdjustment
           ? [point({
@@ -190,7 +191,7 @@ export function ComparisonHarness() {
             })]
           : historyByTrack[selectedTrackId] ?? [],
         period,
-        initial.compareCoverage,
+        seriesId === 'main' ? initial.mainCompareCoverage : initial.compareCoverage,
         initial.compareLoadDelayMs,
       ),
     [
@@ -198,6 +199,7 @@ export function ComparisonHarness() {
       initial.compareAdjustment,
       initial.compareCoverage,
       initial.compareLoadDelayMs,
+      initial.mainCompareCoverage,
       selectedTrackId,
     ],
   );

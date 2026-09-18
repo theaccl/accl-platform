@@ -482,6 +482,30 @@ test('Expanded Merge withholds non-empty CT history until its coverage is comple
   await expect(chart.getByTestId('expanded-merge-tooltip-ct1')).toContainText('No verified rating');
 });
 
+test('Expanded Merge withholds bounded Main history until its coverage is complete', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    accl: true,
+    mainCompareCoverage: 'incomplete',
+    viewport: { width: 1000, height: 800 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  const chart = drawer.getByTestId('expanded-merge-chart');
+
+  await expect(chart.getByTestId('expanded-merge-legend-main')).toHaveAttribute('data-coverage', 'incomplete');
+  await expect(chart.getByTestId('expanded-merge-series-main')).toHaveCount(0);
+  await expect(chart.getByTestId('expanded-merge-point-main')).toHaveCount(0);
+
+  const svg = chart.getByTestId('expanded-merge-chart-svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('Expected merged chart bounds');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(chart.getByTestId('expanded-merge-tooltip-main')).toContainText('No verified rating');
+});
+
 test('Overall disables Merge and returning to Month restores the selected Expanded layout', async ({ page }) => {
   await mountComparisonPanel(page, { single: true, accl: true, viewport: { width: 1000, height: 800 } });
   await page.getByTestId('compare-mode-toggle').click();

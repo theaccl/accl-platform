@@ -67,6 +67,7 @@ export type MountComparisonOptions = {
   single?: boolean;
   accl?: boolean;
   compareCoverage?: 'complete' | 'incomplete';
+  mainCompareCoverage?: 'complete' | 'incomplete';
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
@@ -128,6 +129,7 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
     single: Boolean(opts.single),
     accl: Boolean(opts.accl),
     compareCoverage: opts.compareCoverage ?? 'complete',
+    mainCompareCoverage: opts.mainCompareCoverage ?? 'complete',
     compareAdjustment: Boolean(opts.compareAdjustment),
     compareLoadDelayMs: opts.compareLoadDelayMs ?? 0,
     switchableTrack: Boolean(opts.switchableTrack),

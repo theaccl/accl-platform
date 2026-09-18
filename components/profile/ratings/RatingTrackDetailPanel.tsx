@@ -32,10 +32,12 @@ import {
 } from '@/components/profile/ratings/CompactCompareMode';
 import {
   activeCompareTickers,
+  compareAnchorPeriod,
   createCompareSession,
   ctPeriod,
   reopenCompareSessionForUtcDay,
   setMainLane,
+  type CompareSeriesId,
   type CompareTickerSlot,
 } from '@/lib/profile/compareMode';
 import type { CompareTickerPeriodLoad } from '@/lib/profile/loadCompareTickerPeriod';
@@ -91,7 +93,7 @@ export function RatingTrackDetailPanel({
     createCompareSession(DEFAULT_RATING_LANE, Date.now()),
   );
   const [compareLoadEntries, setCompareLoadEntries] = useState<
-    Partial<Record<CompareTickerSlot, ComparePeriodLoadEntry>>
+    Partial<Record<CompareSeriesId, ComparePeriodLoadEntry>>
   >({});
   const [acclSupplementalOrder, setAcclSupplementalOrder] = useState<MajorFamilyTrackId[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -211,6 +213,23 @@ export function RatingTrackDetailPanel({
     }
     return current;
   }, [compareLoadEntries, compareSession, ratingTrackId]);
+  const mainCompareLoad = useMemo(() => {
+    if (lane === 'overall') return undefined;
+    const period = compareAnchorPeriod(
+      lane,
+      compareNowMs,
+      RATING_TICKER_DISPLAY_TIME_ZONE,
+    );
+    const entry = compareLoadEntries.main;
+    return period &&
+      entry &&
+      entry.loadKey === ratingTrackId &&
+      entry.lane === period.lane &&
+      entry.startMs === period.startMs &&
+      entry.endMs === period.endMs
+      ? entry.load
+      : undefined;
+  }, [compareLoadEntries.main, compareNowMs, lane, ratingTrackId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,24 +237,34 @@ export function RatingTrackDetailPanel({
     if (!comparePeriodLoader || !surfaceActive || lane === 'overall') {
       return () => { cancelled = true; };
     }
-    const active = activeCompareTickers(compareSession);
-    const activeSlots = active.map((ticker) => ticker.slot);
+    const requested: Array<{ seriesId: CompareSeriesId; period: NonNullable<ReturnType<typeof compareAnchorPeriod>> }> = [];
+    if (drawerOpen && drawerMode === 'independent') {
+      const mainPeriod = compareAnchorPeriod(
+        lane,
+        compareNowMs,
+        RATING_TICKER_DISPLAY_TIME_ZONE,
+      );
+      if (mainPeriod) requested.push({ seriesId: 'main', period: mainPeriod });
+    }
+    for (const ticker of activeCompareTickers(compareSession)) {
+      const period = ctPeriod(compareSession, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
+      if (period) requested.push({ seriesId: ticker.slot, period });
+    }
+    const requestedIds = requested.map(({ seriesId }) => seriesId);
     setCompareLoadEntries((previous) =>
       Object.fromEntries(
-        Object.entries(previous).filter(([slot, entry]) =>
-          activeSlots.includes(slot as CompareTickerSlot) && entry.loadKey === ratingTrackId,
+        Object.entries(previous).filter(([seriesId, entry]) =>
+          requestedIds.includes(seriesId as CompareSeriesId) && entry.loadKey === ratingTrackId,
         ),
       ),
     );
-    for (const ticker of active) {
-      const period = ctPeriod(compareSession, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
-      if (!period) continue;
-      void comparePeriodLoader(period, ticker.slot)
+    for (const { seriesId, period } of requested) {
+      void comparePeriodLoader(period, seriesId)
         .then((result) => {
           if (!cancelled) {
             setCompareLoadEntries((previous) => ({
               ...previous,
-              [ticker.slot]: {
+              [seriesId]: {
                 loadKey: ratingTrackId,
                 lane: period.lane,
                 startMs: period.startMs,
@@ -249,7 +278,7 @@ export function RatingTrackDetailPanel({
           if (!cancelled) {
             setCompareLoadEntries((previous) => ({
               ...previous,
-              [ticker.slot]: {
+              [seriesId]: {
                 loadKey: ratingTrackId,
                 lane: period.lane,
                 startMs: period.startMs,
@@ -270,7 +299,7 @@ export function RatingTrackDetailPanel({
         });
     }
     return () => { cancelled = true; };
-  }, [compareOpen, comparePeriodLoader, compareSession, drawerMode, drawerOpen, lane, ratingTrackId]);
+  }, [compareNowMs, compareOpen, comparePeriodLoader, compareSession, drawerMode, drawerOpen, lane, ratingTrackId]);
   const useAcclMultiLine = isAcclTicker && acclSupplementalOrder.length > 0;
   const acclDominanceOrder = useMemo(
     () => ['accl', ...acclSupplementalOrder],
@@ -461,12 +490,11 @@ export function RatingTrackDetailPanel({
           gamePickerPoints={compareGamePickerPoints}
           session={compareSession}
           loads={compareLoads}
+          mainLoad={mainCompareLoad}
           nowMs={compareNowMs}
           onSessionChange={setCompareSession}
           mainFamilyControls={mainFamilyControls}
           mainTicker={mainTicker}
-          mainPoints={lanePoints}
-          mainCarryInRating={carryInRating}
           mainColor={
             LANDSCAPE_TICKER_CATEGORIES.find((category) => category.trackId === ratingTrackId)?.color
               ?? '#38bdf8'

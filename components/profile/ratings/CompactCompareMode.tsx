@@ -13,6 +13,7 @@ import {
   setCtAnchor,
   stepCtPeriod,
   type ComparePeriod,
+  type CompareSeriesId,
   type CompareSessionState,
   type CompareTickerSlot,
 } from '@/lib/profile/compareMode';
@@ -23,7 +24,7 @@ import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 
 export type ComparePeriodLoader = (
   period: ComparePeriod,
-  slot: CompareTickerSlot,
+  seriesId: CompareSeriesId,
 ) => Promise<CompareTickerPeriodLoad>;
 
 type Props = {

@@ -52,12 +52,11 @@ type Props = {
   gamePickerPoints: RatingHistoryPoint[];
   session: CompareSessionState;
   loads: Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>>;
+  mainLoad?: CompareTickerPeriodLoad;
   nowMs: number;
   onSessionChange: (session: CompareSessionState) => void;
   mainFamilyControls: ReactNode;
   mainTicker: ReactNode;
-  mainPoints: RatingHistoryPoint[];
-  mainCarryInRating: number | null;
   mainColor: string;
 };
 
@@ -82,12 +81,11 @@ function ExpandedIndependentOverlay({
   gamePickerPoints,
   session,
   loads,
+  mainLoad,
   nowMs,
   onSessionChange,
   mainFamilyControls,
   mainTicker,
-  mainPoints,
-  mainCarryInRating,
   mainColor,
 }: Props) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -115,27 +113,36 @@ function ExpandedIndependentOverlay({
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
     [gamePickerPoints, nowMs],
   );
-  const mergeTargetWindow = useMemo(() => {
+  const mergeTargetPeriod = useMemo(() => {
     if (lane === 'overall') return null;
-    const period = compareAnchorPeriod(
+    return compareAnchorPeriod(
       lane as CompareBucketLane,
       nowMs,
       RATING_TICKER_DISPLAY_TIME_ZONE,
     );
-    return period ? comparePeriodLaneWindow(period) : null;
   }, [lane, nowMs]);
+  const mergeTargetWindow = useMemo(
+    () => mergeTargetPeriod ? comparePeriodLaneWindow(mergeTargetPeriod) : null,
+    [mergeTargetPeriod],
+  );
   const mergeSeries = useMemo(() => {
-    if (!mergeTargetWindow) return [] as ExpandedMergeSeries[];
+    if (!mergeTargetPeriod || !mergeTargetWindow) return [] as ExpandedMergeSeries[];
+    const mainOccupancy = mainLoad
+      ? periodOccupancy(mainLoad.points, mergeTargetPeriod, mainLoad.coverage)
+      : null;
+    const mainCoverage = mainOccupancy?.coverage ?? 'incomplete';
     const result: ExpandedMergeSeries[] = [{
       id: 'main',
       label: 'Main',
       rank: 1,
       color: mainColor || MERGE_COMPARE_STYLE.main.color,
-      points: mainPoints,
-      carryInRating: mainCarryInRating,
+      points: mainLoad && mainCoverage === 'complete'
+        ? pointsInPeriod(mainLoad.points, mergeTargetPeriod)
+        : [],
+      carryInRating: mainCoverage === 'complete' ? mainOccupancy?.carryInRating ?? null : null,
       sourceWindow: mergeTargetWindow,
       periodCaption: mergeTargetWindow.caption,
-      coverage: 'complete',
+      coverage: mainCoverage,
     }];
     for (const ticker of orderedCts) {
       const period = ctPeriod(session, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
@@ -158,7 +165,7 @@ function ExpandedIndependentOverlay({
       });
     }
     return result;
-  }, [loads, mainCarryInRating, mainColor, mainPoints, mergeTargetWindow, orderedCts, session]);
+  }, [loads, mainColor, mainLoad, mergeTargetPeriod, mergeTargetWindow, orderedCts, session]);
   const effectiveLayout = lane === 'overall' || orderedCts.length === 0
     ? 'independent'
     : session.layout;
