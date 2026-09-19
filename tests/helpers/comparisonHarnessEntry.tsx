@@ -11,6 +11,7 @@ import type { CompareTickerPeriodLoad } from '@/lib/profile/loadCompareTickerPer
 import { DEFAULT_RATING_LANE, type RatingLane } from '@/lib/ratingHistoryMetrics';
 
 type HarnessOptions = {
+  profileCreatedAt?: string | null;
   empty?: boolean;
   crossing?: boolean;
   single?: boolean;
@@ -222,6 +223,7 @@ export function ComparisonHarness() {
             </button>
           ) : null}
           <RatingTrackDetailPanel
+            profileCreatedAt={initial.profileCreatedAt}
             trackLabel={selectedTrackLabel}
             ratingTrackId={selectedTrackId}
             currentRating={accl ? 1505 : alternateTrack ? 1511 : initial.mainTrack

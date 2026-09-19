@@ -31,6 +31,7 @@ type Props = {
   p1: PublicP1Read | null | undefined;
   profileUserId: string;
   isSelf: boolean;
+  profileCreatedAt?: string | null;
 };
 
 function allTrackIdsForLoad(): string[] {
@@ -48,7 +49,7 @@ function defaultDetailTrack(card: TopLevelRatingCardModel): string {
   return card.id;
 }
 
-export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
+export function ProfileRatingsDashboard({ p1, profileUserId, isSelf, profileCreatedAt }: Props) {
   const cards = useMemo(() => topLevelRatingCardsFromP1(p1), [p1]);
   const [selectedTop, setSelectedTop] = useState<ProfileTopLevelTrackId>('accl');
   const [selectedDetail, setSelectedDetail] = useState<string>('accl');
@@ -224,6 +225,7 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf }: Props) {
       ) : null}
 
       <RatingTrackDetailPanel
+        profileCreatedAt={profileCreatedAt}
         trackLabel={detailLabel}
         ratingTrackId={selectedDetail}
         currentRating={detailRating}

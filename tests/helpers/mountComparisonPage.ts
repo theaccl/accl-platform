@@ -62,6 +62,7 @@ const LAYOUT_FALLBACK = `
 `;
 
 export type MountComparisonOptions = {
+  profileCreatedAt?: string | null;
   empty?: boolean;
   crossing?: boolean;
   single?: boolean;
@@ -125,6 +126,7 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
 </html>`);
 
   const harnessOptions = {
+    profileCreatedAt: opts.profileCreatedAt ?? null,
     empty: Boolean(opts.empty),
     crossing: Boolean(opts.crossing),
     single: Boolean(opts.single),

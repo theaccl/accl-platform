@@ -40,6 +40,7 @@ type Props = {
   onSessionChange: (session: CompareSessionState) => void;
   loads: Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>>;
   nowMs: number;
+  earliestMs: number | null;
   onNowMsChange: (nowMs: number) => void;
 };
 
@@ -56,6 +57,7 @@ export function CompactCompareMode({
   onSessionChange,
   loads,
   nowMs,
+  earliestMs,
   onNowMsChange,
 }: Props) {
   const [activePanel, setActivePanel] = useState(0);
@@ -93,7 +95,7 @@ export function CompactCompareMode({
   }
 
   function updateAnchor(slot: CompareTickerSlot, ms: number) {
-    apply(setCtAnchor(session, slot, ms, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE));
+    apply(setCtAnchor(session, slot, ms, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs));
   }
 
   function showPanel(index: number) {
@@ -108,7 +110,12 @@ export function CompactCompareMode({
   }
 
   const games = gamePickerPoints
-    .filter((point) => isRealGameEvent(point) && Date.parse(point.occurredAt) <= nowMs)
+    .filter((point) => {
+      const occurredMs = Date.parse(point.occurredAt);
+      return isRealGameEvent(point)
+        && occurredMs <= nowMs
+        && (earliestMs === null || occurredMs >= earliestMs);
+    })
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
   return (
@@ -188,6 +195,7 @@ export function CompactCompareMode({
                   mainTrackId={mainTrackId}
                   canLinkFinishedGames={canLinkFinishedGames}
                   nowMs={nowMs}
+                  earliestMs={earliestMs}
                   variant="compact"
                   panelRef={(node) => { panelRefs.current[ct.slot] = node; }}
                   onRemove={() => apply(removeCompareTicker(session, ct.slot))}
@@ -197,6 +205,7 @@ export function CompactCompareMode({
                     direction,
                     nowMs,
                     RATING_TICKER_DISPLAY_TIME_ZONE,
+                    earliestMs,
                   ))}
                   onSetAnchor={(anchorMs) => updateAnchor(ct.slot, anchorMs)}
                 />

@@ -67,6 +67,36 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
   await expect(ct.getByTestId('compare-game-selection-ct1')).toHaveCount(0);
 });
 
+test('phone Compare stops at the sign-up month in compact, Independent, and Merge', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    profileCreatedAt: '2026-08-12T12:00:00Z',
+    viewport: { width: 390, height: 844 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  const compact = page.getByTestId('compare-panel-ct1');
+  const compactMonth = compact.getByLabel('Month for CT1');
+  await expect(compactMonth).toHaveAttribute('min', '2026-08');
+  await compactMonth.fill('2026-08');
+  await expect(compact.getByRole('button', { name: 'Previous period for CT1' })).toBeDisabled();
+  await expect(compact).toContainText('History begins with this profile');
+
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  const independent = drawer.getByTestId('expanded-compare-panel-ct1');
+  await expect(independent.getByLabel('Month for CT1')).toHaveAttribute('min', '2026-08');
+  await expect(independent.getByRole('button', { name: 'Previous period for CT1' })).toBeDisabled();
+
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  const merge = drawer.getByTestId('expanded-merge-controls-ct1');
+  await expect(merge.getByLabel('Month for CT1')).toHaveAttribute('min', '2026-08');
+  await expect(merge.getByRole('button', { name: 'Previous period for CT1' })).toBeDisabled();
+
+  await drawer.getByTestId('rating-lane-tab-day').click();
+  await expect(merge.getByLabel('UTC date for CT1')).toHaveValue('2026-08-12');
+  await expect(merge.getByRole('button', { name: 'Previous period for CT1' })).toBeDisabled();
+});
+
 test('Compare game picker keeps Bullet, Blitz, Rapid, Daily, and Tournaments separate', async ({ page }) => {
   await mountComparisonPanel(page, {
     single: true,
@@ -196,7 +226,7 @@ test('Main keeps comparison periods on its lane after direct date changes', asyn
   await expect(ct.getByTestId('compare-date-controls-ct1')).toHaveAttribute('data-lane', 'month');
   await expect(ct.getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'month');
   await expect(ct).toContainText('Aug 2026 · UTC');
-  await expect(ct).toContainText('Main controls the Month view. Choose any month, including a month in a prior year.');
+  await expect(ct).toContainText('Main controls the Month view. Choose a month from this profile’s history, including prior years when available.');
 });
 
 test('complete carry-in, true empty, and incomplete coverage stay distinguishable', async ({ page }) => {

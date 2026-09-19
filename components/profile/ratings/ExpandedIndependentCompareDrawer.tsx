@@ -55,6 +55,7 @@ type Props = {
   loads: Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>>;
   mainLoad?: CompareTickerPeriodLoad;
   nowMs: number;
+  earliestMs: number | null;
   onSessionChange: (session: CompareSessionState) => void;
   mainFamilyControls: ReactNode;
   mainTicker: ReactNode;
@@ -78,6 +79,7 @@ function ExpandedIndependentOverlay({
   loads,
   mainLoad,
   nowMs,
+  earliestMs,
   onSessionChange,
   mainFamilyControls,
   mainTicker,
@@ -104,9 +106,14 @@ function ExpandedIndependentOverlay({
   }, [session]);
   const games = useMemo(
     () => gamePickerPoints
-      .filter((point) => isRealGameEvent(point) && Date.parse(point.occurredAt) <= nowMs)
+      .filter((point) => {
+        const occurredMs = Date.parse(point.occurredAt);
+        return isRealGameEvent(point)
+          && occurredMs <= nowMs
+          && (earliestMs === null || occurredMs >= earliestMs);
+      })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
-    [gamePickerPoints, nowMs],
+    [gamePickerPoints, nowMs, earliestMs],
   );
   const mergeTargetPeriod = useMemo(() => {
     if (lane === 'overall') return null;
@@ -311,6 +318,7 @@ function ExpandedIndependentOverlay({
                 mainTrackId={mainTrackId}
                 canLinkFinishedGames={canLinkFinishedGames}
                 nowMs={nowMs}
+                earliestMs={earliestMs}
                 variant="expanded"
                 onRemove={() => apply(removeCompareTicker(session, ticker.slot))}
                 onStep={(direction) => apply(stepCtPeriod(
@@ -319,6 +327,7 @@ function ExpandedIndependentOverlay({
                   direction,
                   nowMs,
                   RATING_TICKER_DISPLAY_TIME_ZONE,
+                  earliestMs,
                 ))}
                 onSetAnchor={(anchorMs) => apply(setCtAnchor(
                   session,
@@ -326,6 +335,7 @@ function ExpandedIndependentOverlay({
                   anchorMs,
                   nowMs,
                   RATING_TICKER_DISPLAY_TIME_ZONE,
+                  earliestMs,
                 ))}
               />
             );
@@ -378,9 +388,10 @@ function ExpandedIndependentOverlay({
                         ticker={ticker}
                         period={period}
                         nowMs={nowMs}
+                        earliestMs={earliestMs}
                         slotName={slotName}
-                        onStep={(direction) => apply(stepCtPeriod(session, ticker.slot, direction, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
-                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
+                        onStep={(direction) => apply(stepCtPeriod(session, ticker.slot, direction, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs))}
+                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs))}
                       />
                     </div>
                     <div className="mt-2">
@@ -388,7 +399,7 @@ function ExpandedIndependentOverlay({
                         games={games}
                         mainTrackId={mainTrackId}
                         canLinkFinishedGames={canLinkFinishedGames}
-                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
+                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs))}
                         slotName={slotName}
                         period={period}
                         loading={!loaded}

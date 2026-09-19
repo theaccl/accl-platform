@@ -296,6 +296,64 @@ test.describe('R042 compare mode — future periods prohibited', () => {
   });
 });
 
+test.describe('R042 compare mode — profile sign-up boundary', () => {
+  const joinedAt = Date.parse('2026-08-12T12:00:00Z');
+  const beforeSignup = {
+    day: Date.parse('2026-08-11T00:00:00Z'),
+    week: Date.parse('2026-08-03T00:00:00Z'),
+    month: Date.parse('2026-07-01T00:00:00Z'),
+    year: Date.parse('2025-01-01T00:00:00Z'),
+  } as const;
+
+  for (const lane of ['day', 'week', 'month', 'year'] as const) {
+    test(`${lane} allows the sign-up period but blocks the previous period`, () => {
+      let state = withCts(lane, [NOW]);
+      state = must(setCtAnchor(state, 'ct1', joinedAt, NOW, 'UTC', joinedAt));
+      const earliestPeriod = ctPeriod(state, 'ct1')!;
+      const previous = stepCtPeriod(state, 'ct1', 'prev', NOW, 'UTC', joinedAt);
+      expect(previous.ok).toBe(false);
+      if (!previous.ok) {
+        expect(previous.reason).toBe('before_profile_created');
+        expect(previous.state).toBe(state);
+      }
+      expect(ctPeriod(state, 'ct1')?.startMs).toBe(earliestPeriod.startMs);
+
+      const direct = setCtAnchor(state, 'ct1', beforeSignup[lane], NOW, 'UTC', joinedAt);
+      expect(direct.ok).toBe(false);
+      if (!direct.ok) expect(direct.reason).toBe('before_profile_created');
+
+      if (lane !== 'year') {
+        const later = stepCtPeriod(state, 'ct1', 'next', NOW, 'UTC', joinedAt);
+        expect(later.ok).toBe(true);
+        if (later.ok) expect(ctPeriod(later.state, 'ct1')?.startMs).toBeGreaterThan(earliestPeriod.startMs);
+      }
+    });
+  }
+
+  test('an unavailable join date preserves existing navigation', () => {
+    const state = withCts('month', [AUG_ANCHOR]);
+    expect(stepCtPeriod(state, 'ct1', 'prev', NOW, 'UTC', null).ok).toBe(true);
+  });
+
+  test('Month to Day or Week clamps an early month anchor to sign-up', () => {
+    const monthState = must(setCtAnchor(withCts('month', [NOW]), 'ct1', joinedAt, NOW, 'UTC', joinedAt));
+    const dayState = setMainLane(monthState, 'day', joinedAt, 'UTC');
+    expect(ctPeriod(dayState, 'ct1')?.startMs).toBe(Date.parse('2026-08-12T00:00:00Z'));
+    expect(dayState.cts[0].anchorMs).toBe(joinedAt);
+
+    const weekState = setMainLane(monthState, 'week', joinedAt, 'UTC');
+    expect(ctPeriod(weekState, 'ct1')?.startMs).toBe(Date.parse('2026-08-10T00:00:00Z'));
+    expect(weekState.cts[0].anchorMs).toBe(joinedAt);
+  });
+
+  test('Year to Month clamps January to the profile’s sign-up month', () => {
+    const yearState = must(setCtAnchor(withCts('year', [NOW]), 'ct1', joinedAt, NOW, 'UTC', joinedAt));
+    const monthState = setMainLane(yearState, 'month', joinedAt, 'UTC');
+    expect(ctPeriod(monthState, 'ct1')?.startMs).toBe(Date.parse('2026-08-01T00:00:00Z'));
+    expect(monthState.cts[0].anchorMs).toBe(joinedAt);
+  });
+});
+
 test.describe('R042 compare mode — truthful empty / carry-in periods', () => {
   const augustDay = compareAnchorPeriod('day', AUG_ANCHOR)!;
 

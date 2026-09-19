@@ -50,6 +50,7 @@ import {
 } from '@/components/profile/ratings/ratingTickerEmptyStates';
 
 type Props = {
+  profileCreatedAt?: string | null;
   trackLabel: string;
   ratingTrackId: string;
   currentRating: number | null;
@@ -72,6 +73,7 @@ type ComparePeriodLoadEntry = {
 };
 
 export function RatingTrackDetailPanel({
+  profileCreatedAt,
   trackLabel,
   ratingTrackId,
   currentRating,
@@ -91,6 +93,10 @@ export function RatingTrackDetailPanel({
   const [drawerMode, setDrawerMode] = useState<'landscape' | 'independent'>('landscape');
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareNowMs, setCompareNowMs] = useState(() => Date.now());
+  const parsedProfileCreatedAt = profileCreatedAt ? Date.parse(profileCreatedAt) : NaN;
+  const earliestCompareMs = Number.isFinite(parsedProfileCreatedAt)
+    ? Math.min(parsedProfileCreatedAt, compareNowMs)
+    : null;
   const [compareSession, setCompareSession] = useState(() =>
     createCompareSession(DEFAULT_RATING_LANE, Date.now()),
   );
@@ -106,8 +112,13 @@ export function RatingTrackDetailPanel({
   }, []);
   const changeLane = useCallback((nextLane: RatingLane) => {
     onLaneChange(nextLane);
-    setCompareSession((previous) => setMainLane(previous, nextLane));
-  }, [onLaneChange]);
+    setCompareSession((previous) => setMainLane(
+      previous,
+      nextLane,
+      earliestCompareMs,
+      RATING_TICKER_DISPLAY_TIME_ZONE,
+    ));
+  }, [onLaneChange, earliestCompareMs]);
   const isAcclTicker = ratingTrackId === 'accl';
 
   const majorBaseSeries = useMemo(
@@ -463,6 +474,7 @@ export function RatingTrackDetailPanel({
 
       {comparePeriodLoader ? (
         <CompactCompareMode
+          earliestMs={earliestCompareMs}
           lane={lane}
           isSelf={isSelf}
           canLinkFinishedGames={canLinkFinishedGames}
@@ -485,6 +497,7 @@ export function RatingTrackDetailPanel({
       <BadgeBoundaryPanel badge={badge} showUnavailable={showBadgeUnavailable || (isSelf && isExact)} />
       {drawerMode === 'independent' ? (
         <ExpandedIndependentCompareDrawer
+          earliestMs={earliestCompareMs}
           open={drawerOpen}
           onClose={closeDrawer}
           trackLabel={trackLabel}
