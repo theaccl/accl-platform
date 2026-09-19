@@ -70,7 +70,7 @@ test('fails closed without querying for a non-self viewer', async () => {
   expect(result.coverage.priorToStartResolved).toBe(false);
 });
 
-test('does not mislabel bounded legacy game fallback as complete ledger coverage', async () => {
+test('uses a fully sampled legacy game source as complete comparison coverage', async () => {
   const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
   const mock = mockClient([]);
   const legacyPoint = {
@@ -93,9 +93,30 @@ test('does not mislabel bounded legacy game fallback as complete ledger coverage
     period,
     { dashboardSource: 'games', dashboardPoints: [legacyPoint] },
   );
-  expect(result.status).toBe('incomplete');
+  expect(result.status).toBe('complete');
   expect(result.points).toEqual([legacyPoint]);
-  expect(result.coverage.priorToStartResolved).toBe(false);
+  expect(result.coverage).toEqual({
+    startMs: period.startMs,
+    endMs: period.endMs,
+    priorToStartResolved: true,
+  });
+  expect(mock.getFromCalls()).toBe(0);
+});
+
+test('uses a proved-empty dashboard source as complete comparison coverage', async () => {
+  const period = compareAnchorPeriod('month', Date.parse('2026-08-15T00:00:00Z'))!;
+  const mock = mockClient([]);
+  const result = await loadCompareTickerPeriod(
+    mock.client,
+    'u1',
+    true,
+    'free_day',
+    period,
+    { dashboardSource: 'none', dashboardPoints: [] },
+  );
+  expect(result.status).toBe('complete');
+  expect(result.points).toEqual([]);
+  expect(result.coverage.priorToStartResolved).toBe(true);
   expect(mock.getFromCalls()).toBe(0);
 });
 

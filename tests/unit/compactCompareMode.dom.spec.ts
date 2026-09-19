@@ -56,10 +56,15 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
   await dailyGame.getByRole('button', { name: /2026-08-01 12:00 UTC/ }).click();
+  await expect(ct.locator('details')).not.toHaveAttribute('open', '');
+  await expect(ct.getByTestId('compare-game-selection-ct1')).toContainText('Selected game period: Aug 2026 · UTC.');
   await expect(ct.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events · +8');
 
-  const date = ct.locator('input[type="date"]');
-  await expect(date).toHaveAttribute('max', '2026-09-08');
+  const month = ct.locator('input[type="month"]');
+  await expect(month).toHaveValue('2026-08');
+  await expect(month).toHaveAttribute('max', '2026-09');
+  await month.fill('2025-12');
+  await expect(ct.getByTestId('compare-game-selection-ct1')).toHaveCount(0);
 });
 
 test('phone CT strip uses one snap panel with accessible panel navigation', async ({ page }) => {
@@ -80,9 +85,9 @@ test('Compare Mode setup and CT controls are keyboard reachable', async ({ page 
   await toggle.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('compare-panel-ct1')).toBeVisible();
-  const date = page.getByTestId('compare-panel-ct1').locator('input[type="date"]');
-  await date.focus();
-  await expect(date).toBeFocused();
+  const month = page.getByTestId('compare-panel-ct1').locator('input[type="month"]');
+  await month.focus();
+  await expect(month).toBeFocused();
   await page.getByText('Choose from games').focus();
   await expect(page.getByText('Choose from games')).toBeFocused();
 });
@@ -132,11 +137,14 @@ test('Main keeps comparison periods on its lane after direct date changes', asyn
   await page.getByTestId('compare-mode-toggle').click();
 
   const ct = page.getByTestId('compare-panel-ct1');
-  await ct.locator('input[type="date"]').fill('2026-08-01');
+  const month = ct.locator('input[type="month"]');
+  await month.fill('2025-12');
+  await expect(ct).toContainText('Dec 2025 · UTC');
+  await month.fill('2026-08');
   await expect(ct.getByTestId('compare-date-controls-ct1')).toHaveAttribute('data-lane', 'month');
   await expect(ct.getByTestId('rating-ticker-chart')).toHaveAttribute('data-lane', 'month');
   await expect(ct).toContainText('Aug 2026 · UTC');
-  await expect(ct).toContainText('Main controls the Month view. Pick a date to compare its full month.');
+  await expect(ct).toContainText('Main controls the Month view. Choose any month, including a month in a prior year.');
 });
 
 test('complete carry-in, true empty, and incomplete coverage stay distinguishable', async ({ page }) => {
@@ -345,12 +353,12 @@ test('Expanded CT controls retain anchors, real links, and state after close', a
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
   await dailyGame.getByRole('button', { name: /2026-08-01 12:00 UTC/ }).click();
-  await expect(ct1.locator('input[type="date"]')).toHaveValue('2026-08-01');
+  await expect(ct1.locator('input[type="month"]')).toHaveValue('2026-08');
   await expect(ct1.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events');
 
   await drawer.getByTestId('expanded-independent-close').click();
   await expect(drawer).toHaveCount(0);
-  await expect(page.getByTestId('compare-panel-ct1').locator('input[type="date"]')).toHaveValue('2026-08-01');
+  await expect(page.getByTestId('compare-panel-ct1').locator('input[type="month"]')).toHaveValue('2026-08');
 });
 
 test('Expanded Independent keeps Main as the only lane selector and hides CTs on Overall', async ({ page }) => {
@@ -424,8 +432,10 @@ test('Expanded Merge aligns Main and retained CTs on one absolute ELO chart in r
   );
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
+  await mergeCt1.getByText('Choose from games').click();
 
   const svg = chart.getByTestId('expanded-merge-chart-svg');
+  await svg.scrollIntoViewIfNeeded();
   const box = await svg.boundingBox();
   if (!box) throw new Error('Expected merged chart bounds');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -456,9 +466,9 @@ test('Expanded Merge keeps Main as the only lane selector and CT dates stay edit
 
   await expect(drawer.getByRole('tablist', { name: 'Expanded rating history window' })).toHaveCount(1);
   const ct1 = drawer.getByTestId('expanded-merge-controls-ct1');
-  const date = ct1.getByRole('textbox', { name: 'UTC date for CT1' });
-  await date.fill('2026-08-01');
-  await expect(date).toHaveValue('2026-08-01');
+  const month = ct1.getByLabel('Month for CT1');
+  await month.fill('2026-08');
+  await expect(month).toHaveValue('2026-08');
   await drawer.getByTestId('rating-lane-tab-month').click();
   await expect(drawer).toHaveAttribute('data-compare-layout', 'merge');
   await expect(drawer.getByTestId('expanded-merge-chart')).toHaveAttribute('data-lane', 'month');

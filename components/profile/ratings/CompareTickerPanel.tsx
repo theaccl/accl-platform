@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import {
@@ -27,6 +28,22 @@ type Props = {
   onSetAnchor: (anchorMs: number) => void;
   panelRef?: (node: HTMLElement | null) => void;
   panelId?: string;
+};
+
+type ComparePeriodSelectorProps = Pick<
+  Props,
+  'ticker' | 'period' | 'nowMs' | 'onStep' | 'onSetAnchor'
+> & {
+  slotName: string;
+};
+
+type CompareGamePickerProps = Pick<
+  Props,
+  'games' | 'canLinkFinishedGames' | 'onSetAnchor'
+> & {
+  slotName: string;
+  period: ComparePeriod;
+  loading: boolean;
 };
 
 export function comparePeriodLaneWindow(period: ComparePeriod): RatingLaneWindow {
@@ -57,11 +74,179 @@ function utcInputValue(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+function monthInputValue(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 7);
+}
+
 function eventLabel(point: RatingHistoryPoint): string {
   const family = point.mode ?? point.ratingTrackId;
   const control = point.timeControl ? ` · ${point.timeControl}` : '';
   const opponent = point.opponentUsername ? ` · vs ${point.opponentUsername}` : '';
   return `${point.occurredAt.slice(0, 16).replace('T', ' ')} UTC · ${family}${control}${opponent}`;
+}
+
+export function ComparePeriodSelector({
+  ticker,
+  period,
+  nowMs,
+  slotName,
+  onStep,
+  onSetAnchor,
+}: ComparePeriodSelectorProps) {
+  const laneLabel = `${period.lane[0].toUpperCase()}${period.lane.slice(1)}`;
+  const isMonth = period.lane === 'month';
+  const isYear = period.lane === 'year';
+  const inputType = isMonth ? 'month' : isYear ? 'number' : 'date';
+  const inputLabel = isMonth
+    ? `Month for ${slotName}`
+    : isYear
+      ? `Year for ${slotName}`
+      : `UTC date for ${slotName}`;
+  const inputValue = isMonth
+    ? monthInputValue(ticker.anchorMs)
+    : isYear
+      ? String(new Date(ticker.anchorMs).getUTCFullYear())
+      : utcInputValue(ticker.anchorMs);
+  const inputMax = isMonth
+    ? monthInputValue(nowMs)
+    : isYear
+      ? String(new Date(nowMs).getUTCFullYear())
+      : utcInputValue(nowMs);
+
+  function selectPeriod(raw: string) {
+    if (!raw) return;
+    const anchorMs = isMonth
+      ? Date.parse(`${raw}-01T00:00:00Z`)
+      : isYear
+        ? Date.parse(`${raw}-01-01T00:00:00Z`)
+        : Date.parse(`${raw}T00:00:00Z`);
+    if (Number.isFinite(anchorMs)) onSetAnchor(anchorMs);
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-end gap-2">
+        <button
+          type="button"
+          onClick={() => onStep('prev')}
+          aria-label={`Previous period for ${slotName}`}
+          title={`Previous ${period.lane}`}
+          className="min-h-10 rounded-md border border-[#3d5168] text-base text-sky-200"
+        >
+          ←
+        </button>
+        <label className="min-w-0 text-xs font-medium text-gray-300">
+          {isMonth ? 'Choose month' : isYear ? 'Choose year' : 'Choose date'}
+          <input
+            type={inputType}
+            aria-label={inputLabel}
+            value={inputValue}
+            max={inputMax}
+            min={isYear ? '1900' : undefined}
+            onChange={(event) => selectPeriod(event.target.value)}
+            className="mt-1 block min-h-10 w-full min-w-0 rounded-md border border-[#3d5168] bg-[#0f1723] px-2 py-1.5 text-gray-100"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={period.endMs > nowMs}
+          onClick={() => onStep('next')}
+          aria-label={`Next period for ${slotName}`}
+          title={`Next ${period.lane}`}
+          className="min-h-10 rounded-md border border-[#3d5168] text-base text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          →
+        </button>
+      </div>
+      <p className="m-0 text-xs text-gray-400">
+        Main controls the {laneLabel} view. {isMonth
+          ? 'Choose any month, including a month in a prior year.'
+          : isYear
+            ? 'Choose the year to compare.'
+            : `Pick a date to compare its full ${period.lane}.`}
+      </p>
+    </>
+  );
+}
+
+export function CompareGamePicker({
+  games,
+  canLinkFinishedGames,
+  onSetAnchor,
+  slotName,
+  period,
+  loading,
+}: CompareGamePickerProps) {
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const [selectedGameAnchorMs, setSelectedGameAnchorMs] = useState<number | null>(null);
+  const selectedGameIsInPeriod = selectedGameAnchorMs !== null
+    && selectedGameAnchorMs >= period.startMs
+    && selectedGameAnchorMs < period.endMs;
+  const selectedGameWasShownRef = useRef(false);
+
+  useEffect(() => {
+    if (selectedGameIsInPeriod) {
+      selectedGameWasShownRef.current = true;
+    } else if (selectedGameAnchorMs !== null && selectedGameWasShownRef.current) {
+      selectedGameWasShownRef.current = false;
+      setSelectedGameAnchorMs(null);
+    }
+  }, [selectedGameAnchorMs, selectedGameIsInPeriod]);
+
+  function selectGame(game: RatingHistoryPoint) {
+    const anchorMs = Date.parse(game.occurredAt);
+    if (!Number.isFinite(anchorMs)) return;
+    setSelectedGameAnchorMs(anchorMs);
+    onSetAnchor(anchorMs);
+    detailsRef.current?.removeAttribute('open');
+  }
+
+  return (
+    <>
+      <details ref={detailsRef} className="rounded-lg border border-[#2f3f54] bg-[#0b121c]">
+        <summary
+          className="cursor-pointer px-3 py-2 text-sm font-semibold text-sky-300"
+          aria-label={`Choose from games for ${slotName}`}
+        >
+          Choose from games
+        </summary>
+        {games.length ? (
+          <ul className="m-0 max-h-56 space-y-2 overflow-y-auto border-t border-[#2f3f54] px-3 py-2 pl-7">
+            {games.map((game) => {
+              const links = compareEventLinks(game);
+              const selectionLabel = `${eventLabel(game)} · ${game.result} · ${game.ratingBefore} → ${game.ratingAfter} (${game.ratingDelta >= 0 ? '+' : ''}${game.ratingDelta})`;
+              return (
+                <li key={game.id} className="text-xs text-gray-300">
+                  <button
+                    type="button"
+                    onClick={() => selectGame(game)}
+                    aria-label={`Use ${selectionLabel} for ${slotName}`}
+                  >
+                    {selectionLabel}
+                  </button>
+                  {canLinkFinishedGames && links.openGameHref ? (
+                    <span className="ml-2 inline-flex gap-2">
+                      <Link href={links.openGameHref}>Open game</Link>
+                      <Link href={links.trainerReviewHref!}>Trainer review</Link>
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : <p className="m-0 border-t border-[#2f3f54] px-3 py-2 text-xs text-gray-500">No loaded finished games.</p>}
+      </details>
+      {selectedGameIsInPeriod ? (
+        <p
+          className="m-0 text-xs text-sky-200"
+          data-testid={`compare-game-selection-${slotName.toLowerCase()}`}
+          aria-live="polite"
+        >
+          Selected game period: {comparePeriodLaneWindow(period).caption}.{loading ? ' Loading verified history…' : ''}
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 export function CompareTickerPanel({
@@ -87,7 +272,6 @@ export function CompareTickerPanel({
     periodPoints[periodPoints.length - 1]?.ratingAfter ?? occupancy?.carryInRating ?? null;
   const slotName = ticker.slot.toUpperCase();
   const panelTitleId = `${variant}-compare-panel-title-${ticker.slot}`;
-  const laneLabel = `${period.lane[0].toUpperCase()}${period.lane.slice(1)}`;
 
   return (
     <article
@@ -127,79 +311,23 @@ export function CompareTickerPanel({
         data-testid={`compare-date-controls-${ticker.slot}`}
         data-lane={period.lane}
       >
-        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-end gap-2">
-          <button
-            type="button"
-            onClick={() => onStep('prev')}
-            aria-label={`Previous period for ${slotName}`}
-            title={`Previous ${period.lane}`}
-            className="min-h-10 rounded-md border border-[#3d5168] text-base text-sky-200"
-          >
-            ←
-          </button>
-          <label className="min-w-0 text-xs font-medium text-gray-300">
-            Choose date
-            <input
-              type="date"
-              aria-label={`UTC date for ${slotName}`}
-              value={utcInputValue(ticker.anchorMs)}
-              max={utcInputValue(nowMs)}
-              onChange={(event) => {
-                if (event.target.value) {
-                  onSetAnchor(Date.parse(`${event.target.value}T00:00:00Z`));
-                }
-              }}
-              className="mt-1 block min-h-10 w-full min-w-0 rounded-md border border-[#3d5168] bg-[#0f1723] px-2 py-1.5 text-gray-100"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={period.endMs > nowMs}
-            onClick={() => onStep('next')}
-            aria-label={`Next period for ${slotName}`}
-            title={`Next ${period.lane}`}
-            className="min-h-10 rounded-md border border-[#3d5168] text-base text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            →
-          </button>
-        </div>
-        <p className="m-0 text-xs text-gray-400">
-          Main controls the {laneLabel} view. Pick a date to compare its full {period.lane}.
-        </p>
+        <ComparePeriodSelector
+          ticker={ticker}
+          period={period}
+          nowMs={nowMs}
+          slotName={slotName}
+          onStep={onStep}
+          onSetAnchor={onSetAnchor}
+        />
       </div>
-      <details className="rounded-lg border border-[#2f3f54] bg-[#0b121c]">
-        <summary
-          className="cursor-pointer px-3 py-2 text-sm font-semibold text-sky-300"
-          aria-label={`Choose from games for ${slotName}`}
-        >
-          Choose from games
-        </summary>
-        {games.length ? (
-          <ul className="m-0 max-h-56 space-y-2 overflow-y-auto border-t border-[#2f3f54] px-3 py-2 pl-7">
-            {games.map((game) => {
-              const links = compareEventLinks(game);
-              const selectionLabel = `${eventLabel(game)} · ${game.result} · ${game.ratingBefore} → ${game.ratingAfter} (${game.ratingDelta >= 0 ? '+' : ''}${game.ratingDelta})`;
-              return (
-                <li key={game.id} className="text-xs text-gray-300">
-                  <button
-                    type="button"
-                    onClick={() => onSetAnchor(Date.parse(game.occurredAt))}
-                    aria-label={`Use ${selectionLabel} for ${slotName}`}
-                  >
-                    {selectionLabel}
-                  </button>
-                  {canLinkFinishedGames && links.openGameHref ? (
-                    <span className="ml-2 inline-flex gap-2">
-                      <Link href={links.openGameHref}>Open game</Link>
-                      <Link href={links.trainerReviewHref!}>Trainer review</Link>
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        ) : <p className="m-0 border-t border-[#2f3f54] px-3 py-2 text-xs text-gray-500">No loaded finished games.</p>}
-      </details>
+      <CompareGamePicker
+        games={games}
+        canLinkFinishedGames={canLinkFinishedGames}
+        onSetAnchor={onSetAnchor}
+        slotName={slotName}
+        period={period}
+        loading={!loaded}
+      />
       {!loaded ? <p className="text-xs text-gray-400">Loading verified history…</p> : null}
       {loaded?.message ? <p className="text-xs text-amber-300">{loaded.message}</p> : null}
       {loaded ? (
