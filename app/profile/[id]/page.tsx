@@ -295,6 +295,7 @@ export default function PublicProfilePage() {
             p1={p1Read}
             profileUserId={payload.profile.id}
             isSelf={isSelf}
+            profileCreatedAt={payload.profile.created_at}
           />
           <ProfileStats
             gamesPlayed={gamesPlayed}

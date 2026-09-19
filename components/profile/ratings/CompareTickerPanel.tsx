@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import {
+  compareAnchorPeriod,
   compareEventLinks,
   compareResultLabel,
   periodOccupancy,
@@ -29,6 +30,7 @@ type Props = {
   mainTrackId: string;
   canLinkFinishedGames: boolean;
   nowMs: number;
+  earliestMs: number | null;
   variant: 'compact' | 'expanded';
   onRemove: () => void;
   onStep: (direction: 'prev' | 'next') => void;
@@ -39,7 +41,7 @@ type Props = {
 
 type ComparePeriodSelectorProps = Pick<
   Props,
-  'ticker' | 'period' | 'nowMs' | 'onStep' | 'onSetAnchor'
+  'ticker' | 'period' | 'nowMs' | 'earliestMs' | 'onStep' | 'onSetAnchor'
 > & {
   slotName: string;
 };
@@ -98,6 +100,7 @@ export function ComparePeriodSelector({
   ticker,
   period,
   nowMs,
+  earliestMs,
   slotName,
   onStep,
   onSetAnchor,
@@ -121,6 +124,16 @@ export function ComparePeriodSelector({
     : isYear
       ? String(new Date(nowMs).getUTCFullYear())
       : utcInputValue(nowMs);
+  const earliestPeriodStartMs = earliestMs === null
+    ? null
+    : compareAnchorPeriod(period.lane, earliestMs, period.timeZone)?.startMs ?? null;
+  const inputMin = earliestPeriodStartMs === null
+    ? (isYear ? '1900' : undefined)
+    : isMonth
+      ? monthInputValue(earliestPeriodStartMs)
+      : isYear
+        ? String(new Date(earliestPeriodStartMs).getUTCFullYear())
+        : utcInputValue(earliestPeriodStartMs);
 
   function selectPeriod(raw: string) {
     if (!raw) return;
@@ -137,10 +150,11 @@ export function ComparePeriodSelector({
       <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-end gap-2">
         <button
           type="button"
+          disabled={earliestPeriodStartMs !== null && period.startMs <= earliestPeriodStartMs}
           onClick={() => onStep('prev')}
           aria-label={`Previous period for ${slotName}`}
           title={`Previous ${period.lane}`}
-          className="min-h-10 rounded-md border border-[#3d5168] text-base text-sky-200"
+          className="min-h-10 rounded-md border border-[#3d5168] text-base text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
           ←
         </button>
@@ -151,7 +165,7 @@ export function ComparePeriodSelector({
             aria-label={inputLabel}
             value={inputValue}
             max={inputMax}
-            min={isYear ? '1900' : undefined}
+            min={inputMin}
             onChange={(event) => selectPeriod(event.target.value)}
             className="mt-1 block min-h-10 w-full min-w-0 rounded-md border border-[#3d5168] bg-[#0f1723] px-2 py-1.5 text-gray-100"
           />
@@ -167,9 +181,12 @@ export function ComparePeriodSelector({
           →
         </button>
       </div>
+      {earliestMs !== null ? (
+        <p className="m-0 text-xs text-gray-400">History begins with this profile&apos;s sign-up period.</p>
+      ) : null}
       <p className="m-0 text-xs text-gray-400">
         Main controls the {laneLabel} view. {isMonth
-          ? 'Choose any month, including a month in a prior year.'
+          ? 'Choose a month from this profile’s history, including prior years when available.'
           : isYear
             ? 'Choose the year to compare.'
             : `Pick a date to compare its full ${period.lane}.`}
@@ -310,6 +327,7 @@ export function CompareTickerPanel({
   mainTrackId,
   canLinkFinishedGames,
   nowMs,
+  earliestMs,
   variant,
   onRemove,
   onStep,
@@ -369,6 +387,7 @@ export function CompareTickerPanel({
           ticker={ticker}
           period={period}
           nowMs={nowMs}
+          earliestMs={earliestMs}
           slotName={slotName}
           onStep={onStep}
           onSetAnchor={onSetAnchor}

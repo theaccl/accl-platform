@@ -170,6 +170,7 @@ export type CompareOpFailure =
   | 'slots_full'
   | 'unknown_slot'
   | 'future_period'
+  | 'before_profile_created'
   | 'invalid_anchor'
   | 'invalid_rank'
   | 'rank_gap'
@@ -502,13 +503,32 @@ export function createCompareSession(
 }
 
 /**
- * Set Main's lane. CTs keep their anchors; periods re-derive automatically
- * (invariant 8). Switching to Overall disables Compare Mode but retains anchors
- * so returning to a bounded lane restores the CTs, re-bucketed.
+ * Set Main's lane. CTs keep their anchors unless re-bucketing would place one
+ * before the profile's sign-up period; that anchor moves to sign-up instead.
+ * Switching to Overall disables Compare Mode but retains anchors for return.
  */
-export function setMainLane(state: CompareSessionState, lane: CompareLane): CompareSessionState {
+export function setMainLane(
+  state: CompareSessionState,
+  lane: CompareLane,
+  earliestMs: number | null = null,
+  timeZone: string = RATING_TICKER_DISPLAY_TIME_ZONE,
+): CompareSessionState {
   if (lane === state.lane) return state;
-  return { ...state, lane };
+  if (lane === 'overall' || earliestMs === null || !Number.isFinite(earliestMs)) {
+    return { ...state, lane };
+  }
+  const earliestPeriod = compareAnchorPeriod(lane, earliestMs, timeZone);
+  if (!earliestPeriod) return { ...state, lane };
+  return {
+    ...state,
+    lane,
+    cts: state.cts.map((ct) => {
+      const selectedPeriod = compareAnchorPeriod(lane, ct.anchorMs, timeZone);
+      return selectedPeriod && selectedPeriod.startMs < earliestPeriod.startMs
+        ? { ...ct, anchorMs: earliestMs }
+        : ct;
+    }),
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -594,6 +614,7 @@ export function setCtAnchor(
   anchorMs: number,
   nowMs: number,
   timeZone: string = RATING_TICKER_DISPLAY_TIME_ZONE,
+  earliestMs: number | null = null,
 ): CompareOpResult {
   if (!isCompareEnabled(state.lane)) return fail(state, 'compare_disabled_overall');
   if (!state.cts.some((c) => c.slot === slot)) return fail(state, 'unknown_slot');
@@ -602,6 +623,10 @@ export function setCtAnchor(
   if (anchorMs > nowMs) return fail(state, 'future_period');
   const period = compareAnchorPeriod(state.lane as CompareBucketLane, anchorMs, timeZone);
   if (!period) return fail(state, 'invalid_anchor');
+  if (earliestMs !== null && Number.isFinite(earliestMs)) {
+    const earliestPeriod = compareAnchorPeriod(state.lane as CompareBucketLane, earliestMs, timeZone);
+    if (earliestPeriod && period.startMs < earliestPeriod.startMs) return fail(state, 'before_profile_created');
+  }
   if (!isPeriodSelectable(period, nowMs)) return fail(state, 'future_period');
   return ok(updateCt(state, slot, (c) => ({ ...c, anchorMs: period.anchorMs })));
 }
@@ -616,6 +641,7 @@ export function stepCtPeriod(
   direction: 'prev' | 'next',
   nowMs: number,
   timeZone: string = RATING_TICKER_DISPLAY_TIME_ZONE,
+  earliestMs: number | null = null,
 ): CompareOpResult {
   if (!isCompareEnabled(state.lane)) return fail(state, 'compare_disabled_overall');
   const ct = state.cts.find((c) => c.slot === slot);
@@ -627,6 +653,10 @@ export function stepCtPeriod(
   const probe = direction === 'next' ? current.endMs : current.startMs - 1;
   const neighbour = compareAnchorPeriod(state.lane as CompareBucketLane, probe, timeZone);
   if (!neighbour) return fail(state, 'invalid_anchor');
+  if (earliestMs !== null && Number.isFinite(earliestMs)) {
+    const earliestPeriod = compareAnchorPeriod(state.lane as CompareBucketLane, earliestMs, timeZone);
+    if (earliestPeriod && neighbour.startMs < earliestPeriod.startMs) return fail(state, 'before_profile_created');
+  }
   if (!isPeriodSelectable(neighbour, nowMs)) return fail(state, 'future_period');
   return ok(updateCt(state, slot, (c) => ({ ...c, anchorMs: neighbour.anchorMs })));
 }
