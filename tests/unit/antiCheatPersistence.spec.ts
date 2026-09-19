@@ -3,10 +3,15 @@ import { expect, test } from '@playwright/test';
 import {
   InMemoryAntiCheatEventStore,
   InMemoryAntiCheatEnforcementStore,
+  InMemoryModeratorQueueSink,
   computeSuspicionTrend,
   deriveSignalCountsFromEvents,
   getIntegrityControlledTruth,
   recommendationForSuspicion,
+  type AntiCheatEnforcementStore,
+  type AntiCheatEventStore,
+  type AntiCheatSignalCounts,
+  type ModeratorQueueSink,
   type SuspicionResult,
 } from '../../lib/analysis';
 
@@ -152,6 +157,264 @@ test.describe('Anti-cheat persistence + moderator scaffolding', () => {
     expect(withHistory.audit.antiCheat.suspicion.score).toBeGreaterThan(
       baseline.audit.antiCheat.suspicion.score
     );
+  });
+
+  test('mandatory persisted signals remain active when no overlap object exists', async () => {
+    const store = new InMemoryAntiCheatEventStore();
+    const uid = '00000000-0000-0000-0000-000000000778';
+    await store.appendEvent({
+      user_id: uid,
+      game_id: null,
+      fen: START_FEN,
+      overlap_verdict: 'CONFIRMED_OVERLAP',
+      suspicion_score: 52,
+      suspicion_tier: 'SOFT_LOCK_RECOMMENDED',
+      reasons_json: [{ signal: 'repeated_probing', occurrences: 6 }],
+      protected_context: true,
+      engine_called: false,
+      request_context: {},
+    });
+
+    const result = await getIntegrityControlledTruth({
+      fen: START_FEN,
+      mode: 'coach',
+      context: { type: 'completed-game-review' },
+      userId: uid,
+      gameId: '00000000-0000-0000-0000-000000000456',
+      antiCheatStore: store,
+      enforcementStore: new InMemoryAntiCheatEnforcementStore(),
+      moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      requireDurableControls: true,
+      truthProvider: stubTruthProvider(),
+      nowEpochMs: Date.now(),
+    });
+
+    expect(result.audit.antiCheat.matchSummary.repeatedProbeCount).toBe(6);
+    expect(result.audit.antiCheat.suspicion.score).toBeGreaterThan(0);
+  });
+
+  test('mandatory history rejects negative, non-finite, oversized, and contradictory counts', async () => {
+    const invalid: AntiCheatSignalCounts[] = [
+      { blockedRequest: -1 },
+      { blockedRequest: Number.POSITIVE_INFINITY },
+      { blockedRequest: 10_001 },
+      { probingBurst: 4, blockedRequest: 0.5 },
+      { blockedLiveProtectedRequest: 2, protectedOverlapAttempt: 1, blockedRequest: 2 },
+      { blockedLiveProtectedRequest: 2, protectedOverlapAttempt: 2, blockedRequest: 1 },
+    ];
+
+    for (const counts of invalid) {
+      const store: AntiCheatEventStore = {
+        appendEvent: async () => {},
+        countRecentSignalsByUser: async () => counts,
+        listRecentEventsByUser: async () => [],
+        computeRollingSuspicionTrendByUser: async () => ({
+          latest: 0,
+          oldest: 0,
+          average: 0,
+          delta: 0,
+        }),
+      };
+      await expect(
+        getIntegrityControlledTruth({
+          fen: START_FEN,
+          mode: 'coach',
+          context: { type: 'completed-game-review' },
+          userId: '00000000-0000-0000-0000-000000000779',
+          antiCheatStore: store,
+          enforcementStore: new InMemoryAntiCheatEnforcementStore(),
+          moderatorQueueSink: new InMemoryModeratorQueueSink(),
+          requireDurableControls: true,
+          truthProvider: stubTruthProvider(),
+        })
+      ).rejects.toMatchObject({
+        name: 'IntegrityControlUnavailableError',
+        code: 'ANTI_CHEAT_EVIDENCE_INVALID',
+      });
+    }
+  });
+
+  test('a clean request cannot downgrade an existing restrictive enforcement baseline', async () => {
+    const uid = '00000000-0000-0000-0000-000000000780';
+    const enforcementStore = new InMemoryAntiCheatEnforcementStore();
+    await enforcementStore.upsertFromRecommendation({
+      userId: uid,
+      suspicionTier: 'SOFT_LOCK_RECOMMENDED',
+      recommendation: recommendationForSuspicion({
+        score: 50,
+        tier: 'SOFT_LOCK_RECOMMENDED',
+        reasons: [],
+        decayFactor: 1,
+      }),
+      reasonJson: [],
+    });
+    let engineCalled = false;
+
+    const result = await getIntegrityControlledTruth({
+      fen: START_FEN,
+      mode: 'coach',
+      context: { type: 'completed-game-review' },
+      userId: uid,
+      antiCheatStore: new InMemoryAntiCheatEventStore(),
+      enforcementStore,
+      moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      requireDurableControls: true,
+      truthProvider: async () => {
+        engineCalled = true;
+        return stubTruthProvider()();
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(engineCalled).toBe(false);
+    expect(result.audit.enforcement.baselineState).toBe('TRAINER_LOCKED');
+  });
+
+  test('mandatory controls fail closed for history, enforcement, audit, and queue failures', async () => {
+    const validHistory: AntiCheatEventStore = {
+      appendEvent: async () => {},
+      countRecentSignalsByUser: async () => ({}),
+      listRecentEventsByUser: async () => [],
+      computeRollingSuspicionTrendByUser: async () => ({ latest: 0, oldest: 0, average: 0, delta: 0 }),
+    };
+    const validEnforcement = new InMemoryAntiCheatEnforcementStore();
+    const base = {
+      fen: START_FEN,
+      mode: 'coach' as const,
+      context: { type: 'completed-game-review' as const },
+      userId: '00000000-0000-0000-0000-000000000781',
+      requireDurableControls: true,
+      truthProvider: stubTruthProvider(),
+    };
+
+    const historyFailure: AntiCheatEventStore = {
+      ...validHistory,
+      countRecentSignalsByUser: async () => {
+        throw new Error('history unavailable');
+      },
+    };
+    await expect(
+      getIntegrityControlledTruth({
+        ...base,
+        antiCheatStore: historyFailure,
+        enforcementStore: validEnforcement,
+        moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      })
+    ).rejects.toMatchObject({ code: 'ANTI_CHEAT_HISTORY_UNAVAILABLE' });
+
+    const enforcementFailure: AntiCheatEnforcementStore = {
+      upsertFromRecommendation: async () => {},
+      getEffectiveState: async () => {
+        throw new Error('enforcement unavailable');
+      },
+      getStateDetails: async () => null,
+      applyModeratorOverride: async () => {
+        throw new Error('unused');
+      },
+    };
+    await expect(
+      getIntegrityControlledTruth({
+        ...base,
+        antiCheatStore: validHistory,
+        enforcementStore: enforcementFailure,
+        moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      })
+    ).rejects.toMatchObject({ code: 'ENFORCEMENT_UNAVAILABLE' });
+
+    const contradictoryEnforcement: AntiCheatEnforcementStore = {
+      upsertFromRecommendation: async () => {},
+      getEffectiveState: async () => ({
+        userId: base.userId,
+        state: 'NO_RESTRICTION',
+        source: 'baseline',
+        baselineState: 'TRAINER_LOCKED',
+        overrideAction: null,
+        overrideReason: null,
+        overrideExpiresAt: null,
+        sourceSuspicionTier: 'SOFT_LOCK_RECOMMENDED',
+        sourceRecommendedAction: 'RESTRICT_ANALYSIS_ACCESS',
+        createdAt: null,
+        updatedAt: null,
+      }),
+      getStateDetails: async () => null,
+      applyModeratorOverride: async () => {
+        throw new Error('unused');
+      },
+    };
+    await expect(
+      getIntegrityControlledTruth({
+        ...base,
+        antiCheatStore: validHistory,
+        enforcementStore: contradictoryEnforcement,
+        moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      })
+    ).rejects.toMatchObject({ code: 'ANTI_CHEAT_EVIDENCE_INVALID' });
+
+    const enforcementWriteFailure: AntiCheatEnforcementStore = {
+      upsertFromRecommendation: async () => {
+        throw new Error('enforcement write unavailable');
+      },
+      getEffectiveState: async () => ({
+        userId: base.userId,
+        state: 'NO_RESTRICTION',
+        source: 'baseline',
+        baselineState: 'NO_RESTRICTION',
+        overrideAction: null,
+        overrideReason: null,
+        overrideExpiresAt: null,
+        sourceSuspicionTier: null,
+        sourceRecommendedAction: null,
+        createdAt: null,
+        updatedAt: null,
+      }),
+      getStateDetails: async () => null,
+      applyModeratorOverride: async () => {
+        throw new Error('unused');
+      },
+    };
+    await expect(
+      getIntegrityControlledTruth({
+        ...base,
+        antiCheatStore: validHistory,
+        enforcementStore: enforcementWriteFailure,
+        moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      })
+    ).rejects.toMatchObject({ code: 'ENFORCEMENT_UNAVAILABLE' });
+
+    const auditFailure: AntiCheatEventStore = {
+      ...validHistory,
+      appendEvent: async () => {
+        throw new Error('audit unavailable');
+      },
+    };
+    await expect(
+      getIntegrityControlledTruth({
+        ...base,
+        antiCheatStore: auditFailure,
+        enforcementStore: validEnforcement,
+        moderatorQueueSink: new InMemoryModeratorQueueSink(),
+      })
+    ).rejects.toMatchObject({ code: 'ANTI_CHEAT_AUDIT_UNAVAILABLE' });
+
+    const queueFailure: ModeratorQueueSink = {
+      enqueue: async () => {
+        throw new Error('queue unavailable');
+      },
+    };
+    await expect(
+      getIntegrityControlledTruth({
+        ...base,
+        overlap: {
+          activeGameFen: START_FEN,
+          activeGameMoves: Array.from({ length: 14 }, (_, index) => `m${index}`),
+          requestMoves: Array.from({ length: 14 }, (_, index) => `m${index}`),
+          repeatedProbeCount: 6,
+        },
+        antiCheatStore: validHistory,
+        enforcementStore: new InMemoryAntiCheatEnforcementStore(),
+        moderatorQueueSink: queueFailure,
+      })
+    ).rejects.toMatchObject({ code: 'MODERATOR_QUEUE_UNAVAILABLE' });
   });
 
   test('recommendation mapping is deterministic by suspicion tier', async () => {
