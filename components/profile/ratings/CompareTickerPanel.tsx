@@ -11,6 +11,12 @@ import {
   type ComparePeriod,
   type CompareTicker,
 } from '@/lib/profile/compareMode';
+import {
+  COMPARE_GAME_CATEGORIES,
+  compareGameCategory,
+  mainCompareGameCategory,
+  type CompareGameCategoryId,
+} from '@/lib/profile/compareGamePicker';
 import type { CompareTickerPeriodLoad } from '@/lib/profile/loadCompareTickerPeriod';
 import type { RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
@@ -20,6 +26,7 @@ type Props = {
   period: ComparePeriod;
   loaded: CompareTickerPeriodLoad | undefined;
   games: RatingHistoryPoint[];
+  mainTrackId: string;
   canLinkFinishedGames: boolean;
   nowMs: number;
   variant: 'compact' | 'expanded';
@@ -39,7 +46,7 @@ type ComparePeriodSelectorProps = Pick<
 
 type CompareGamePickerProps = Pick<
   Props,
-  'games' | 'canLinkFinishedGames' | 'onSetAnchor'
+  'games' | 'mainTrackId' | 'canLinkFinishedGames' | 'onSetAnchor'
 > & {
   slotName: string;
   period: ComparePeriod;
@@ -79,7 +86,9 @@ function monthInputValue(ms: number): string {
 }
 
 function eventLabel(point: RatingHistoryPoint): string {
-  const family = point.mode ?? point.ratingTrackId;
+  const family = COMPARE_GAME_CATEGORIES.find((category) => category.id === compareGameCategory(point))?.label
+    ?? point.mode
+    ?? point.ratingTrackId;
   const control = point.timeControl ? ` · ${point.timeControl}` : '';
   const opponent = point.opponentUsername ? ` · vs ${point.opponentUsername}` : '';
   return `${point.occurredAt.slice(0, 16).replace('T', ' ')} UTC · ${family}${control}${opponent}`;
@@ -171,6 +180,7 @@ export function ComparePeriodSelector({
 
 export function CompareGamePicker({
   games,
+  mainTrackId,
   canLinkFinishedGames,
   onSetAnchor,
   slotName,
@@ -179,6 +189,23 @@ export function CompareGamePicker({
 }: CompareGamePickerProps) {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const [selectedGameAnchorMs, setSelectedGameAnchorMs] = useState<number | null>(null);
+  const [categoryChoice, setCategoryChoice] = useState<{
+    mainTrackId: string;
+    category: CompareGameCategoryId;
+  } | null>(null);
+  const counts = new Map<CompareGameCategoryId, number>();
+  for (const game of games) {
+    const category = compareGameCategory(game);
+    if (category) counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  const defaultCategory = mainCompareGameCategory(mainTrackId)
+    ?? COMPARE_GAME_CATEGORIES.find((category) => counts.has(category.id))?.id
+    ?? 'free_bullet';
+  const selectedCategory = categoryChoice?.mainTrackId === mainTrackId
+    ? categoryChoice.category
+    : defaultCategory;
+  const visibleGames = games.filter((game) => compareGameCategory(game) === selectedCategory);
+  const selectedCategoryLabel = COMPARE_GAME_CATEGORIES.find((category) => category.id === selectedCategory)!.label;
   const selectedGameIsInPeriod = selectedGameAnchorMs !== null
     && selectedGameAnchorMs >= period.startMs
     && selectedGameAnchorMs < period.endMs;
@@ -210,9 +237,35 @@ export function CompareGamePicker({
         >
           Choose from games
         </summary>
-        {games.length ? (
+        <div
+          role="group"
+          aria-label={`Game type for ${slotName}`}
+          className="flex max-w-full flex-wrap gap-1.5 border-t border-[#2f3f54] px-3 py-2"
+        >
+          {COMPARE_GAME_CATEGORIES.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              aria-pressed={selectedCategory === category.id}
+              onClick={() => {
+                setCategoryChoice({ mainTrackId, category: category.id });
+                setSelectedGameAnchorMs(null);
+                selectedGameWasShownRef.current = false;
+              }}
+              className={`min-h-9 shrink-0 rounded-md border px-2 text-xs ${selectedCategory === category.id
+                ? 'border-sky-400 bg-sky-950 text-white'
+                : 'border-[#3d5168] text-gray-300'}`}
+            >
+              {category.label} ({counts.get(category.id) ?? 0})
+            </button>
+          ))}
+        </div>
+        <p className="m-0 px-3 pb-2 text-xs text-gray-400">
+          A game sets the comparison period. The rating track stays on Main.
+        </p>
+        {visibleGames.length ? (
           <ul className="m-0 max-h-56 space-y-2 overflow-y-auto border-t border-[#2f3f54] px-3 py-2 pl-7">
-            {games.map((game) => {
+            {visibleGames.map((game) => {
               const links = compareEventLinks(game);
               const selectionLabel = `${eventLabel(game)} · ${game.result} · ${game.ratingBefore} → ${game.ratingAfter} (${game.ratingDelta >= 0 ? '+' : ''}${game.ratingDelta})`;
               return (
@@ -234,7 +287,7 @@ export function CompareGamePicker({
               );
             })}
           </ul>
-        ) : <p className="m-0 border-t border-[#2f3f54] px-3 py-2 text-xs text-gray-500">No loaded finished games.</p>}
+        ) : <p className="m-0 border-t border-[#2f3f54] px-3 py-2 text-xs text-gray-500">No loaded {selectedCategoryLabel} games.</p>}
       </details>
       {selectedGameIsInPeriod ? (
         <p
@@ -254,6 +307,7 @@ export function CompareTickerPanel({
   period,
   loaded,
   games,
+  mainTrackId,
   canLinkFinishedGames,
   nowMs,
   variant,
@@ -322,6 +376,7 @@ export function CompareTickerPanel({
       </div>
       <CompareGamePicker
         games={games}
+        mainTrackId={mainTrackId}
         canLinkFinishedGames={canLinkFinishedGames}
         onSetAnchor={onSetAnchor}
         slotName={slotName}

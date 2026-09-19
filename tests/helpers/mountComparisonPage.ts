@@ -71,6 +71,7 @@ export type MountComparisonOptions = {
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
+  mainTrack?: 'free_bullet' | 'free_blitz' | 'free_rapid' | 'free_day' | 'tournament';
   viewport?: { width: number; height: number };
 };
 
@@ -133,6 +134,7 @@ export async function mountComparisonPanel(page: Page, opts: MountComparisonOpti
     compareAdjustment: Boolean(opts.compareAdjustment),
     compareLoadDelayMs: opts.compareLoadDelayMs ?? 0,
     switchableTrack: Boolean(opts.switchableTrack),
+    mainTrack: opts.mainTrack ?? null,
   };
   await page.addScriptTag({
     content: `window.__HARNESS_OPTIONS = ${JSON.stringify(harnessOptions)};`,

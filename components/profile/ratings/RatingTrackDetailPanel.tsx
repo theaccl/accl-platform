@@ -12,6 +12,7 @@ import {
 } from '@/lib/ratingHistoryMetrics';
 import { ratingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
 import { RATING_TICKER_DISPLAY_TIME_ZONE } from '@/lib/profile/ratingTickerTimeZone';
+import { compareGamePickerPoints } from '@/lib/profile/compareGamePicker';
 import { LANDSCAPE_TICKER_CATEGORIES } from '@/lib/profile/landscapeTickerCategories';
 import {
   MAJOR_FAMILY_COMPARISON_SERIES,
@@ -188,13 +189,8 @@ export function RatingTrackDetailPanel({
       ),
     [lane, majorBaseSeries, nowMs],
   );
-  const compareGamePickerPoints = useMemo(() => {
-    const unique = new Map<string, RatingHistoryPoint>();
-    for (const point of Object.values(historyByTrack).flat()) {
-      const key = point.gameId ? `game:${point.gameId}` : `event:${point.id}`;
-      if (!unique.has(key)) unique.set(key, point);
-    }
-    return [...unique.values()];
+  const gamePickerPoints = useMemo(() => {
+    return compareGamePickerPoints(historyByTrack);
   }, [historyByTrack]);
   const compareLoads = useMemo(() => {
     const current: Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>> = {};
@@ -470,7 +466,8 @@ export function RatingTrackDetailPanel({
           lane={lane}
           isSelf={isSelf}
           canLinkFinishedGames={canLinkFinishedGames}
-          gamePickerPoints={compareGamePickerPoints}
+          gamePickerPoints={gamePickerPoints}
+          mainTrackId={ratingTrackId}
           open={compareOpen}
           onOpenChange={setCompareOpen}
           session={compareSession}
@@ -494,7 +491,8 @@ export function RatingTrackDetailPanel({
           lane={lane}
           onLaneChange={changeLane}
           canLinkFinishedGames={canLinkFinishedGames}
-          gamePickerPoints={compareGamePickerPoints}
+          gamePickerPoints={gamePickerPoints}
+          mainTrackId={ratingTrackId}
           session={compareSession}
           loads={compareLoads}
           mainLoad={mainCompareLoad}

@@ -20,6 +20,7 @@ type HarnessOptions = {
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
+  mainTrack?: 'free_bullet' | 'free_blitz' | 'free_rapid' | 'free_day' | 'tournament' | null;
 };
 
 function readOptions(): HarnessOptions {
@@ -173,8 +174,8 @@ export function ComparisonHarness() {
         : buildHistory(),
     [crossing, empty],
   );
-  const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : 'free_day';
-  const selectedTrackLabel = accl ? 'ACCL Rating' : alternateTrack ? 'Blitz Overall' : 'Daily Overall';
+  const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : initial.mainTrack ?? 'free_day';
+  const selectedTrackLabel = accl ? 'ACCL Rating' : `${selectedTrackId.replace('free_', '')} Overall`;
   const comparePeriodLoader = useCallback(
     (period: ComparePeriod, seriesId: 'main' | 'ct1' | 'ct2' | 'ct3') => {
       setCompareLoadCount((count) => count + 1);
@@ -223,7 +224,9 @@ export function ComparisonHarness() {
           <RatingTrackDetailPanel
             trackLabel={selectedTrackLabel}
             ratingTrackId={selectedTrackId}
-            currentRating={accl ? 1505 : alternateTrack ? 1511 : 1508}
+            currentRating={accl ? 1505 : alternateTrack ? 1511 : initial.mainTrack
+              ? historyByTrack[selectedTrackId]?.at(-1)?.ratingAfter ?? 1508
+              : 1508}
             points={historyByTrack[selectedTrackId] ?? []}
             badge={null}
             isSelf

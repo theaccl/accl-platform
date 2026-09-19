@@ -32,6 +32,7 @@ type Props = {
   isSelf: boolean;
   canLinkFinishedGames: boolean;
   gamePickerPoints: RatingHistoryPoint[];
+  mainTrackId: string;
   children: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -47,6 +48,7 @@ export function CompactCompareMode({
   isSelf,
   canLinkFinishedGames,
   gamePickerPoints,
+  mainTrackId,
   children,
   open,
   onOpenChange,
@@ -183,6 +185,7 @@ export function CompactCompareMode({
                   period={period}
                   loaded={loads[ct.slot]}
                   games={games}
+                  mainTrackId={mainTrackId}
                   canLinkFinishedGames={canLinkFinishedGames}
                   nowMs={nowMs}
                   variant="compact"

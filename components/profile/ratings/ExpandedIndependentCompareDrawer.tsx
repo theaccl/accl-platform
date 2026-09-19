@@ -50,6 +50,7 @@ type Props = {
   onLaneChange: (lane: RatingLane) => void;
   canLinkFinishedGames: boolean;
   gamePickerPoints: RatingHistoryPoint[];
+  mainTrackId: string;
   session: CompareSessionState;
   loads: Partial<Record<CompareTickerSlot, CompareTickerPeriodLoad>>;
   mainLoad?: CompareTickerPeriodLoad;
@@ -72,6 +73,7 @@ function ExpandedIndependentOverlay({
   onLaneChange,
   canLinkFinishedGames,
   gamePickerPoints,
+  mainTrackId,
   session,
   loads,
   mainLoad,
@@ -306,6 +308,7 @@ function ExpandedIndependentOverlay({
                 period={period}
                 loaded={loads[ticker.slot]}
                 games={games}
+                mainTrackId={mainTrackId}
                 canLinkFinishedGames={canLinkFinishedGames}
                 nowMs={nowMs}
                 variant="expanded"
@@ -383,6 +386,7 @@ function ExpandedIndependentOverlay({
                     <div className="mt-2">
                       <CompareGamePicker
                         games={games}
+                        mainTrackId={mainTrackId}
                         canLinkFinishedGames={canLinkFinishedGames}
                         onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE))}
                         slotName={slotName}

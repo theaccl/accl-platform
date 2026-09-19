@@ -49,9 +49,9 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
 
   const ct = page.getByTestId('compare-panel-ct1');
   await ct.getByText('Choose from games').click();
-  const dailyGame = ct.locator('li').filter({ hasText: 'free_day' });
+  const dailyGame = ct.locator('li').filter({ hasText: 'Daily' });
   await expect(dailyGame.getByRole('button')).toHaveAccessibleName(
-    /Use 2026-08-01 12:00 UTC · free_day · win · 1500 → 1508 \(\+8\) for CT1/,
+    /Use 2026-08-01 12:00 UTC · Daily · win · 1500 → 1508 \(\+8\) for CT1/,
   );
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
@@ -65,6 +65,58 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
   await expect(month).toHaveAttribute('max', '2026-09');
   await month.fill('2025-12');
   await expect(ct.getByTestId('compare-game-selection-ct1')).toHaveCount(0);
+});
+
+test('Compare game picker keeps Bullet, Blitz, Rapid, Daily, and Tournaments separate', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    mainTrack: 'free_bullet',
+    switchableTrack: true,
+    viewport: { width: 390, height: 844 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  const ct = page.getByTestId('compare-panel-ct1');
+  await ct.getByText('Choose from games').click();
+
+  const categories = ct.getByRole('group', { name: 'Game type for CT1' });
+  await expect(categories.getByRole('button')).toHaveCount(5);
+  await categories.scrollIntoViewIfNeeded();
+  for (const name of ['Bullet (1)', 'Blitz (2)', 'Rapid (1)', 'Daily (1)', 'Tournaments (2)']) {
+    await expect(categories.getByRole('button', { name })).toBeInViewport();
+  }
+  await expect(categories.getByRole('button', { name: 'Bullet (1)' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(ct.locator('li')).toHaveCount(1);
+  await expect(ct.locator('li')).toContainText('Bullet');
+
+  await categories.getByRole('button', { name: 'Blitz (2)' }).click();
+  await expect(ct.locator('li')).toHaveCount(2);
+  await expect(ct.locator('li').first()).toContainText('Blitz');
+  await categories.getByRole('button', { name: 'Rapid (1)' }).click();
+  await expect(ct.locator('li')).toHaveCount(1);
+  await expect(ct.locator('li')).toContainText('Rapid');
+  await categories.getByRole('button', { name: 'Daily (1)' }).click();
+  await expect(ct.locator('li')).toContainText('Daily');
+  await categories.getByRole('button', { name: 'Tournaments (2)' }).click();
+  await expect(ct.locator('li')).toHaveCount(2);
+
+  await categories.getByRole('button', { name: 'Rapid (1)' }).click();
+  await ct.locator('li').getByRole('button', { name: /2026-08-13 12:00 UTC/ }).click();
+  await expect(ct.locator('input[type="month"]')).toHaveValue('2026-08');
+  await expect(ct.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events · +13');
+  await expect(ct).toContainText('The rating track stays on Main.');
+
+  await ct.getByText('Choose from games').click();
+  await categories.getByRole('button', { name: 'Bullet (1)' }).click();
+  await expect(ct.getByTestId('compare-game-selection-ct1')).toHaveCount(0);
+  await ct.getByText('Choose from games').click();
+
+  await page.getByTestId('switch-rating-track').click();
+  await ct.getByText('Choose from games').click();
+  await expect(categories.getByRole('button', { name: 'Blitz (2)' })).toHaveAttribute('aria-pressed', 'true');
+  const daily = categories.getByRole('button', { name: 'Daily (1)' });
+  await daily.focus();
+  await page.keyboard.press('Enter');
+  await expect(daily).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('phone CT strip uses one snap panel with accessible panel navigation', async ({ page }) => {
@@ -349,7 +401,8 @@ test('Expanded CT controls retain anchors, real links, and state after close', a
   const drawer = page.getByTestId('expanded-independent-compare-drawer');
   const ct1 = drawer.getByTestId('expanded-compare-panel-ct1');
   await ct1.getByText('Choose from games').click();
-  const dailyGame = ct1.locator('li').filter({ hasText: 'free_day' });
+  await ct1.getByRole('group', { name: 'Game type for CT1' }).getByRole('button', { name: 'Daily (1)' }).click();
+  const dailyGame = ct1.locator('li').filter({ hasText: 'Daily' });
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
   await dailyGame.getByRole('button', { name: /2026-08-01 12:00 UTC/ }).click();
@@ -426,9 +479,10 @@ test('Expanded Merge aligns Main and retained CTs on one absolute ELO chart in r
 
   const mergeCt1 = drawer.getByTestId('expanded-merge-controls-ct1');
   await mergeCt1.getByText('Choose from games').click();
-  const dailyGame = mergeCt1.locator('li').filter({ hasText: 'free_day' });
+  await mergeCt1.getByRole('group', { name: 'Game type for CT1' }).getByRole('button', { name: 'Daily (1)' }).click();
+  const dailyGame = mergeCt1.locator('li').filter({ hasText: 'Daily' });
   await expect(dailyGame.getByRole('button')).toHaveAccessibleName(
-    /Use 2026-08-01 12:00 UTC · free_day · win · 1500 → 1508 \(\+8\) for CT1/,
+    /Use 2026-08-01 12:00 UTC · Daily · win · 1500 → 1508 \(\+8\) for CT1/,
   );
   await expect(dailyGame.getByRole('link', { name: 'Open game' })).toHaveAttribute('href', '/finished/g-d-1');
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
