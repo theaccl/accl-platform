@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { performSignIn, performSignUp } from '@/app/login/authHandlers';
 import {
@@ -37,6 +37,7 @@ import {
   storePendingVerificationEmail,
 } from '@/lib/loginVerificationStorage';
 import { supabase } from '@/lib/supabaseClient';
+import { consumeMagicLinkSession, magicLinkSessionFromHash } from '@/lib/auth/magicLinkSession';
 import NavigationBar from '@/components/NavigationBar';
 
 function loginShell(children: React.ReactNode) {
@@ -77,6 +78,7 @@ function LoginPageInner() {
   const [verificationPendingEmail, setVerificationPendingEmail] = useState('');
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
+  const magicLinkAttempted = useRef(false);
   const mode = resolveAuthFormMode(searchParams.get('intent'));
   const signupMode = mode === 'signup';
   const nextParam = searchParams.get('next');
@@ -201,6 +203,23 @@ function LoginPageInner() {
       setMessage(SESSION_EXPIRED_LOGIN_MESSAGE);
     }
   }, [confirmationResult, sessionExpired]);
+
+  useEffect(() => {
+    if (confirmationComplete || magicLinkAttempted.current) return;
+    const hash = window.location.hash;
+    if (!magicLinkSessionFromHash(hash)) return;
+    magicLinkAttempted.current = true;
+    void consumeMagicLinkSession(
+      hash,
+      () => window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search),
+      (tokens) => supabase.auth.setSession(tokens),
+    ).then((result) => {
+      if (result === 'failed') {
+        setMessage('This sign-in link could not be used. Request a new one.');
+        setChecked(true);
+      }
+    });
+  }, [confirmationComplete]);
 
   useEffect(() => {
     let cancelled = false;
