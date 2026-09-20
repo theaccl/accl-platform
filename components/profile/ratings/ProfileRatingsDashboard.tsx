@@ -61,12 +61,12 @@ export function ProfileRatingsDashboard({ p1, profileUserId, isSelf, profileCrea
     gamesCountByTrack: {},
   });
   const comparePeriodLoader = useCallback(
-    (period: Parameters<typeof loadCompareTickerPeriod>[4]) =>
-      loadCompareTickerPeriod(supabase, profileUserId, isSelf, selectedDetail, period, {
-        dashboardSource: dashboard.historySourceByTrack[selectedDetail] ?? 'unknown',
-        dashboardPoints: dashboard.historyByTrack[selectedDetail] ?? [],
+    (period: Parameters<typeof loadCompareTickerPeriod>[4], _seriesId: string, sourceTrackId: string) =>
+      loadCompareTickerPeriod(supabase, profileUserId, isSelf, sourceTrackId, period, {
+        dashboardSource: dashboard.historySourceByTrack[sourceTrackId] ?? 'unknown',
+        dashboardPoints: dashboard.historyByTrack[sourceTrackId] ?? [],
       }),
-    [dashboard.historyByTrack, dashboard.historySourceByTrack, isSelf, profileUserId, selectedDetail],
+    [dashboard.historyByTrack, dashboard.historySourceByTrack, isSelf, profileUserId],
   );
   const [successfulPerformance, setSuccessfulPerformance] =
     useState<OwnSuccessfulPerformanceResult | null>(null);

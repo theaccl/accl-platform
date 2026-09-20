@@ -57,7 +57,7 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
   await expect(dailyGame.getByRole('link', { name: 'Trainer review' })).toHaveAttribute('href', '/finished/g-d-1/train');
   await dailyGame.getByRole('button', { name: /2026-08-01 12:00 UTC/ }).click();
   await expect(ct.locator('details')).not.toHaveAttribute('open', '');
-  await expect(ct.getByTestId('compare-game-selection-ct1')).toContainText('Selected game period: Aug 2026 · UTC.');
+  await expect(ct.getByTestId('compare-game-selection-ct1')).toContainText('Showing all Daily games in Aug 2026 · UTC.');
   await expect(ct.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events · +8');
 
   const month = ct.locator('input[type="month"]');
@@ -66,6 +66,85 @@ test('CT date and real-game picker re-anchor the shared Main lane with real link
   await month.fill('2025-12');
   await expect(ct.getByTestId('compare-game-selection-ct1')).toHaveCount(0);
 });
+
+test('selecting a Blitz game shows every Blitz rating event in its month', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    mainTrack: 'free_blitz',
+    viewport: { width: 430, height: 800 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  const ct = page.getByTestId('compare-panel-ct1');
+  await ct.getByText('Choose from games').click();
+  await ct.locator('li').getByRole('button', { name: /2026-08-11 12:00 UTC/ }).click();
+
+  await expect(ct.getByLabel('Month for CT1')).toHaveValue('2026-08');
+  await expect(ct.getByTestId('compare-summary-ct1')).toContainText('2 games · 2 rating events');
+  await expect(ct.getByTestId('rating-ticker-point')).toHaveCount(2);
+});
+
+test('a game chosen from another mode loads that mode’s full period across Compare layouts', async ({ page }) => {
+  await mountComparisonPanel(page, {
+    single: true,
+    mainTrack: 'free_bullet',
+    viewport: { width: 390, height: 844 },
+  });
+  await page.getByTestId('compare-mode-toggle').click();
+  const ct = page.getByTestId('compare-panel-ct1');
+  await ct.getByText('Choose from games').click();
+  await ct.getByRole('button', { name: 'Blitz (2)' }).click();
+  await expect(ct).toContainText('Blitz history');
+  await ct.getByLabel('Month for CT1').fill('2026-08');
+  await expect(ct.getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(2);
+  await expect(ct.getByTestId('compare-period-games-ct1').locator('li[data-selected="true"]')).toHaveCount(0);
+  await ct.locator('li').getByRole('button', { name: /2026-08-11 12:00 UTC/ }).click();
+
+  await expect(ct).toContainText('Blitz history');
+  await expect(ct.getByLabel('Month for CT1')).toHaveValue('2026-08');
+  await expect(ct.getByTestId('compare-summary-ct1')).toContainText('2 games · 2 rating events');
+  await expect(ct.getByTestId('rating-ticker-point')).toHaveCount(2);
+  const monthGames = ct.getByTestId('compare-period-games-ct1');
+  await expect(monthGames.locator('li')).toHaveCount(2);
+  await expect(monthGames.locator('li[data-selected="true"]')).toContainText('2026-08-11');
+  await expect(ct.getByTestId('rating-ticker-point-detail')).toContainText('1510 → 1522');
+
+  await page.getByTestId('rating-lane-tab-week').click();
+  await expect(ct.getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(1);
+  await page.getByTestId('rating-lane-tab-day').click();
+  await expect(ct.getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(1);
+  await page.getByTestId('rating-lane-tab-year').click();
+  await expect(ct.getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(2);
+  await page.getByTestId('rating-lane-tab-month').click();
+  await expect(ct.getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(2);
+
+  await page.getByTestId('rating-ticker-expand-mobile').click();
+  const drawer = page.getByTestId('expanded-independent-compare-drawer');
+  await expect(drawer.getByTestId('expanded-compare-panel-ct1').getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(2);
+  await drawer.getByRole('tab', { name: 'Merge' }).click();
+  await expect(drawer.getByTestId('expanded-merge-controls-ct1').getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(2);
+});
+
+for (const main of ['ACCL', 'exact Bullet'] as const) {
+  test(`${main} Main does not present a broad category as selected until it is loaded`, async ({ page }) => {
+    await mountComparisonPanel(page, {
+      single: true,
+      ...(main === 'ACCL' ? { accl: true } : { mainTrack: 'free_bullet_1_0' as const }),
+      viewport: { width: 390, height: 844 },
+    });
+    await page.getByTestId('compare-mode-toggle').click();
+    const ct = page.getByTestId('compare-panel-ct1');
+    await ct.getByLabel('Month for CT1').fill('2026-08');
+    await ct.getByText('Choose from games').click();
+    const bullet = ct.getByRole('button', { name: 'Bullet (1)' });
+    await expect(bullet).toHaveAttribute('aria-pressed', 'false');
+    await expect(ct).toContainText('Main rating track history');
+    await bullet.click();
+    await expect(bullet).toHaveAttribute('aria-pressed', 'true');
+    await expect(ct).toContainText('Bullet history');
+    await expect(ct.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events · +13');
+    await expect(ct.getByTestId('compare-period-games-ct1').locator('li')).toHaveCount(1);
+  });
+}
 
 test('phone Compare stops at the sign-up month in compact, Independent, and Merge', async ({ page }) => {
   await mountComparisonPanel(page, {
@@ -114,7 +193,7 @@ test('Compare game picker keeps Bullet, Blitz, Rapid, Daily, and Tournaments sep
   for (const name of ['Bullet (1)', 'Blitz (2)', 'Rapid (1)', 'Daily (1)', 'Tournaments (2)']) {
     await expect(categories.getByRole('button', { name })).toBeInViewport();
   }
-  await expect(categories.getByRole('button', { name: 'Bullet (1)' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(categories.getByRole('button', { name: 'Bullet (1)' })).toHaveAttribute('aria-pressed', 'false');
   await expect(ct.locator('li')).toHaveCount(1);
   await expect(ct.locator('li')).toContainText('Bullet');
 
@@ -132,8 +211,8 @@ test('Compare game picker keeps Bullet, Blitz, Rapid, Daily, and Tournaments sep
   await categories.getByRole('button', { name: 'Rapid (1)' }).click();
   await ct.locator('li').getByRole('button', { name: /2026-08-13 12:00 UTC/ }).click();
   await expect(ct.locator('input[type="month"]')).toHaveValue('2026-08');
-  await expect(ct.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events · +13');
-  await expect(ct).toContainText('The rating track stays on Main.');
+  await expect(ct.getByTestId('compare-summary-ct1')).toContainText('1 games · 1 rating events · +11');
+  await expect(ct).toContainText('Rapid history');
 
   await ct.getByText('Choose from games').click();
   await categories.getByRole('button', { name: 'Bullet (1)' }).click();
@@ -142,7 +221,7 @@ test('Compare game picker keeps Bullet, Blitz, Rapid, Daily, and Tournaments sep
 
   await page.getByTestId('switch-rating-track').click();
   await ct.getByText('Choose from games').click();
-  await expect(categories.getByRole('button', { name: 'Blitz (2)' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(categories.getByRole('button', { name: 'Bullet (1)' })).toHaveAttribute('aria-pressed', 'true');
   const daily = categories.getByRole('button', { name: 'Daily (1)' });
   await daily.focus();
   await page.keyboard.press('Enter');
@@ -510,7 +589,7 @@ test('Expanded Merge aligns Main and retained CTs on one absolute ELO chart in r
   const mergeCt1 = drawer.getByTestId('expanded-merge-controls-ct1');
   await mergeCt1.getByText('Choose from games').click();
   await mergeCt1.getByRole('group', { name: 'Game type for CT1' }).getByRole('button', { name: 'Daily (1)' }).click();
-  const dailyGame = mergeCt1.locator('li').filter({ hasText: 'Daily' });
+  const dailyGame = mergeCt1.locator('details li').filter({ hasText: 'Daily' });
   await expect(dailyGame.getByRole('button')).toHaveAccessibleName(
     /Use 2026-08-01 12:00 UTC · Daily · win · 1500 → 1508 \(\+8\) for CT1/,
   );

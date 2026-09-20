@@ -38,6 +38,8 @@ import {
   resolvePresetOpacity,
   resolvePointerOwner,
   revealOrder,
+  selectCtGame,
+  setCtSourceTrack,
   setCompareLayout,
   setCtAnchor,
   setCtProgression,
@@ -351,6 +353,38 @@ test.describe('R042 compare mode — profile sign-up boundary', () => {
     const monthState = setMainLane(yearState, 'month', joinedAt, 'UTC');
     expect(ctPeriod(monthState, 'ct1')?.startMs).toBe(Date.parse('2026-08-01T00:00:00Z'));
     expect(monthState.cts[0].anchorMs).toBe(joinedAt);
+  });
+});
+
+test.describe('Ticker Compare game-selected source', () => {
+  test('a rating family can be chosen before any game or date', () => {
+    const initial = withCts('month', [NOW]);
+    const chosen = must(setCtSourceTrack(initial, 'ct1', 'free_blitz'));
+    expect(chosen.cts[0].sourceTrackId).toBe('free_blitz');
+    expect(chosen.cts[0].anchorMs).toBe(initial.cts[0].anchorMs);
+    expect(chosen.cts[0].selectedGameId).toBeNull();
+  });
+
+  test('one game chooses a mode and period without narrowing the period to that game', () => {
+    const chosen = point({
+      id: 'blitz-event',
+      gameId: 'blitz-game',
+      ratingTrackId: 'free_blitz',
+      occurredAt: '2026-08-11T12:00:00Z',
+    });
+    let state = withCts('month', [NOW]);
+    state = must(selectCtGame(state, 'ct1', chosen, 'free_blitz', NOW));
+    expect(state.cts[0].sourceTrackId).toBe('free_blitz');
+    expect(state.cts[0].selectedGameId).toBe('blitz-game');
+    expect(ctPeriod(state, 'ct1')?.startMs).toBe(Date.parse('2026-08-01T00:00:00Z'));
+
+    state = setMainLane(state, 'week');
+    expect(state.cts[0].sourceTrackId).toBe('free_blitz');
+    expect(ctPeriod(state, 'ct1')?.startMs).toBe(Date.parse('2026-08-10T00:00:00Z'));
+
+    state = must(stepCtPeriod(state, 'ct1', 'next', NOW));
+    expect(state.cts[0].sourceTrackId).toBe('free_blitz');
+    expect(state.cts[0].selectedGameId).toBeNull();
   });
 });
 

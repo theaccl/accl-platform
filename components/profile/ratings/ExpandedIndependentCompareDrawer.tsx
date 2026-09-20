@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import {
   CompareGamePicker,
+  ComparePeriodGamesList,
   ComparePeriodSelector,
   CompareTickerPanel,
   comparePeriodLaneWindow,
@@ -15,6 +16,7 @@ import {
   type ExpandedMergeSeries,
 } from '@/components/profile/ratings/ExpandedMergeCompareChart';
 import { RatingLaneTabs } from '@/components/profile/ratings/RatingLaneTabs';
+import { COMPARE_GAME_CATEGORIES, compareGameCategory, type CompareGameCategoryId } from '@/lib/profile/compareGamePicker';
 import {
   compareAnchorPeriod,
   ctPeriod,
@@ -23,6 +25,8 @@ import {
   pointsInPeriod,
   rankedSeriesOrder,
   removeCompareTicker,
+  selectCtGame,
+  setCtSourceTrack,
   setCompareLayout,
   setCtAnchor,
   stepCtPeriod,
@@ -176,6 +180,16 @@ function ExpandedIndependentOverlay({
 
   function apply(result: CompareOpResult) {
     if (result.ok) onSessionChange(result.state);
+  }
+
+  function chooseGame(slot: CompareTickerSlot, game: RatingHistoryPoint) {
+    const category = compareGameCategory(game);
+    if (!category) return;
+    apply(selectCtGame(session, slot, game, category, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs));
+  }
+
+  function chooseCategory(slot: CompareTickerSlot, category: CompareGameCategoryId) {
+    apply(setCtSourceTrack(session, slot, category));
   }
 
   function showPanel(panelId: string) {
@@ -337,6 +351,8 @@ function ExpandedIndependentOverlay({
                   RATING_TICKER_DISPLAY_TIME_ZONE,
                   earliestMs,
                 ))}
+                onSelectGame={(game) => chooseGame(ticker.slot, game)}
+                onSelectCategory={(category) => chooseCategory(ticker.slot, category)}
               />
             );
           })}
@@ -373,6 +389,9 @@ function ExpandedIndependentOverlay({
                       <div>
                         <h5 className="m-0 text-sm font-semibold" style={{ color: MERGE_COMPARE_STYLE[ticker.slot].color }}>{slotName} · rank {ticker.rank}</h5>
                         <p className="m-0 text-xs text-gray-400">{comparePeriodLaneWindow(period).caption}</p>
+                        <p className="m-0 text-xs text-sky-300">
+                          {COMPARE_GAME_CATEGORIES.find((category) => category.id === ticker.sourceTrackId)?.label ?? 'Main rating track'} history
+                        </p>
                         <p className="m-0 text-xs text-gray-300">
                           {!loaded
                             ? 'Loading verified history…'
@@ -399,12 +418,26 @@ function ExpandedIndependentOverlay({
                         games={games}
                         mainTrackId={mainTrackId}
                         canLinkFinishedGames={canLinkFinishedGames}
-                        onSetAnchor={(anchorMs) => apply(setCtAnchor(session, ticker.slot, anchorMs, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs))}
+                        onSelectGame={(game) => chooseGame(ticker.slot, game)}
+                        onSelectCategory={(category) => chooseCategory(ticker.slot, category)}
+                        sourceTrackId={ticker.sourceTrackId ?? null}
+                        selectedGameId={ticker.selectedGameId ?? null}
                         slotName={slotName}
                         period={period}
                         loading={!loaded}
                       />
                     </div>
+                    {loaded?.status === 'complete' && occupancy?.coverage === 'complete' ? (
+                      <div className="mt-2">
+                        <ComparePeriodGamesList
+                          points={pointsInPeriod(loaded.points, period)}
+                          period={period}
+                          selectedGameId={ticker.selectedGameId ?? null}
+                          canLinkFinishedGames={canLinkFinishedGames}
+                          slotName={slotName}
+                        />
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}

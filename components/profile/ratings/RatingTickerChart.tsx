@@ -17,7 +17,7 @@ import {
 import type { RatingLaneWindow } from '@/lib/profile/ratingTickerCalendar';
 import { formatOccurredAtInZone } from '@/lib/profile/ratingTickerTimeZone';
 import type { RatingLane } from '@/lib/ratingHistoryMetrics';
-import { canLinkCompareEvent } from '@/lib/profile/compareMode';
+import { canLinkCompareEvent, compareGameSelectionId } from '@/lib/profile/compareMode';
 import { CompactRatingTickerAxes } from '@/components/profile/ratings/CompactRatingTickerAxes';
 import {
   RATING_CURRENT_NO_HISTORY,
@@ -35,6 +35,8 @@ type Props = {
   formatEventResult?: (point: RatingHistoryPoint) => string;
   /** Taller chart when opened in mobile drawer. */
   expanded?: boolean;
+  /** A game picked in Compare is focused when its full period loads. */
+  highlightedGameId?: string | null;
 };
 
 const CHART_W = 560;
@@ -52,8 +54,9 @@ export function RatingTickerChart({
   carryInRating = null,
   formatEventResult,
   expanded = false,
+  highlightedGameId = null,
 }: Props) {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeSelection, setActiveSelection] = useState<{ id: string; highlightedGameId: string | null } | null>(null);
   const chartH = expanded ? CHART_H_EXPANDED : CHART_H;
 
   const sorted = useMemo(
@@ -95,7 +98,10 @@ export function RatingTickerChart({
   };
   const path = landscapeTickerPathFromPoints(sorted, geometry, { carryInRating });
 
-  const active = sorted.find((p) => p.id === activeId) ?? sorted[sorted.length - 1];
+  const active = sorted.find((p) =>
+    activeSelection?.highlightedGameId === highlightedGameId && p.id === activeSelection?.id)
+    ?? sorted.find((p) => highlightedGameId !== null && compareGameSelectionId(p) === highlightedGameId)
+    ?? sorted[sorted.length - 1];
   const activeMarker = active ? chartPointMarkerForPoint(active) : 'none';
 
   return (
@@ -172,9 +178,9 @@ export function RatingTickerChart({
                 data-testid="rating-ticker-point"
                 data-occurred-at={p.occurredAt}
                 className="cursor-pointer"
-                onClick={() => setActiveId(p.id)}
+                onClick={() => setActiveSelection({ id: p.id, highlightedGameId })}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') setActiveId(p.id);
+                  if (e.key === 'Enter' || e.key === ' ') setActiveSelection({ id: p.id, highlightedGameId });
                 }}
                 role="button"
                 tabIndex={0}
