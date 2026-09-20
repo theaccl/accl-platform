@@ -52,7 +52,7 @@ function confidenceFor(lines: EngineCandidateLine[], requestDepth: number): numb
   return Number(Math.max(0, Math.min(1, confidence)).toFixed(3));
 }
 
-function engineEvalFromWhitePovResult(
+export function engineEvalFromWhitePovResult(
   result: EngineAnalysisResult,
   turn: Side,
   requestDepth: number,
