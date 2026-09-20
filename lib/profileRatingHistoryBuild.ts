@@ -158,13 +158,19 @@ export function buildRatingHistoryPointsForTrack(
       continue;
     }
 
-    if (!p1Bucket || !trackMatchesP1Bucket(ratingTrackId, p1Bucket)) continue;
-
     const o = upd as Record<string, unknown>;
+    // Pre-P1 games only changed a shared legacy bucket (for example free_live).
+    // Their clock can identify a mode, but their rating was not a mode rating.
+    if (
+      !p1Bucket ||
+      o.p1_bucket !== p1Bucket ||
+      !trackMatchesP1Bucket(ratingTrackId, p1Bucket)
+    ) continue;
+
     const side =
       whiteId === playerId
-        ? parseSide(o.p1_white) ?? parseSide(o.white)
-        : parseSide(o.p1_black) ?? parseSide(o.black);
+        ? parseSide(o.p1_white)
+        : parseSide(o.p1_black);
     if (!side) continue;
 
     const mode = p1BucketToMode(p1Bucket);
