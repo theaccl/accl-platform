@@ -21,7 +21,7 @@ type HarnessOptions = {
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
-  mainTrack?: 'free_bullet' | 'free_blitz' | 'free_rapid' | 'free_day' | 'tournament' | null;
+  mainTrack?: 'free_bullet' | 'free_bullet_1_0' | 'free_blitz' | 'free_rapid' | 'free_day' | 'tournament' | null;
 };
 
 function readOptions(): HarnessOptions {
@@ -178,7 +178,7 @@ export function ComparisonHarness() {
   const selectedTrackId = accl ? 'accl' : alternateTrack ? 'free_blitz' : initial.mainTrack ?? 'free_day';
   const selectedTrackLabel = accl ? 'ACCL Rating' : `${selectedTrackId.replace('free_', '')} Overall`;
   const comparePeriodLoader = useCallback(
-    (period: ComparePeriod, seriesId: 'main' | 'ct1' | 'ct2' | 'ct3') => {
+    (period: ComparePeriod, seriesId: 'main' | 'ct1' | 'ct2' | 'ct3', sourceTrackId: string) => {
       setCompareLoadCount((count) => count + 1);
       return harnessPeriodLoader(
         initial.compareAdjustment
@@ -193,7 +193,7 @@ export function ComparisonHarness() {
               ratingAfter: 1522,
               ratingDelta: 12,
             })]
-          : historyByTrack[selectedTrackId] ?? [],
+          : historyByTrack[sourceTrackId] ?? [],
         period,
         seriesId === 'main' ? initial.mainCompareCoverage : initial.compareCoverage,
         initial.compareLoadDelayMs,

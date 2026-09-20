@@ -72,7 +72,7 @@ export type MountComparisonOptions = {
   compareAdjustment?: boolean;
   compareLoadDelayMs?: number;
   switchableTrack?: boolean;
-  mainTrack?: 'free_bullet' | 'free_blitz' | 'free_rapid' | 'free_day' | 'tournament';
+  mainTrack?: 'free_bullet' | 'free_bullet_1_0' | 'free_blitz' | 'free_rapid' | 'free_day' | 'tournament';
   viewport?: { width: number; height: number };
 };
 

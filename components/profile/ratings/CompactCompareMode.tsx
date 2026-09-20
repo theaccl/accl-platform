@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { CompareTickerPanel } from '@/components/profile/ratings/CompareTickerPanel';
+import { compareGameCategory, type CompareGameCategoryId } from '@/lib/profile/compareGamePicker';
 import {
   addCompareTicker,
   ctPeriod,
@@ -10,6 +11,8 @@ import {
   rankedSeriesOrder,
   removeCompareTicker,
   reopenCompareSessionForUtcDay,
+  selectCtGame,
+  setCtSourceTrack,
   setCtAnchor,
   stepCtPeriod,
   type ComparePeriod,
@@ -25,6 +28,7 @@ import type { RatingLane } from '@/lib/ratingHistoryMetrics';
 export type ComparePeriodLoader = (
   period: ComparePeriod,
   seriesId: CompareSeriesId,
+  sourceTrackId: string,
 ) => Promise<CompareTickerPeriodLoad>;
 
 type Props = {
@@ -96,6 +100,16 @@ export function CompactCompareMode({
 
   function updateAnchor(slot: CompareTickerSlot, ms: number) {
     apply(setCtAnchor(session, slot, ms, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs));
+  }
+
+  function chooseGame(slot: CompareTickerSlot, game: RatingHistoryPoint) {
+    const category = compareGameCategory(game);
+    if (!category) return;
+    apply(selectCtGame(session, slot, game, category, nowMs, RATING_TICKER_DISPLAY_TIME_ZONE, earliestMs));
+  }
+
+  function chooseCategory(slot: CompareTickerSlot, category: CompareGameCategoryId) {
+    apply(setCtSourceTrack(session, slot, category));
   }
 
   function showPanel(index: number) {
@@ -208,6 +222,8 @@ export function CompactCompareMode({
                     earliestMs,
                   ))}
                   onSetAnchor={(anchorMs) => updateAnchor(ct.slot, anchorMs)}
+                  onSelectGame={(game) => chooseGame(ct.slot, game)}
+                  onSelectCategory={(category) => chooseCategory(ct.slot, category)}
                 />
               );
             })}

@@ -208,10 +208,11 @@ export function RatingTrackDetailPanel({
     for (const ticker of activeCompareTickers(compareSession)) {
       const period = ctPeriod(compareSession, ticker.slot, RATING_TICKER_DISPLAY_TIME_ZONE);
       const entry = compareLoadEntries[ticker.slot];
+      const sourceTrackId = ticker.sourceTrackId ?? ratingTrackId;
       if (
         period &&
         entry &&
-        entry.loadKey === ratingTrackId &&
+        entry.loadKey === sourceTrackId &&
         entry.lane === period.lane &&
         entry.startMs === period.startMs &&
         entry.endMs === period.endMs
@@ -247,14 +248,18 @@ export function RatingTrackDetailPanel({
     if (!comparePeriodLoader || !surfaceActive || lane === 'overall') {
       return () => { cancelled = true; };
     }
-    const requested: Array<{ seriesId: CompareSeriesId; period: NonNullable<ReturnType<typeof compareAnchorPeriod>> }> = [];
+    const requested: Array<{
+      seriesId: CompareSeriesId;
+      sourceTrackId: string;
+      period: NonNullable<ReturnType<typeof compareAnchorPeriod>>;
+    }> = [];
     if (drawerOpen && drawerMode === 'independent') {
       const mainPeriod = compareAnchorPeriod(
         lane,
         compareNowMs,
         RATING_TICKER_DISPLAY_TIME_ZONE,
       );
-      if (mainPeriod) requested.push({ seriesId: 'main', period: mainPeriod });
+      if (mainPeriod) requested.push({ seriesId: 'main', sourceTrackId: ratingTrackId, period: mainPeriod });
     }
     for (const ticker of compareSessionLane === 'overall' ? [] : compareSessionCts) {
       const period = compareAnchorPeriod(
@@ -262,24 +267,24 @@ export function RatingTrackDetailPanel({
         ticker.anchorMs,
         RATING_TICKER_DISPLAY_TIME_ZONE,
       );
-      if (period) requested.push({ seriesId: ticker.slot, period });
+      if (period) requested.push({ seriesId: ticker.slot, sourceTrackId: ticker.sourceTrackId ?? ratingTrackId, period });
     }
-    const requestedIds = requested.map(({ seriesId }) => seriesId);
+    const requestedSources = new Map(requested.map(({ seriesId, sourceTrackId }) => [seriesId, sourceTrackId]));
     setCompareLoadEntries((previous) =>
       Object.fromEntries(
         Object.entries(previous).filter(([seriesId, entry]) =>
-          requestedIds.includes(seriesId as CompareSeriesId) && entry.loadKey === ratingTrackId,
+          entry.loadKey === requestedSources.get(seriesId as CompareSeriesId),
         ),
       ),
     );
-    for (const { seriesId, period } of requested) {
-      void comparePeriodLoader(period, seriesId)
+    for (const { seriesId, sourceTrackId, period } of requested) {
+      void comparePeriodLoader(period, seriesId, sourceTrackId)
         .then((result) => {
           if (!cancelled) {
             setCompareLoadEntries((previous) => ({
               ...previous,
               [seriesId]: {
-                loadKey: ratingTrackId,
+                loadKey: sourceTrackId,
                 lane: period.lane,
                 startMs: period.startMs,
                 endMs: period.endMs,
@@ -293,7 +298,7 @@ export function RatingTrackDetailPanel({
             setCompareLoadEntries((previous) => ({
               ...previous,
               [seriesId]: {
-                loadKey: ratingTrackId,
+                loadKey: sourceTrackId,
                 lane: period.lane,
                 startMs: period.startMs,
                 endMs: period.endMs,

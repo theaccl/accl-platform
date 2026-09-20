@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 
 import { RatingTickerChart } from '@/components/profile/ratings/RatingTickerChart';
 import {
   compareAnchorPeriod,
   compareEventLinks,
+  compareGameSelectionId,
   compareResultLabel,
+  isRealGameEvent,
   periodOccupancy,
   type ComparePeriod,
   type CompareTicker,
@@ -35,6 +37,8 @@ type Props = {
   onRemove: () => void;
   onStep: (direction: 'prev' | 'next') => void;
   onSetAnchor: (anchorMs: number) => void;
+  onSelectGame: (game: RatingHistoryPoint) => void;
+  onSelectCategory: (category: CompareGameCategoryId) => void;
   panelRef?: (node: HTMLElement | null) => void;
   panelId?: string;
 };
@@ -48,11 +52,13 @@ type ComparePeriodSelectorProps = Pick<
 
 type CompareGamePickerProps = Pick<
   Props,
-  'games' | 'mainTrackId' | 'canLinkFinishedGames' | 'onSetAnchor'
+  'games' | 'mainTrackId' | 'canLinkFinishedGames' | 'onSelectGame' | 'onSelectCategory'
 > & {
   slotName: string;
   period: ComparePeriod;
   loading: boolean;
+  selectedGameId: string | null;
+  sourceTrackId: CompareGameCategoryId | null;
 };
 
 export function comparePeriodLaneWindow(period: ComparePeriod): RatingLaneWindow {
@@ -199,17 +205,15 @@ export function CompareGamePicker({
   games,
   mainTrackId,
   canLinkFinishedGames,
-  onSetAnchor,
+  onSelectGame,
+  onSelectCategory,
   slotName,
   period,
   loading,
+  selectedGameId,
+  sourceTrackId,
 }: CompareGamePickerProps) {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
-  const [selectedGameAnchorMs, setSelectedGameAnchorMs] = useState<number | null>(null);
-  const [categoryChoice, setCategoryChoice] = useState<{
-    mainTrackId: string;
-    category: CompareGameCategoryId;
-  } | null>(null);
   const counts = new Map<CompareGameCategoryId, number>();
   for (const game of games) {
     const category = compareGameCategory(game);
@@ -218,30 +222,22 @@ export function CompareGamePicker({
   const defaultCategory = mainCompareGameCategory(mainTrackId)
     ?? COMPARE_GAME_CATEGORIES.find((category) => counts.has(category.id))?.id
     ?? 'free_bullet';
-  const selectedCategory = categoryChoice?.mainTrackId === mainTrackId
-    ? categoryChoice.category
-    : defaultCategory;
+  const selectedCategory = sourceTrackId ?? defaultCategory;
   const visibleGames = games.filter((game) => compareGameCategory(game) === selectedCategory);
   const selectedCategoryLabel = COMPARE_GAME_CATEGORIES.find((category) => category.id === selectedCategory)!.label;
-  const selectedGameIsInPeriod = selectedGameAnchorMs !== null
-    && selectedGameAnchorMs >= period.startMs
-    && selectedGameAnchorMs < period.endMs;
-  const selectedGameWasShownRef = useRef(false);
-
-  useEffect(() => {
-    if (selectedGameIsInPeriod) {
-      selectedGameWasShownRef.current = true;
-    } else if (selectedGameAnchorMs !== null && selectedGameWasShownRef.current) {
-      selectedGameWasShownRef.current = false;
-      setSelectedGameAnchorMs(null);
-    }
-  }, [selectedGameAnchorMs, selectedGameIsInPeriod]);
+  const selectedGame = games.find((game) => selectedGameId === compareGameSelectionId(game));
+  const selectedGameMs = selectedGame ? Date.parse(selectedGame.occurredAt) : NaN;
+  const selectedGameIsInPeriod = Number.isFinite(selectedGameMs)
+    && selectedGame !== undefined
+    && compareGameCategory(selectedGame) === selectedCategory
+    && selectedGameMs >= period.startMs
+    && selectedGameMs < period.endMs;
+  const selectedGameCategory = selectedGame ? compareGameCategory(selectedGame) : null;
+  const selectedGameCategoryLabel = COMPARE_GAME_CATEGORIES.find((category) => category.id === selectedGameCategory)?.label;
 
   function selectGame(game: RatingHistoryPoint) {
-    const anchorMs = Date.parse(game.occurredAt);
-    if (!Number.isFinite(anchorMs)) return;
-    setSelectedGameAnchorMs(anchorMs);
-    onSetAnchor(anchorMs);
+    if (!Number.isFinite(Date.parse(game.occurredAt))) return;
+    onSelectGame(game);
     detailsRef.current?.removeAttribute('open');
   }
 
@@ -263,13 +259,11 @@ export function CompareGamePicker({
             <button
               key={category.id}
               type="button"
-              aria-pressed={selectedCategory === category.id}
+              aria-pressed={sourceTrackId === category.id}
               onClick={() => {
-                setCategoryChoice({ mainTrackId, category: category.id });
-                setSelectedGameAnchorMs(null);
-                selectedGameWasShownRef.current = false;
+                onSelectCategory(category.id);
               }}
-              className={`min-h-9 shrink-0 rounded-md border px-2 text-xs ${selectedCategory === category.id
+              className={`min-h-9 shrink-0 rounded-md border px-2 text-xs ${sourceTrackId === category.id
                 ? 'border-sky-400 bg-sky-950 text-white'
                 : 'border-[#3d5168] text-gray-300'}`}
             >
@@ -278,7 +272,9 @@ export function CompareGamePicker({
           ))}
         </div>
         <p className="m-0 px-3 pb-2 text-xs text-gray-400">
-          A game sets the comparison period. The rating track stays on Main.
+          {sourceTrackId
+            ? `Choose a game to jump to its full ${period.lane} period, or use the date controls above.`
+            : `Previewing ${selectedCategoryLabel} games. Select a mode to load its full history, then choose a date or game.`}
         </p>
         {visibleGames.length ? (
           <ul className="m-0 max-h-56 space-y-2 overflow-y-auto border-t border-[#2f3f54] px-3 py-2 pl-7">
@@ -312,10 +308,61 @@ export function CompareGamePicker({
           data-testid={`compare-game-selection-${slotName.toLowerCase()}`}
           aria-live="polite"
         >
-          Selected game period: {comparePeriodLaneWindow(period).caption}.{loading ? ' Loading verified history…' : ''}
+          Showing all {selectedGameCategoryLabel ?? 'selected'} games in {comparePeriodLaneWindow(period).caption}.{loading ? ' Loading verified history…' : ''}
         </p>
       ) : null}
     </>
+  );
+}
+
+type ComparePeriodGamesListProps = {
+  points: RatingHistoryPoint[];
+  period: ComparePeriod;
+  selectedGameId: string | null;
+  canLinkFinishedGames: boolean;
+  slotName: string;
+};
+
+/** Every verified game in the chosen family and calendar period, not only the picked game. */
+export function ComparePeriodGamesList({
+  points,
+  period,
+  selectedGameId,
+  canLinkFinishedGames,
+  slotName,
+}: ComparePeriodGamesListProps) {
+  const periodGames = points.filter((point) => {
+    const occurredMs = Date.parse(point.occurredAt);
+    return isRealGameEvent(point) && occurredMs >= period.startMs && occurredMs < period.endMs;
+  });
+  if (periodGames.length === 0) return null;
+  return (
+    <section className="space-y-2" data-testid={`compare-period-games-${slotName.toLowerCase()}`}>
+      <h6 className="m-0 text-xs font-semibold text-gray-200">
+        Games in this {period.lane} ({periodGames.length})
+      </h6>
+      <ul className="m-0 max-h-40 space-y-1 overflow-y-auto p-0">
+          {periodGames.map((game) => {
+            const selected = selectedGameId !== null && selectedGameId === compareGameSelectionId(game);
+            const links = compareEventLinks(game);
+            return (
+              <li
+                key={game.id}
+                data-selected={selected ? 'true' : 'false'}
+                className={`flex flex-wrap items-center gap-x-2 rounded-md border px-2 py-1.5 text-xs ${selected
+                  ? 'border-sky-400/70 bg-sky-400/10 text-sky-100'
+                  : 'border-[#2f3f54] text-gray-300'}`}
+              >
+                <span className="min-w-0 break-words">{eventLabel(game)} · {game.result} · {game.ratingBefore} → {game.ratingAfter}</span>
+                {selected ? <span className="font-semibold text-sky-300">Picked</span> : null}
+                {canLinkFinishedGames && links.openGameHref ? (
+                  <Link className="font-semibold text-sky-300" href={links.openGameHref}>Open game</Link>
+                ) : null}
+              </li>
+            );
+          })}
+      </ul>
+    </section>
   );
 }
 
@@ -332,6 +379,8 @@ export function CompareTickerPanel({
   onRemove,
   onStep,
   onSetAnchor,
+  onSelectGame,
+  onSelectCategory,
   panelRef,
   panelId,
 }: Props) {
@@ -361,6 +410,9 @@ export function CompareTickerPanel({
         <div>
           <h5 id={panelTitleId} className="m-0 font-semibold text-white">{slotName} · rank {ticker.rank}</h5>
           <p className="m-0 text-xs text-gray-400">{comparePeriodLaneWindow(period).caption}</p>
+          <p className="m-0 text-xs text-sky-300">
+            {COMPARE_GAME_CATEGORIES.find((category) => category.id === ticker.sourceTrackId)?.label ?? 'Main rating track'} history
+          </p>
           <p className="m-0 text-xs text-gray-300" data-testid={`compare-summary-${ticker.slot}`}>
             {loaded?.status === 'complete' && occupancy
               ? `${occupancy.games} games · ${occupancy.ratingEvents} rating events${occupancy.netRatingChange == null ? '' : ` · ${occupancy.netRatingChange >= 0 ? '+' : ''}${occupancy.netRatingChange}`}`
@@ -397,7 +449,10 @@ export function CompareTickerPanel({
         games={games}
         mainTrackId={mainTrackId}
         canLinkFinishedGames={canLinkFinishedGames}
-        onSetAnchor={onSetAnchor}
+        onSelectGame={onSelectGame}
+        onSelectCategory={onSelectCategory}
+        selectedGameId={ticker.selectedGameId ?? null}
+        sourceTrackId={ticker.sourceTrackId ?? null}
         slotName={slotName}
         period={period}
         loading={!loaded}
@@ -413,6 +468,16 @@ export function CompareTickerPanel({
           window={comparePeriodLaneWindow(period)}
           carryInRating={occupancy?.coverage === 'complete' ? occupancy.carryInRating : null}
           formatEventResult={compareResultLabel}
+          highlightedGameId={ticker.selectedGameId ?? null}
+        />
+      ) : null}
+      {loaded?.status === 'complete' && occupancy?.coverage === 'complete' ? (
+        <ComparePeriodGamesList
+          points={periodPoints}
+          period={period}
+          selectedGameId={ticker.selectedGameId ?? null}
+          canLinkFinishedGames={canLinkFinishedGames}
+          slotName={slotName}
         />
       ) : null}
     </article>

@@ -35,6 +35,7 @@ import {
   type RatingLane,
 } from '@/lib/ratingHistoryMetrics';
 import type { RatingHistoryPoint } from '@/lib/ratingHistoryTypes';
+import type { MajorFamilyTrackId } from '@/lib/profileRatingChartLevels';
 
 /* ------------------------------------------------------------------ *
  * Identities and constants
@@ -84,6 +85,9 @@ export type CompareTicker = {
   rank: CompareCtRank;
   anchorMs: number;
   progression: CompareProgression;
+  /** Null uses Main's rating track; a picked game chooses its broad family. */
+  sourceTrackId?: MajorFamilyTrackId | null;
+  selectedGameId?: string | null;
 };
 
 /**
@@ -323,6 +327,11 @@ export function isRealGameEvent(
   if (point.eventType === 'game') return true;
   const gameId = typeof point.gameId === 'string' ? point.gameId.trim() : '';
   return point.eventType === 'backfill' && gameId.length > 0;
+}
+
+/** Stable game identity across broad, exact, and ACCL history copies. */
+export function compareGameSelectionId(game: Pick<RatingHistoryPoint, 'id' | 'gameId'>): string {
+  return game.gameId?.trim() || game.id;
 }
 
 export function compareResultLabel(
@@ -628,7 +637,39 @@ export function setCtAnchor(
     if (earliestPeriod && period.startMs < earliestPeriod.startMs) return fail(state, 'before_profile_created');
   }
   if (!isPeriodSelectable(period, nowMs)) return fail(state, 'future_period');
-  return ok(updateCt(state, slot, (c) => ({ ...c, anchorMs: period.anchorMs })));
+  return ok(updateCt(state, slot, (c) => ({ ...c, anchorMs: period.anchorMs, selectedGameId: null })));
+}
+
+/** A picked game chooses its rating family and the complete calendar period. */
+export function selectCtGame(
+  state: CompareSessionState,
+  slot: CompareTickerSlot,
+  game: Pick<RatingHistoryPoint, 'id' | 'gameId' | 'eventType' | 'occurredAt'>,
+  sourceTrackId: MajorFamilyTrackId,
+  nowMs: number,
+  timeZone: string = RATING_TICKER_DISPLAY_TIME_ZONE,
+  earliestMs: number | null = null,
+): CompareOpResult {
+  if (!isRealGameEvent(game)) return fail(state, 'invalid_anchor');
+  const anchorMs = Date.parse(game.occurredAt);
+  const anchored = setCtAnchor(state, slot, anchorMs, nowMs, timeZone, earliestMs);
+  if (!anchored.ok) return anchored;
+  return ok(updateCt(anchored.state, slot, (ct) => ({
+    ...ct,
+    sourceTrackId,
+    selectedGameId: compareGameSelectionId(game),
+  })));
+}
+
+/** Choose a rating family without requiring a game in the selected period. */
+export function setCtSourceTrack(
+  state: CompareSessionState,
+  slot: CompareTickerSlot,
+  sourceTrackId: MajorFamilyTrackId,
+): CompareOpResult {
+  if (!isCompareEnabled(state.lane)) return fail(state, 'compare_disabled_overall');
+  if (!state.cts.some((ct) => ct.slot === slot)) return fail(state, 'unknown_slot');
+  return ok(updateCt(state, slot, (ct) => ({ ...ct, sourceTrackId, selectedGameId: null })));
 }
 
 /**
@@ -658,7 +699,7 @@ export function stepCtPeriod(
     if (earliestPeriod && neighbour.startMs < earliestPeriod.startMs) return fail(state, 'before_profile_created');
   }
   if (!isPeriodSelectable(neighbour, nowMs)) return fail(state, 'future_period');
-  return ok(updateCt(state, slot, (c) => ({ ...c, anchorMs: neighbour.anchorMs })));
+  return ok(updateCt(state, slot, (c) => ({ ...c, anchorMs: neighbour.anchorMs, selectedGameId: null })));
 }
 
 /* ------------------------------------------------------------------ *
