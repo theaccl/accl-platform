@@ -1,5 +1,8 @@
 /** Phase 1A — six selectable computer strength tiers (heuristic + optional engine). */
 
+import { clockBudgetMsForGame } from '@/lib/gameTimeControl';
+import { normalizeGameTempo } from '@/lib/gameTempo';
+
 export const BOT_DIFFICULTY_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 export type BotDifficultyLevel = (typeof BOT_DIFFICULTY_LEVELS)[number];
 
@@ -112,6 +115,48 @@ export function normalizeBotDifficultyLevel(raw: unknown): BotDifficultyLevel {
 
 export function getBotDifficultyProfile(level: BotDifficultyLevel): BotDifficultyProfile {
   return PROFILES[level];
+}
+
+/** Keep short live games responsive without changing the chosen strength tier for longer games. */
+export function botProfileForClock(
+  profile: BotDifficultyProfile,
+  tempo: string | null | undefined,
+  liveTimeControl: string | null | undefined,
+  botClockMs: number | null | undefined,
+): BotDifficultyProfile {
+  if (normalizeGameTempo(tempo) !== 'live') return profile;
+
+  const initialMs = clockBudgetMsForGame(tempo, liveTimeControl);
+  const remainingMs = Number.isFinite(botClockMs)
+    ? Math.max(0, Number(botClockMs))
+    : initialMs;
+  if (initialMs > 120_000 && remainingMs > 60_000) return profile;
+
+  // Two-minute play can still benefit from a shallow bounded search while
+  // there is time. One-minute play and a low remaining clock must avoid the
+  // engine process and its queue altogether.
+  if (initialMs > 60_000 && initialMs <= 120_000 && remainingMs > 60_000) {
+    return {
+      ...profile,
+      engineDepth: Math.min(profile.engineDepth, 8),
+      engineTimeoutMs: Math.min(profile.engineTimeoutMs, 3_000),
+      thinkTimeMinMs: 200,
+      thinkTimeMaxMs: 750,
+    };
+  }
+
+  // A fresh Stockfish process can use most of a bullet clock on a single move.
+  // The static safety pass keeps a legal reply available without engine startup
+  // or waiting behind other engine evaluations. Spend at most 10% of the bot's
+  // remaining time on the visible pause, with a tighter cap for one-minute play.
+  const pauseCapMs = initialMs <= 60_000 ? 500 : initialMs <= 120_000 ? 750 : 400;
+  const thinkTimeMaxMs = Math.min(pauseCapMs, Math.floor(remainingMs / 10));
+  return {
+    ...profile,
+    useEngine: false,
+    thinkTimeMinMs: Math.min(200, thinkTimeMaxMs),
+    thinkTimeMaxMs,
+  };
 }
 
 export function randomThinkTimeMs(profile: BotDifficultyProfile): number {

@@ -4,7 +4,7 @@ import {
   buildBotCandidatesFromFen,
   shouldAuditBotEngineDegradation,
 } from '@/lib/bot/botCandidates';
-import { getBotDifficultyProfile, randomThinkTimeMs } from '@/lib/bot/botDifficulty';
+import { botProfileForClock, getBotDifficultyProfile, randomThinkTimeMs } from '@/lib/bot/botDifficulty';
 import {
   applySanitizedUciToBoard,
   parseBotConfigFromRows,
@@ -214,7 +214,15 @@ export async function commitBotGameTurn(
       };
     }
 
-    const difficultyProfile = getBotDifficultyProfile(pre.botConfig.accl_bot_v1.difficulty);
+    const botClockMs = pre.botMoverColor === 'white'
+      ? postHumanRow.white_clock_ms
+      : postHumanRow.black_clock_ms;
+    const difficultyProfile = botProfileForClock(
+      getBotDifficultyProfile(pre.botConfig.accl_bot_v1.difficulty),
+      postHumanRow.tempo == null ? null : String(postHumanRow.tempo),
+      postHumanRow.live_time_control == null ? null : String(postHumanRow.live_time_control),
+      typeof botClockMs === 'number' ? botClockMs : null,
+    );
     thinkMs = randomThinkTimeMs(difficultyProfile);
 
     const candidates = await buildBotCandidatesFromFen(pre.fenNow, difficultyProfile, {

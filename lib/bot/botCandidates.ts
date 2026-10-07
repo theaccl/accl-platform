@@ -207,13 +207,39 @@ export async function buildBotCandidatesFromFen(
   const fallback = staticBotCandidates(fen, profile.maxCandidates);
   if (!profile.useEngine) return withOpeningReference(fen, fallback, options);
 
+  const board = new Chess(fen);
+  const legalMoves = board.moves({ verbose: true });
+  if (legalMoves.length === 1) return withOpeningReference(fen, fallback, options);
+
+  // Do not start a deep engine search when the one-ply safety pass already
+  // identifies a legal immediate mate. Quiet positions still get an engine
+  // opinion, but need less search time than checks, captures, or promotions.
+  const immediateMate = fallback.find(
+    (line) => line.features?.mate && !line.allowsForcedMate,
+  );
+  if (immediateMate) return withOpeningReference(fen, [immediateMate], options);
+  const tacticalPosition = board.isCheck() || fallback.some((line) => line.allowsForcedMate) || legalMoves.some(
+    (move) =>
+      move.flags.includes('c') ||
+      move.flags.includes('e') ||
+      Boolean(move.promotion) ||
+      move.san.includes('+'),
+  );
+  const searchOptions = tacticalPosition
+    ? {
+        depth: profile.engineDepth,
+        multiPv: profile.engineMultiPv,
+        timeoutMs: profile.engineTimeoutMs,
+      }
+    : {
+        depth: Math.max(6, profile.engineDepth - 3),
+        multiPv: profile.engineMultiPv,
+        timeoutMs: Math.min(profile.engineTimeoutMs, 3_000),
+      };
+
   const evaluatePosition = options?.evaluatePosition ?? evaluateTrainerPositionUci;
   try {
-    const result = await evaluatePosition(fen, {
-      depth: profile.engineDepth,
-      multiPv: profile.engineMultiPv,
-      timeoutMs: profile.engineTimeoutMs,
-    });
+    const result = await evaluatePosition(fen, searchOptions);
     const engine = engineCandidates(fen, result);
     if (engine.length > 0) return withOpeningReference(fen, engine, options);
   } catch (error) {
