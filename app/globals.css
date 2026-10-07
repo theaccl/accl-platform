@@ -279,6 +279,12 @@ body {
   font-family: var(--font-accl-ui), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Lift the profile preview above raised lobby panels only while it is active. */
+.accl-site-header:has(.accl-profile-menu-anchor:hover),
+.accl-site-header:has(.accl-profile-menu-anchor:focus-within) {
+  z-index: var(--accl-z-overlay);
+}
+
 /* Display headings: Barlow Condensed */
 .font-display {
   font-family: var(--font-accl-display), ui-sans-serif, system-ui, sans-serif;
