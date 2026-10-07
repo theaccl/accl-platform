@@ -224,8 +224,8 @@ export default function NavigationBar({ variant = "default" }: { variant?: Navig
     <header
       className={
         shell
-          ? "mb-0 w-full border-b border-white/[0.06] bg-[#07080c]/90 pb-0 text-white shadow-none backdrop-blur-sm"
-          : "mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]"
+          ? "relative z-10 mb-0 w-full border-b border-white/[0.06] bg-[#07080c]/90 pb-0 text-white shadow-none backdrop-blur-sm"
+          : "relative z-10 mb-0 w-full border-b border-[#243244] bg-[#0D1117]/95 pb-0 text-white shadow-[0_1px_0_0_rgba(36,50,68,0.65)] backdrop-blur-[2px]"
       }
     >
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 pb-0">
