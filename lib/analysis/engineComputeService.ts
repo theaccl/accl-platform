@@ -127,6 +127,146 @@ function nodeStockfishProcessTransport(): EngineTransport {
   return createStockfishProcessTransport(child);
 }
 
+let botConcurrent = 0;
+type BotProcess = { transport: EngineTransport; ready: Promise<void>; busy: boolean; idleTimer?: ReturnType<typeof setTimeout> };
+const botProcesses: BotProcess[] = [];
+
+function acquireBotProcess(): BotProcess {
+  let process = botProcesses.find((item) => !item.busy);
+  if (!process) {
+    const transport = nodeStockfishProcessTransport();
+    process = { transport, busy: false, ready: Promise.resolve() };
+    process.ready = new Promise<void>((resolveReady, rejectReady) => {
+      const timer = setTimeout(() => { transport.close(); rejectReady(new Error('bot_engine_startup_timeout')); }, 10_000);
+      const unsubscribe = transport.subscribe({
+        onLine(line) {
+          if (!line.startsWith('bestmove ')) return;
+          clearTimeout(timer); unsubscribe(); resolveReady();
+        },
+        onError(error) { clearTimeout(timer); unsubscribe(); rejectReady(error); },
+      });
+      transport.send('uci');
+      transport.send('isready');
+      transport.send('ucinewgame');
+      transport.send('position startpos');
+      transport.send('go depth 1');
+    });
+    // Startup continues safely if the first turn's deadline expires before warmup.
+    void process.ready.catch(() => {
+      transport.close();
+      const index = botProcesses.findIndex((item) => item.transport === transport);
+      if (index >= 0) botProcesses.splice(index, 1);
+    });
+    botProcesses.push(process);
+  }
+  clearTimeout(process.idleTimer);
+  process.busy = true;
+  return process;
+}
+
+/** Play Computer deadline path. Never waits behind Trainer/post-game searches. */
+export async function evaluateBotPositionUci(
+  fen: string,
+  options: TrainerUciOptions & { deadlineMs: number },
+): Promise<{ bestMove: string | null; lines: UciLine[] }> {
+  if (botConcurrent >= 3) throw new Error('bot_engine_busy');
+  const remainingMs = Math.floor(options.deadlineMs - performance.now());
+  if (remainingMs <= 80) throw new Error('bot_engine_budget_exhausted');
+  botConcurrent += 1;
+  let transport: EngineTransport | null = null;
+  const worker = acquireBotProcess();
+  let searchStarted = false;
+  let healthy = true;
+  try {
+    await new Promise<void>((resolveReady, rejectReady) => {
+      const timer = setTimeout(() => rejectReady(new Error('bot_engine_startup_budget')), remainingMs);
+      worker.ready.then(() => { clearTimeout(timer); resolveReady(); }, (error) => { clearTimeout(timer); rejectReady(error); });
+    });
+    const position = parsePosition(fen);
+    transport = worker.transport;
+    const processTransport = transport;
+    let ready = false;
+    const pending: string[] = [];
+    const sendReadyCommand = (command: string) => {
+      if (command.startsWith('go depth ')) {
+        const searchMs = Math.max(1, Math.floor(options.deadlineMs - performance.now() - 200));
+        processTransport.send(`${command} movetime ${searchMs}`);
+      } else processTransport.send(command);
+    };
+    // Start search only after startup, so movetime uses the remaining total budget.
+    const boundedTransport: EngineTransport = {
+      ...processTransport,
+      close() { /* Retain this exclusive warmed process for the next bot turn. */ },
+      subscribe(handlers) {
+        const latestPv = new Map<number, string>();
+        return processTransport.subscribe({
+          ...handlers,
+          onLine(line) {
+            // Stockfish can revise a MultiPV rank at the same depth on a timed
+            // stop. Submit its final snapshot to the unchanged strict parser.
+            if (line.startsWith('info ') && /\bpv\b/.test(line) && /\bscore\b/.test(line)) {
+              const rank = Number(/\bmultipv (\d+)/.exec(line)?.[1] ?? 1);
+              latestPv.set(rank, line);
+              return;
+            }
+            if (line.startsWith('bestmove ')) {
+              for (const info of latestPv.values()) handlers.onLine(info);
+            }
+            if (line.trim() === 'readyok' && !ready) {
+              ready = true;
+              try {
+                for (const command of pending.splice(0)) sendReadyCommand(command);
+              } catch (error) { handlers.onError?.(error); }
+            }
+            handlers.onLine(line);
+          },
+        });
+      },
+      send(command) {
+        if (command === 'uci' || command === 'isready') processTransport.send(command);
+        else if (ready) sendReadyCommand(command);
+        else pending.push(command);
+      },
+    };
+    searchStarted = true;
+    const result = await evaluatePositionWithStockfish({
+      transport: boundedTransport,
+      position,
+      limits: {
+        depth: options.depth,
+        multiPv: options.multiPv,
+        timeoutMs: Math.max(1, Math.floor(options.deadlineMs - performance.now())),
+      },
+      identity: PINNED_STOCKFISH_IDENTITY,
+    });
+    return {
+      bestMove: result.bestMove,
+      lines: result.lines.map((line) => ({
+        rank: line.rank, move: line.move,
+        scoreCp: moverPovCentipawn(line.score, position.turn), pv: line.pv,
+      })),
+    };
+  } catch (error) {
+    if (searchStarted) healthy = false;
+    throw error;
+  } finally {
+    worker.busy = false;
+    if (!healthy) {
+      worker.transport.close();
+      const index = botProcesses.indexOf(worker);
+      if (index >= 0) botProcesses.splice(index, 1);
+    } else {
+      worker.idleTimer = setTimeout(() => {
+        worker.transport.close();
+        const index = botProcesses.indexOf(worker);
+        if (index >= 0) botProcesses.splice(index, 1);
+      }, 30_000);
+      worker.idleTimer.unref();
+    }
+    botConcurrent -= 1;
+  }
+}
+
 async function acquireTrainerSlot(): Promise<void> {
   if (trainerConcurrent < TRAINER_MAX_CONCURRENT) {
     trainerConcurrent += 1;

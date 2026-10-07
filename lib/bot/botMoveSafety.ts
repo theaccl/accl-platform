@@ -240,18 +240,22 @@ export function assessStaticBotMove(fen: string, move: string): BotCandidateLine
   };
 }
 
-export function staticBotCandidates(fen: string, maxCandidates: number): BotCandidateLine[] {
+export function staticBotCandidates(fen: string, maxCandidates: number, deadlineMs?: number): BotCandidateLine[] {
   const board = new Chess(fen);
-  const candidates = board
-    .moves({ verbose: true })
-    .map((move) => assessStaticBotMove(fen, `${move.from}${move.to}${move.promotion ?? ''}`.toLowerCase()))
-    .filter((line): line is BotCandidateLine => Boolean(line))
-    .sort((a, b) => {
+  const candidates: BotCandidateLine[] = [];
+  for (const move of board.moves({ verbose: true })) {
+    // Complete each safety assessment, but stop adding candidates when the
+    // turn budget runs out. Keep at least one fully assessed legal reply.
+    if (candidates.length > 0 && deadlineMs !== undefined && performance.now() >= deadlineMs) break;
+    const line = assessStaticBotMove(fen, `${move.from}${move.to}${move.promotion ?? ''}`.toLowerCase());
+    if (line) candidates.push(line);
+  }
+  candidates.sort((a, b) => {
       const safety = (a.staticRiskCp ?? 100_000) - (b.staticRiskCp ?? 100_000);
       if (safety !== 0) return safety;
       const score = (b.scoreCp ?? -100_000) - (a.scoreCp ?? -100_000);
       if (score !== 0) return score;
       return a.move.localeCompare(b.move);
-    });
+  });
   return candidates.slice(0, maxCandidates);
 }

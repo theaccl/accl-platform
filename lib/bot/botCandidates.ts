@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 
-import { evaluateTrainerPositionUci } from '@/lib/analysis/engineComputeService';
+import { evaluateBotPositionUci, evaluateTrainerPositionUci } from '@/lib/analysis/engineComputeService';
 import type { BotDifficultyProfile } from '@/lib/bot/botDifficulty';
 import { assessStaticBotMove, staticBotCandidates } from '@/lib/bot/botMoveSafety';
 import { botOpeningReferenceMoves } from '@/lib/bot/botOpeningBook';
@@ -24,6 +24,7 @@ export function uciFromVerboseMove(mv: { from: string; to: string; promotion?: s
 type EngineResult = Awaited<ReturnType<typeof evaluateTrainerPositionUci>>;
 
 export type BotCandidateBuildOptions = {
+  deadlineMs?: number;
   allowOpeningReference?: boolean;
   personalityStyle?: BotPersonalityStyle;
   evaluatePosition?: (
@@ -202,12 +203,19 @@ export async function buildBotCandidatesFromFen(
   profile: BotDifficultyProfile,
   options?: BotCandidateBuildOptions,
 ): Promise<BotCandidateLine[]> {
+  const startedAt = performance.now();
+  // Static safety and continuation evidence are CPU work too. Reserve half of
+  // the complete turn budget for them instead of giving all of it to UCI.
+  const engineDeadlineMs = options?.deadlineMs === undefined ? undefined
+    : startedAt + Math.max(1, (options.deadlineMs - startedAt) / 2);
   // Validate before starting an engine process or constructing fallback evidence.
   new Chess(fen);
-  const fallback = staticBotCandidates(fen, profile.maxCandidates);
-  if (!profile.useEngine) return withOpeningReference(fen, fallback, options);
+  if (!profile.useEngine) return withOpeningReference(fen, staticBotCandidates(fen, profile.maxCandidates, options?.deadlineMs), options);
 
-  const evaluatePosition = options?.evaluatePosition ?? evaluateTrainerPositionUci;
+  const evaluatePosition = options?.evaluatePosition ?? (options?.deadlineMs !== undefined
+    ? (positionFen: string, limits: { depth: number; multiPv: number; timeoutMs: number }) =>
+        evaluateBotPositionUci(positionFen, { ...limits, deadlineMs: engineDeadlineMs! })
+    : evaluateTrainerPositionUci);
   try {
     const result = await evaluatePosition(fen, {
       depth: profile.engineDepth,
@@ -221,5 +229,5 @@ export async function buildBotCandidatesFromFen(
     // Degrade to the deterministic static safety pass. The selector rationale and
     // server audit distinguish this path from an engine-backed decision.
   }
-  return withOpeningReference(fen, fallback, options);
+  return withOpeningReference(fen, staticBotCandidates(fen, profile.maxCandidates, options?.deadlineMs), options);
 }
