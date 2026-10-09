@@ -1,11 +1,17 @@
 import { runEngineAnalysis, runHeuristicAnalysis } from './analyze';
 import { sanitizeAnalysisRows } from './classify';
 import { StockfishWebAdapter } from './engine';
-import type { AntiCheatEnforcementStore, EnforcementState } from './enforcementStore';
+import type {
+  AntiCheatEnforcementStore,
+  EffectiveEnforcementState,
+  EnforcementState,
+} from './enforcementStore';
+import { assertValidEnforcementBaseline, EnforcementEvidenceInvalidError } from './enforcementStore';
 import { configForMode, type IntelligenceMode } from './modes';
 import { validateFenOrThrow } from './validate';
 import type { AnalyzedMove } from './types';
 import type { AntiCheatEventStore, AntiCheatSignalCounts, SuspicionTrend } from './antiCheatStore';
+import { AntiCheatEvidenceInvalidError, MAX_INTEGRITY_SIGNAL_COUNT } from './antiCheatStore';
 import type { ModeratorQueuePayload, ModeratorQueueSink } from './moderatorQueue';
 
 export type IntegrityResponseLevel = 'FULL' | 'GUIDED' | 'RESTRICTED' | 'BLOCKED';
@@ -24,7 +30,7 @@ export type IntegrityContext = {
   explicitConsentMode?: boolean;
 };
 
-type TruthPayload = {
+export type TruthPayload = {
   rows: AnalyzedMove[];
   engine?: {
     best_move: string;
@@ -42,6 +48,7 @@ export type IntegrityRefusalReason =
   | 'active-tournament-game-protected'
   | 'free-play-human-vs-human-consent-required'
   | 'confirmed-overlap-protected-context'
+  | 'active-game-overlap-protected'
   | 'limited-analysis-enforced'
   | 'trainer-locked-enforced'
   | 'review-locked-enforced';
@@ -185,6 +192,134 @@ export class ChessTruthError extends Error {
   }
 }
 
+export type IntegrityControlFailureCode =
+  | 'ANTI_CHEAT_HISTORY_UNAVAILABLE'
+  | 'ANTI_CHEAT_EVIDENCE_INVALID'
+  | 'ENFORCEMENT_UNAVAILABLE'
+  | 'ANTI_CHEAT_AUDIT_UNAVAILABLE'
+  | 'MODERATOR_QUEUE_UNAVAILABLE';
+
+export class IntegrityControlUnavailableError extends Error {
+  constructor(readonly code: IntegrityControlFailureCode, options?: ErrorOptions) {
+    super(code, options);
+    this.name = 'IntegrityControlUnavailableError';
+  }
+}
+
+const MAX_INTEGRITY_MOVES = 1_024;
+const MAX_INTEGRITY_MOVE_LENGTH = 64;
+const MAX_INTEGRITY_MARKER_LENGTH = 128;
+
+function assertBoundedCount(value: unknown): asserts value is number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > MAX_INTEGRITY_SIGNAL_COUNT
+  ) {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+  }
+}
+
+function validateSignalCounts(counts: AntiCheatSignalCounts | undefined): AntiCheatSignalCounts | undefined {
+  if (!counts) return undefined;
+  for (const value of Object.values(counts)) {
+    if (value !== undefined) assertBoundedCount(value);
+  }
+  const blockedLive = counts.blockedLiveProtectedRequest ?? 0;
+  if (
+    blockedLive > (counts.protectedOverlapAttempt ?? 0) ||
+    blockedLive > (counts.blockedRequest ?? 0)
+  ) {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+  }
+  return counts;
+}
+
+function validateOverlapEvidence(overlap: OverlapInput | undefined): OverlapInput | undefined {
+  if (!overlap) return undefined;
+  if (overlap.activeGameFen !== undefined) {
+    if (typeof overlap.activeGameFen !== 'string' || overlap.activeGameFen.length > 256) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+    }
+    try {
+      validateFenOrThrow(overlap.activeGameFen);
+    } catch {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+    }
+  }
+  for (const moves of [overlap.activeGameMoves, overlap.requestMoves]) {
+    if (!moves) continue;
+    if (moves.length > MAX_INTEGRITY_MOVES) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+    }
+    if (moves.some((move) => typeof move !== 'string' || move.length === 0 || move.length > MAX_INTEGRITY_MOVE_LENGTH)) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+    }
+  }
+  if (overlap.repeatedProbeCount !== undefined) assertBoundedCount(overlap.repeatedProbeCount);
+  if (
+    overlap.requestMarker !== undefined &&
+    (typeof overlap.requestMarker !== 'string' || overlap.requestMarker.length > MAX_INTEGRITY_MARKER_LENGTH)
+  ) {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+  }
+  if (
+    overlap.lastSignalAtEpochMs !== undefined &&
+    (!Number.isFinite(overlap.lastSignalAtEpochMs) || overlap.lastSignalAtEpochMs < 0)
+  ) {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+  }
+  validateSignalCounts(overlap.signalCounts);
+  return overlap;
+}
+
+function validateEffectiveEnforcement(
+  value: EffectiveEnforcementState,
+  expectedUserId: string
+): EffectiveEnforcementState {
+  const states = new Set<EnforcementState>([
+    'NO_RESTRICTION',
+    'MONITOR_ONLY',
+    'LIMITED_ANALYSIS',
+    'TRAINER_LOCKED',
+    'REVIEW_LOCKED',
+  ]);
+  if (
+    !value ||
+    value.userId !== expectedUserId ||
+    !states.has(value.state) ||
+    !states.has(value.baselineState) ||
+    (value.source !== 'baseline' && value.source !== 'override') ||
+    (value.source === 'baseline' && value.state !== value.baselineState)
+  ) {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+  }
+  if (value.source === 'override') {
+    const overrideState = {
+      CLEAR_RESTRICTION: 'NO_RESTRICTION',
+      TEMPORARY_UNLOCK: 'MONITOR_ONLY',
+      KEEP_LOCKED_PENDING_REVIEW: 'REVIEW_LOCKED',
+    } as const;
+    if (!value.overrideAction || overrideState[value.overrideAction] !== value.state) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+    }
+    const expiry = value.overrideExpiresAt;
+    if (
+      (value.overrideAction === 'TEMPORARY_UNLOCK' && !expiry) ||
+      (expiry != null && (!Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) <= Date.now()))
+    ) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+    }
+  }
+  try {
+    assertValidEnforcementBaseline(value.baselineState, value.sourceSuspicionTier, value.sourceRecommendedAction);
+  } catch {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+  }
+  return value;
+}
+
 function stableFingerprint(input: string): string {
   // Deterministic, fast, non-cryptographic hash for integrity matching.
   let h = 2166136261;
@@ -273,16 +408,16 @@ function evaluateSuspicion(input: {
     signals.push({ signal, strength, baseWeight, occurrences });
   };
 
-  if (input.overlapVerdict === 'BOOK_OVERLAP') {
-    addSignal('opening_book_overlap', 'weak', 2, Math.max(1, historical.openingBookOverlap ?? 1));
+  if (input.overlapVerdict === 'BOOK_OVERLAP' || (historical.openingBookOverlap ?? 0) > 0) {
+    addSignal('opening_book_overlap', 'weak', 2, Math.max(input.overlapVerdict === 'BOOK_OVERLAP' ? 1 : 0, historical.openingBookOverlap ?? 0));
   }
-  if (input.overlapVerdict === 'NOVELTY_COLLISION') {
-    addSignal('novelty_collision', 'medium', 6, Math.max(1, historical.noveltyCollision ?? 1));
+  if (input.overlapVerdict === 'NOVELTY_COLLISION' || (historical.noveltyCollision ?? 0) > 0) {
+    addSignal('novelty_collision', 'medium', 6, Math.max(input.overlapVerdict === 'NOVELTY_COLLISION' ? 1 : 0, historical.noveltyCollision ?? 0));
   }
-  if (input.overlapVerdict === 'CONFIRMED_OVERLAP') {
-    addSignal('confirmed_overlap', 'strong', 12, Math.max(1, historical.confirmedOverlap ?? 1));
+  if (input.overlapVerdict === 'CONFIRMED_OVERLAP' || (historical.confirmedOverlap ?? 0) > 0) {
+    addSignal('confirmed_overlap', 'strong', 12, Math.max(input.overlapVerdict === 'CONFIRMED_OVERLAP' ? 1 : 0, historical.confirmedOverlap ?? 0));
   }
-  if (input.protectedContext && input.overlapVerdict !== 'CLEAR') {
+  if ((input.protectedContext && input.overlapVerdict !== 'CLEAR') || (historical.protectedOverlapAttempt ?? 0) > 0) {
     addSignal(
       'protected_context_overlap_attempt',
       'strong',
@@ -290,7 +425,7 @@ function evaluateSuspicion(input: {
       Math.max(1, historical.protectedOverlapAttempt ?? 1)
     );
   }
-  if (input.blockedByOverlap && input.protectedContext) {
+  if ((input.blockedByOverlap && input.protectedContext) || (historical.blockedLiveProtectedRequest ?? 0) > 0) {
     addSignal(
       'blocked_live_protected_request',
       'strong',
@@ -325,9 +460,12 @@ function evaluateSuspicion(input: {
     const protectedMultiplier = input.protectedContext ? 1.25 : 1;
     const recencyMultiplier = decayFactor;
     const overlapGuardrailMultiplier =
-      input.overlapVerdict === 'BOOK_OVERLAP' && !input.protectedContext ? 0.7 : 1;
+      s.signal === 'opening_book_overlap' && !input.protectedContext ? 0.7 : 1;
+    // Common opening history remains weak evidence even after many reviews.
+    // Keep the actual count in the audit without allowing it alone to lock access.
+    const scoredOccurrences = s.signal === 'opening_book_overlap' ? Math.min(s.occurrences, 1) : s.occurrences;
     const weighted = Math.round(
-      s.baseWeight * s.occurrences * protectedMultiplier * recencyMultiplier * overlapGuardrailMultiplier
+      s.baseWeight * scoredOccurrences * protectedMultiplier * recencyMultiplier * overlapGuardrailMultiplier
     );
     return {
       signal: s.signal,
@@ -389,6 +527,8 @@ function mergeSignalCounts(
   historical: AntiCheatSignalCounts | undefined,
   runtime: OverlapInput['signalCounts'] | undefined
 ): OverlapInput['signalCounts'] {
+  validateSignalCounts(historical);
+  validateSignalCounts(runtime);
   if (!historical && !runtime) return undefined;
   const out: Required<AntiCheatSignalCounts> = {
     confirmedOverlap: 0,
@@ -403,12 +543,14 @@ function mergeSignalCounts(
   for (const key of keys) {
     const h = historical?.[key] ?? 0;
     const r = runtime?.[key] ?? 0;
-    out[key] = Math.max(0, h + r);
+    // Runtime evidence may confirm, but must never subtract from or double-count
+    // the durable history maintained by the server-owned event ledger.
+    out[key] = Math.max(h, r);
   }
   return out;
 }
 
-async function persistAntiCheatEventIfPossible(input: {
+async function persistAntiCheatEvent(input: {
   antiCheatStore?: AntiCheatEventStore;
   userId?: string | null;
   gameId?: string | null;
@@ -421,8 +563,14 @@ async function persistAntiCheatEventIfPossible(input: {
   trend: SuspicionTrend | null;
   recommendation: ActionRecommendation;
   moderatorQueuePayload: ModeratorQueuePayload | null;
+  required: boolean;
 }): Promise<void> {
-  if (!input.antiCheatStore || !input.userId) return;
+  if (!input.antiCheatStore || !input.userId) {
+    if (input.required) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_AUDIT_UNAVAILABLE');
+    }
+    return;
+  }
   try {
     await input.antiCheatStore.appendEvent({
       user_id: input.userId,
@@ -448,8 +596,10 @@ async function persistAntiCheatEventIfPossible(input: {
         trend: input.trend,
       },
     });
-  } catch {
-    // Persistence failures should not alter integrity control behavior.
+  } catch (error) {
+    if (input.required) {
+      throw new IntegrityControlUnavailableError('ANTI_CHEAT_AUDIT_UNAVAILABLE', { cause: error });
+    }
   }
 }
 
@@ -475,11 +625,34 @@ function buildModeratorQueuePayload(input: {
   };
 }
 
+async function persistModeratorQueue(input: {
+  payload: ModeratorQueuePayload | null;
+  sink?: ModeratorQueueSink;
+  required: boolean;
+}): Promise<void> {
+  if (!input.payload) return;
+  if (!input.sink) {
+    if (input.required) {
+      throw new IntegrityControlUnavailableError('MODERATOR_QUEUE_UNAVAILABLE');
+    }
+    return;
+  }
+  try {
+    await input.sink.enqueue(input.payload);
+  } catch (error) {
+    if (input.required) {
+      throw new IntegrityControlUnavailableError('MODERATOR_QUEUE_UNAVAILABLE', { cause: error });
+    }
+  }
+}
+
 export function evaluateOverlap(input: {
   requestFen: string;
   context: IntegrityContext;
   overlap?: OverlapInput;
   nowEpochMs?: number;
+  /** Server-owned completed-review gate; never accepted by the HTTP parser. */
+  protectActiveGameOverlap?: boolean;
 }): OverlapEvaluation {
   const openingTolerancePlies = 8;
   const noveltyThresholdPlies = 14;
@@ -510,8 +683,13 @@ export function evaluateOverlap(input: {
     verdict = 'NOVELTY_COLLISION';
   }
 
-  const protectedContext = isProtectedLiveContext(input.context);
-  const blockedByOverlap = protectedContext && verdict === 'CONFIRMED_OVERLAP';
+  const protectedReview = input.protectActiveGameOverlap === true && Boolean(input.overlap?.activeGameFen);
+  // A different completed position sharing ordinary opening moves is tolerated.
+  // Exact live positions (including book positions) still receive the full gate.
+  const protectedContext = isProtectedLiveContext(input.context) ||
+    (protectedReview && (positionMatch || (verdict !== 'CLEAR' && verdict !== 'BOOK_OVERLAP')));
+  const blockedByOverlap = (protectedContext && verdict === 'CONFIRMED_OVERLAP') ||
+    (protectedReview && positionMatch);
   const suspicion = evaluateSuspicion({
     overlapVerdict: verdict,
     protectedContext,
@@ -656,17 +834,26 @@ export async function getIntegrityControlledTruth(input: {
   antiCheatStore?: AntiCheatEventStore;
   enforcementStore?: AntiCheatEnforcementStore;
   moderatorQueueSink?: ModeratorQueueSink;
+  requireDurableControls?: boolean;
   trendLookbackEvents?: number;
   trendWindowMinutes?: number;
   // Dependency injection hook for deterministic tests.
   truthProvider?: (arg: { fen: string; mode: IntelligenceMode }) => Promise<TruthPayload>;
 }): Promise<IntegrityControlledTruthResponse> {
+  const requireDurableControls = input.requireDurableControls === true;
+  if (requireDurableControls && (!input.userId || !input.antiCheatStore)) {
+    throw new IntegrityControlUnavailableError('ANTI_CHEAT_HISTORY_UNAVAILABLE');
+  }
+  if (requireDurableControls && !input.enforcementStore) {
+    throw new IntegrityControlUnavailableError('ENFORCEMENT_UNAVAILABLE');
+  }
   const nowEpochMs = input.nowEpochMs ?? Date.now();
   const trendWindowMinutes = input.trendWindowMinutes ?? 60;
   const sinceIso = new Date(nowEpochMs - trendWindowMinutes * 60 * 1000).toISOString();
   let historyCounts: AntiCheatSignalCounts | undefined;
   let recentTrend: SuspicionTrend | null = null;
-  let lastSignalAtEpochMs = input.overlap?.lastSignalAtEpochMs;
+  const serverOverlap = validateOverlapEvidence(input.overlap);
+  let lastSignalAtEpochMs = serverOverlap?.lastSignalAtEpochMs;
   if (input.antiCheatStore && input.userId) {
     try {
       const [counts, recent, trend] = await Promise.all([
@@ -674,19 +861,39 @@ export async function getIntegrityControlledTruth(input: {
         input.antiCheatStore.listRecentEventsByUser(input.userId, 1),
         input.antiCheatStore.computeRollingSuspicionTrendByUser(input.userId, input.trendLookbackEvents ?? 20),
       ]);
-      historyCounts = counts;
+      historyCounts = validateSignalCounts(counts);
       const latest = recent[0]?.created_at ? Date.parse(recent[0].created_at) : Number.NaN;
+      if (recent[0]?.created_at && !Number.isFinite(latest)) {
+        throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+      }
       if (Number.isFinite(latest)) lastSignalAtEpochMs = latest;
+      if (
+        ![trend.latest, trend.oldest, trend.average, trend.delta].every((value) =>
+          Number.isFinite(value)
+        )
+      ) {
+        throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID');
+      }
       recentTrend = trend;
-    } catch {
-      // Persistence is best-effort; anti-cheat runtime decisioning must remain available.
+    } catch (error) {
+      if (error instanceof IntegrityControlUnavailableError) throw error;
+      if (error instanceof AntiCheatEvidenceInvalidError) {
+        throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID', { cause: error });
+      }
+      if (requireDurableControls) {
+        throw new IntegrityControlUnavailableError('ANTI_CHEAT_HISTORY_UNAVAILABLE', { cause: error });
+      }
     }
   }
 
-  const hydratedOverlap: OverlapInput | undefined = input.overlap
+  const hydratedOverlap: OverlapInput | undefined = serverOverlap || historyCounts
     ? {
-        ...input.overlap,
-        signalCounts: mergeSignalCounts(historyCounts, input.overlap.signalCounts),
+        ...serverOverlap,
+        repeatedProbeCount: Math.max(
+          serverOverlap?.repeatedProbeCount ?? 0,
+          historyCounts?.probingBurst ?? 0
+        ),
+        signalCounts: mergeSignalCounts(historyCounts, serverOverlap?.signalCounts),
         lastSignalAtEpochMs,
       }
     : undefined;
@@ -696,6 +903,7 @@ export async function getIntegrityControlledTruth(input: {
     context: input.context,
     overlap: hydratedOverlap,
     nowEpochMs,
+    protectActiveGameOverlap: requireDurableControls && input.context.type === 'completed-game-review',
   });
   const recommendation = recommendationForSuspicion(overlap.suspicion);
   let enforcement: IntegrityAuditLog['enforcement'] = {
@@ -706,15 +914,46 @@ export async function getIntegrityControlledTruth(input: {
   };
   if (input.enforcementStore && input.userId) {
     try {
-      await input.enforcementStore.upsertFromRecommendation({
-        userId: input.userId,
-        suspicionTier: overlap.suspicion.tier,
-        recommendation,
-        reasonJson: overlap.suspicion.reasons,
-      });
-      enforcement = await input.enforcementStore.getEffectiveState(input.userId);
-    } catch {
-      // Enforcement persistence failures should degrade safely to no extra restriction.
+      const existing = validateEffectiveEnforcement(
+        await input.enforcementStore.getEffectiveState(input.userId),
+        input.userId
+      );
+      const rank: Record<EnforcementState, number> = {
+        NO_RESTRICTION: 0,
+        MONITOR_ONLY: 1,
+        LIMITED_ANALYSIS: 2,
+        TRAINER_LOCKED: 3,
+        REVIEW_LOCKED: 4,
+      };
+      const recommendedRank: Record<SuspicionTier, number> = {
+        CLEAR: 0,
+        WATCH: 1,
+        WARNING: 2,
+        SOFT_LOCK_RECOMMENDED: 3,
+        ESCALATE_REVIEW: 4,
+      };
+      if (recommendedRank[overlap.suspicion.tier] >= rank[existing.baselineState]) {
+        await input.enforcementStore.upsertFromRecommendation({
+          userId: input.userId,
+          suspicionTier: overlap.suspicion.tier,
+          recommendation,
+          reasonJson: overlap.suspicion.reasons,
+        });
+        enforcement = validateEffectiveEnforcement(
+          await input.enforcementStore.getEffectiveState(input.userId),
+          input.userId
+        );
+      } else {
+        enforcement = existing;
+      }
+    } catch (error) {
+      if (error instanceof EnforcementEvidenceInvalidError) {
+        throw new IntegrityControlUnavailableError('ANTI_CHEAT_EVIDENCE_INVALID', { cause: error });
+      }
+      if (error instanceof IntegrityControlUnavailableError) throw error;
+      if (requireDurableControls) {
+        throw new IntegrityControlUnavailableError('ENFORCEMENT_UNAVAILABLE', { cause: error });
+      }
     }
   }
   const moderatorQueuePayload = buildModeratorQueuePayload({
@@ -724,18 +963,13 @@ export async function getIntegrityControlledTruth(input: {
     recommendation,
     nowEpochMs,
   });
-  if (moderatorQueuePayload && input.moderatorQueueSink) {
-    try {
-      await input.moderatorQueueSink.enqueue(moderatorQueuePayload);
-    } catch {
-      // Queue writes are best-effort and must not alter integrity decisions.
-    }
-  }
   const verdict = evaluateIntegrityPolicy(input.context);
   const finalVerdict: IntegrityPolicyVerdict = overlap.blockedByOverlap
     ? {
         responseLevel: 'BLOCKED',
-        refusalReason: 'confirmed-overlap-protected-context',
+        refusalReason: input.context.type === 'completed-game-review'
+          ? 'active-game-overlap-protected'
+          : 'confirmed-overlap-protected-context',
       }
     : verdict;
 
@@ -752,7 +986,7 @@ export async function getIntegrityControlledTruth(input: {
   };
 
   if (enforcement.state === 'LIMITED_ANALYSIS') {
-    await persistAntiCheatEventIfPossible({
+    await persistAntiCheatEvent({
       antiCheatStore: input.antiCheatStore,
       userId: input.userId,
       gameId: input.gameId,
@@ -765,6 +999,12 @@ export async function getIntegrityControlledTruth(input: {
       trend: recentTrend,
       recommendation,
       moderatorQueuePayload,
+      required: requireDurableControls,
+    });
+    await persistModeratorQueue({
+      payload: moderatorQueuePayload,
+      sink: input.moderatorQueueSink,
+      required: requireDurableControls,
     });
     return {
       ok: false,
@@ -779,7 +1019,7 @@ export async function getIntegrityControlledTruth(input: {
     };
   }
   if (enforcement.state === 'TRAINER_LOCKED') {
-    await persistAntiCheatEventIfPossible({
+    await persistAntiCheatEvent({
       antiCheatStore: input.antiCheatStore,
       userId: input.userId,
       gameId: input.gameId,
@@ -792,6 +1032,12 @@ export async function getIntegrityControlledTruth(input: {
       trend: recentTrend,
       recommendation,
       moderatorQueuePayload,
+      required: requireDurableControls,
+    });
+    await persistModeratorQueue({
+      payload: moderatorQueuePayload,
+      sink: input.moderatorQueueSink,
+      required: requireDurableControls,
     });
     return {
       ok: false,
@@ -806,7 +1052,7 @@ export async function getIntegrityControlledTruth(input: {
     };
   }
   if (enforcement.state === 'REVIEW_LOCKED') {
-    await persistAntiCheatEventIfPossible({
+    await persistAntiCheatEvent({
       antiCheatStore: input.antiCheatStore,
       userId: input.userId,
       gameId: input.gameId,
@@ -819,6 +1065,12 @@ export async function getIntegrityControlledTruth(input: {
       trend: recentTrend,
       recommendation,
       moderatorQueuePayload,
+      required: requireDurableControls,
+    });
+    await persistModeratorQueue({
+      payload: moderatorQueuePayload,
+      sink: input.moderatorQueueSink,
+      required: requireDurableControls,
     });
     return {
       ok: false,
@@ -834,7 +1086,7 @@ export async function getIntegrityControlledTruth(input: {
   }
 
   if (finalVerdict.responseLevel === 'BLOCKED') {
-    await persistAntiCheatEventIfPossible({
+    await persistAntiCheatEvent({
       antiCheatStore: input.antiCheatStore,
       userId: input.userId,
       gameId: input.gameId,
@@ -847,6 +1099,12 @@ export async function getIntegrityControlledTruth(input: {
       trend: recentTrend,
       recommendation,
       moderatorQueuePayload,
+      required: requireDurableControls,
+    });
+    await persistModeratorQueue({
+      payload: moderatorQueuePayload,
+      sink: input.moderatorQueueSink,
+      required: requireDurableControls,
     });
     return {
       ok: false,
@@ -867,7 +1125,7 @@ export async function getIntegrityControlledTruth(input: {
     mode: input.mode,
   });
 
-  await persistAntiCheatEventIfPossible({
+  await persistAntiCheatEvent({
     antiCheatStore: input.antiCheatStore,
     userId: input.userId,
     gameId: input.gameId,
@@ -880,6 +1138,12 @@ export async function getIntegrityControlledTruth(input: {
     trend: recentTrend,
     recommendation,
     moderatorQueuePayload,
+    required: requireDurableControls,
+  });
+  await persistModeratorQueue({
+    payload: moderatorQueuePayload,
+    sink: input.moderatorQueueSink,
+    required: requireDurableControls,
   });
 
   return {

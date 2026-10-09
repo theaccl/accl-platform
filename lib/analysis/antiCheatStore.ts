@@ -46,18 +46,29 @@ function clampLimit(limit: number): number {
   return Math.min(200, Math.max(1, Math.floor(limit)));
 }
 
+export const MAX_INTEGRITY_SIGNAL_COUNT = 10_000;
+
+export class AntiCheatEvidenceInvalidError extends Error {
+  constructor() {
+    super('ANTI_CHEAT_EVIDENCE_INVALID');
+    this.name = 'AntiCheatEvidenceInvalidError';
+  }
+}
+
 function parseReasonsProbeBurst(reasonsJson: unknown): number {
-  if (!Array.isArray(reasonsJson)) return 0;
+  if (!Array.isArray(reasonsJson)) throw new AntiCheatEvidenceInvalidError();
   let peak = 0;
   for (const r of reasonsJson) {
-    if (!r || typeof r !== 'object') continue;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new AntiCheatEvidenceInvalidError();
     const maybe = r as { signal?: unknown; occurrences?: unknown };
+    if (typeof maybe.signal !== 'string' || !maybe.signal.trim()) throw new AntiCheatEvidenceInvalidError();
     if (maybe.signal !== 'repeated_probing') continue;
-    const occurrences =
-      typeof maybe.occurrences === 'number'
-        ? maybe.occurrences
-        : Number.parseInt(String(maybe.occurrences ?? '0'), 10);
-    if (Number.isFinite(occurrences)) peak = Math.max(peak, occurrences);
+    const occurrences = maybe.occurrences;
+    if (typeof occurrences !== 'number' || !Number.isSafeInteger(occurrences) ||
+      occurrences < 0 || occurrences > MAX_INTEGRITY_SIGNAL_COUNT) {
+      throw new AntiCheatEvidenceInvalidError();
+    }
+    peak = Math.max(peak, occurrences);
   }
   return peak;
 }
@@ -98,7 +109,12 @@ function emptyTrend(): SuspicionTrend {
 export function computeSuspicionTrend(events: AntiCheatEventRecord[]): SuspicionTrend {
   if (events.length === 0) return emptyTrend();
   const ordered = [...events].sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const scores = ordered.map((e) => Number(e.suspicion_score) || 0);
+  const scores = ordered.map((e) => {
+    if (typeof e.suspicion_score !== 'number' || !Number.isFinite(e.suspicion_score) || e.suspicion_score < 0) {
+      throw new AntiCheatEvidenceInvalidError();
+    }
+    return e.suspicion_score;
+  });
   const oldest = scores[0] ?? 0;
   const latest = scores[scores.length - 1] ?? 0;
   const average = scores.reduce((acc, n) => acc + n, 0) / scores.length;
